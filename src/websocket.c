@@ -84,6 +84,7 @@ typedef struct st_ws_listener
 {
     HLISTENER   listener;
     ws_manager* mgr;
+    void*       user_data;
 }ws_listener;
 
 typedef struct st_ws_socket
@@ -98,6 +99,7 @@ typedef struct st_ws_socket
     char*               fragment_data;
     unsigned int        fragment_size;
     ws_op_code          fragment_op_code;
+    void*               user_data;
 }ws_socket;
 
 // Based on utf8_check.c by Markus Kuhn, 2005
@@ -266,7 +268,8 @@ bool _ws_server_ping(ws_socket* ws_session, const char* message, unsigned int le
     unsigned char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_ping & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_ping & 0xF);
 
     web_socket_frame[1] = (unsigned char)length;
 
@@ -285,7 +288,8 @@ bool _ws_client_ping(ws_socket* ws_session, const char* message, unsigned int le
     char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_ping & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_ping & 0xF);
 
     web_socket_frame[1] = (unsigned char)length;
     web_socket_frame[1] |= 0x80;
@@ -308,7 +312,8 @@ bool _ws_server_pong(ws_socket* ws_session, const char* message, unsigned int le
     unsigned char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_pong & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_pong & 0xF);
 
     web_socket_frame[1] = (unsigned char)length;
 
@@ -327,7 +332,8 @@ bool _ws_client_pong(ws_socket* ws_session, const char* message, unsigned int le
     char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_pong & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_pong & 0xF);
 
     web_socket_frame[1] = (unsigned char)length;
     web_socket_frame[1] |= 0x80;
@@ -340,7 +346,7 @@ bool _ws_client_pong(ws_socket* ws_session, const char* message, unsigned int le
     return iocp_tcp_send(ws_session->session, web_socket_frame, length + 6);
 }
 
-bool _ws_server_send(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
+bool _ws_server_data(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
 {
     char ws_proto_header[16];
     unsigned int ws_proto_header_length = 0;
@@ -349,14 +355,6 @@ bool _ws_server_send(ws_socket* ws_session, ws_op_code code, const char* data, u
 
     ws_proto_header[0] <<= 7;
     ws_proto_header[0] |= ((unsigned char)code & 0xF);
-
-    if (code == op_text)
-    {
-        if (!_is_valid_utf8((unsigned char*)data, length))
-        {
-            return false;
-        }
-    }
 
     if (compress)
     {
@@ -395,7 +393,7 @@ bool _ws_server_send(ws_socket* ws_session, ws_op_code code, const char* data, u
     return false;
 }
 
-bool _ws_client_send(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
+bool _ws_client_data(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
 {
     char ws_proto_header[16];
     unsigned int ws_proto_header_length = 0;
@@ -404,14 +402,6 @@ bool _ws_client_send(ws_socket* ws_session, ws_op_code code, const char* data, u
 
     ws_proto_header[0] <<= 7;
     ws_proto_header[0] |= ((unsigned char)code & 0xF);
-
-    if (code == op_text)
-    {
-        if (!_is_valid_utf8((unsigned char*)data, length))
-        {
-            return false;
-        }
-    }
 
     if (compress)
     {
@@ -472,7 +462,8 @@ bool _ws_server_close(ws_socket* ws_session, unsigned short status_code, const c
     unsigned char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_close & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_close & 0xF);
 
     web_socket_frame[1] = (unsigned char)length + 2;
     *(unsigned short*)(web_socket_frame + 2) = htons(status_code);
@@ -492,7 +483,8 @@ bool _ws_client_close(ws_socket* ws_session, unsigned short status_code, const c
     char web_socket_frame[256];
 
     web_socket_frame[0] = 1;
-    web_socket_frame[0] = web_socket_frame[0] | ((unsigned char)op_close & 0xF);
+    web_socket_frame[0] <<= 7;
+    web_socket_frame[0] |= ((unsigned char)op_close & 0xF);
 
     web_socket_frame[1] = (unsigned char)length + 2;
     web_socket_frame[1] |= 0x80;
@@ -656,7 +648,7 @@ char* _parser_http_headers(char* data, unsigned int len, http_header* headers, u
             headers->key_length = (unsigned int)(data - headers->key);
             for (data++; (*data == ':' || *data < 33) && *data != '\r'; data++);
             headers->value = data;
-            data = (char *)memchr(data, '\r', end - data); //for (; *buffer != '\r'; buffer++);
+            data = (char *)memchr(data, '\r', end - data);
             if (data /*!= end*/ && data[1] == '\n') {
                 headers->value_length = (unsigned int)(data - headers->value);
                 data += 2;
@@ -691,7 +683,6 @@ void _on_client_http_data(ws_socket* ws_session, const char* data, const unsigne
 {
     bool check_head_upgrade = false;
     http_header headers[MAX_HTTP_HEADER_SIZE];
-    //http_header* head_extensions = 0;
 
     if (!_parser_http_headers((char*)data, len, headers, MAX_HTTP_HEADER_SIZE))
     {
@@ -944,7 +935,22 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
 
-            ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+            if (ws_session->fragment_op_code == op_text)
+            {
+                if (_is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
+                {
+                    ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+                }
+                else
+                {
+                    _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
+                }
+            }
+            else
+            {
+                ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+            }
+
             libsvr_memory_manager_free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
@@ -968,6 +974,15 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
                     return;
                 }
                 pay_load_data = ws_session->mgr->inflate_cache;
+            }
+
+            if (op_code == op_text)
+            {
+                if (!_is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
+                {
+                    _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
+                    return;
+                }
             }
 
             ws_session->mgr->func_on_message(ws_session, (ws_op_code)op_code, pay_load_data, pay_load_length);
@@ -1167,7 +1182,22 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
 
-            ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+            if (ws_session->fragment_op_code == op_text)
+            {
+                if (_is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
+                {
+                    ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+                }
+                else
+                {
+                    _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
+                }
+            }
+            else
+            {
+                ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
+            }
+
             libsvr_memory_manager_free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
@@ -1191,6 +1221,15 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
                     return;
                 }
                 pay_load_data = ws_session->mgr->inflate_cache;
+            }
+
+            if (op_code == op_text)
+            {
+                if (!_is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
+                {
+                    _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
+                    return;
+                }
             }
 
             ws_session->mgr->func_on_message(ws_session, (ws_op_code)op_code, pay_load_data, pay_load_length);
@@ -1517,6 +1556,12 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
     return listener;
 }
 
+void ws_close_listener(ws_listener* ws_listener)
+{
+    iocp_tcp_close_listener(ws_listener->listener);
+    free(ws_listener);
+}
+
 bool _parser_uri(const char* uri, bool* is_secure, mem_seg* host_name_seg, mem_seg* path_seg, int* port)
 {
     size_t uri_length = strlen(uri);
@@ -1693,28 +1738,28 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         host_name[host_name_seg.mem_size] = 0;
     }
 
+    HSESSION session = iocp_tcp_connect_ex(
+        ws_mgr->net_mgr, host_name,
+        (unsigned short)port,
+        recv_buf_size,
+        send_buf_size,
+        false,
+        0,
+        0,
+        _ws_on_establish,
+        _ws_on_terminate,
+        _ws_on_error,
+        _ws_on_recv,
+        _ws_parser_packet);
+
+    if (!session)
+    {
+        return 0;
+    }
 
     ws_socket* ws_session = _ws_alloc_socket(ws_mgr);
 
-    ws_session->session = iocp_tcp_connect_ex(
-        ws_mgr->net_mgr, host_name, 
-        (unsigned short)port, 
-        recv_buf_size, 
-        send_buf_size, 
-        false, 
-        0, 
-        0, 
-        _ws_on_establish, 
-        _ws_on_terminate, 
-        _ws_on_error, 
-        _ws_on_recv, 
-        _ws_parser_packet);
-
-    if (!ws_session->session)
-    {
-        _ws_free_socket(ws_mgr, ws_session);
-        return 0;
-    }
+    ws_session->session = session;
     ws_session->listener = 0;
     ws_session->state = ws_client_tcp;
     ws_session->mgr = ws_mgr;
@@ -1766,7 +1811,32 @@ FAIL:
     return 0;
 }
 
-bool ws_send(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
+bool ws_send_text(ws_socket* ws_session, const char* data, unsigned int length, bool compress)
+{
+    if (ws_session->error_type != ws_error_ok)
+    {
+        return false;
+    }
+
+    if (!_is_valid_utf8((unsigned char*)data, length))
+    {
+        return false;
+    }
+
+    switch (ws_session->state)
+    {
+    case ws_server_websocket:
+        return _ws_server_data(ws_session, op_text, data, length, compress);
+        break;
+    case ws_client_websocket:
+        return _ws_client_data(ws_session, op_text, data, length, compress);
+        break;
+    default:
+        return false;
+    }
+}
+
+bool ws_send_binary(ws_socket*  ws_session, const char* data, unsigned int length, bool compress)
 {
     if (ws_session->error_type != ws_error_ok)
     {
@@ -1776,10 +1846,50 @@ bool ws_send(ws_socket* ws_session, ws_op_code code, const char* data, unsigned 
     switch (ws_session->state)
     {
     case ws_server_websocket:
-        return _ws_server_send(ws_session, code, data, length, compress);
+        return _ws_server_data(ws_session, op_binary, data, length, compress);
         break;
     case ws_client_websocket:
-        return _ws_client_send(ws_session, code, data, length, compress);
+        return _ws_client_data(ws_session, op_binary, data, length, compress);
+        break;
+    default:
+        return false;
+    }
+}
+
+bool ws_send_ping(ws_socket*  ws_session, const char* message, unsigned int length)
+{
+    if (ws_session->error_type != ws_error_ok)
+    {
+        return false;
+    }
+
+    switch (ws_session->state)
+    {
+    case ws_server_websocket:
+        return _ws_server_ping(ws_session, message, length);
+        break;
+    case ws_client_websocket:
+        return _ws_client_ping(ws_session, message, length);
+        break;
+    default:
+        return false;
+    }
+}
+
+bool ws_send_pong(ws_socket*  ws_session, const char* message, unsigned int length)
+{
+    if (ws_session->error_type != ws_error_ok)
+    {
+        return false;
+    }
+
+    switch (ws_session->state)
+    {
+    case ws_server_websocket:
+        return _ws_server_pong(ws_session, message, length);
+        break;
+    case ws_client_websocket:
+        return _ws_client_pong(ws_session, message, length);
         break;
     default:
         return false;
@@ -1791,3 +1901,32 @@ void ws_close_session(ws_socket* ws_session)
     _ws_close_socket(ws_session, ws_error_websocket, 1000, "", 0);
 }
 
+HSESSION ws_to_tcp_session(ws_socket* ws_session)
+{
+    return ws_session->session;
+}
+
+HLISTENER ws_to_tcp_listener(ws_listener* ws_listener)
+{
+    return ws_listener->listener;
+}
+
+void ws_set_session_data(ws_socket* ws_session, void* user_data)
+{
+    ws_session->user_data = user_data;
+}
+
+void ws_set_listener_data(ws_listener* ws_listener, void* user_data)
+{
+    ws_listener->user_data = user_data;
+}
+
+void* ws_get_session_data(ws_socket* ws_session)
+{
+    return ws_session->user_data;
+}
+
+void* ws_get_listener_data(ws_listener* ws_listener)
+{
+    return ws_listener->user_data;
+}

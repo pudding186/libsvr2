@@ -26,7 +26,29 @@ extern HWSSESSION ws_connect(HWSMANAGER ws_mgr,
     unsigned int recv_buf_size, 
     unsigned int send_buf_size);
 
-extern bool (ws_send)(HWSSESSION ws_session, ws_op_code code, const char* data, unsigned int length, bool compress);
+extern bool (ws_send_text)(HWSSESSION ws_session, const char* data, unsigned int length, bool compress);
+
+extern bool (ws_send_binary)(HWSSESSION ws_session, const char* data, unsigned int length, bool compress);
+
+extern bool (ws_send_ping)(HWSSESSION ws_session, const char* message, unsigned int length);
+
+extern bool (ws_send_pong)(HWSSESSION ws_session, const char* message, unsigned int length);
+
+extern void (ws_close_session)(HWSSESSION ws_session);
+
+extern void (ws_close_listener)(HWSLISTENER ws_listener);
+
+extern HSESSION (ws_to_tcp_session)(HWSSESSION ws_session);
+
+extern HLISTENER (ws_to_tcp_listener)(HWSLISTENER ws_listener);
+
+extern void (ws_set_session_data)(HWSSESSION ws_session, void* user_data);
+
+extern void (ws_set_listener_data)(HWSLISTENER ws_listener, void* user_data);
+
+extern void* (ws_get_session_data)(HWSSESSION ws_session);
+
+extern void* (ws_get_listener_data)(HWSLISTENER ws_listener);
 
 #ifdef  __cplusplus
 }
