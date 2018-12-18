@@ -1354,6 +1354,11 @@ ws_socket* _ws_alloc_socket(ws_manager* mgr)
 
 void _ws_free_socket(ws_manager* mgr, ws_socket* sock)
 {
+    if (sock->fragment_data)
+    {
+        libsvr_memory_manager_free(sock->fragment_data);
+        sock->fragment_data = 0;
+    }
     memory_unit_free(mgr->ws_socket_unit, sock);
 }
 
@@ -1396,14 +1401,18 @@ void _ws_on_terminate(HSESSION session)
     if (ws_session->state == ws_server_websocket ||
         ws_session->state == ws_client_websocket)
     {
+        if (!ws_session->error_code)
+        {
+            ws_session->error_code = 1006;
+        }
         ws_session->mgr->func_on_close(ws_session, (unsigned short)ws_session->error_code);
-
-        _ws_free_socket(ws_session->mgr, ws_session);
     }
     else if (ws_session->state == ws_client_http)
     {
         ws_session->mgr->func_on_fail(ws_session, ws_session->error_type, ws_session->error_code);
     }
+
+    _ws_free_socket(ws_session->mgr, ws_session);
 }
 
 void _ws_on_error(HSESSION session, iocp_tcp_error module_error, int system_error)
@@ -1416,7 +1425,6 @@ void _ws_on_error(HSESSION session, iocp_tcp_error module_error, int system_erro
     {
         _ws_close_socket(ws_session, ws_error_tcp, system_error, "", 0);
         ws_session->mgr->func_on_fail(ws_session, ws_session->error_type, ws_session->error_code);
-        libsvr_memory_manager_free(ws_session->fragment_data);
         _ws_free_socket(ws_session->mgr, ws_session);
     }
     break;
@@ -1806,7 +1814,6 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
 
     return ws_session;
 FAIL:
-    libsvr_memory_manager_free(ws_session->fragment_data);
     _ws_free_socket(ws_mgr, ws_session);
     return 0;
 }
