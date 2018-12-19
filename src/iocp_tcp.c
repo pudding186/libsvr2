@@ -9,6 +9,10 @@
 #include "../include/rb_tree.h"
 #include "../include/iocp_tcp.h"
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509v3.h>
+
 #define MAX_BACKLOG     256
 #define MAX_ADDR_SIZE   ((sizeof(struct sockaddr_in6)+16)*2)
 
@@ -39,6 +43,9 @@
 
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
+
+#define BIO_RECV                0
+#define BIO_SEND                1
 
 
 typedef struct st_event_establish
@@ -73,7 +80,7 @@ typedef struct st_event_terminate
 
 typedef struct st_net_event
 {
-    struct st_iocp_tcp_socket*  socket;
+    struct st_iocp_tcp_socket*  socket_ptr;
     int                         type;
     union
     {
@@ -106,7 +113,7 @@ typedef struct st_iocp_listen_data
 
 typedef struct st_iocp_tcp_listener
 {
-    SOCKET                      socket;
+    SOCKET                      tcp_socket;
     unsigned int                send_buf_size;
     unsigned int                recv_buf_size;
     unsigned int                max_accept_ex_num;
@@ -131,11 +138,11 @@ union un_ip
 
 typedef struct st_iocp_tcp_socket
 {
-    SOCKET                      socket;
+    SOCKET                      tcp_socket;
     void*                       user_data;
 
-    struct st_iocp_data            iocp_recv_data;
-    struct st_iocp_data            iocp_send_data;
+    struct st_iocp_data         iocp_recv_data;
+    struct st_iocp_data         iocp_send_data;
 
     HLOOPCACHE                  recv_loop_cache;
     HLOOPCACHE                  send_loop_cache;
@@ -166,6 +173,9 @@ typedef struct st_iocp_tcp_socket
     pfn_on_error                on_error;
     pfn_on_recv                 on_recv;
     struct st_iocp_tcp_manager* mgr;
+    //SSL_CTX*                    ssl_ctx;
+    //SSL*                        ssl;
+    //BIO*                        bio[2];
 }iocp_tcp_socket;
 
 typedef struct st_iocp_tcp_manager
@@ -199,59 +209,124 @@ typedef struct st_iocp_tcp_manager
 
     char*                       max_pkg_buf;
     unsigned int                max_pkg_buf_size;
-
-    //////////////////////////////////////////////////////////////////////////
-    //unsigned long long          m_pop_connect_fail;
-    //unsigned long long          m_pop_data;
-    //unsigned long long          m_pop_establish;
-    //unsigned long long          m_pop_module_error;
-    //unsigned long long          m_pop_system_error;
-    //unsigned long long          m_pop_recv_active;
-    //unsigned long long          m_pop_terminate;
-
-    //unsigned long long          m_push_connect_fail;
-    //unsigned long long          m_push_data;
-    //unsigned long long          m_push_establish;
-    //unsigned long long          m_push_module_error;
-    //unsigned long long          m_push_system_error;
-    //unsigned long long          m_push_recv_active;
-    //unsigned long long          m_push_terminate;
-
 }iocp_tcp_manager;
 
-void _iocp_tcp_socket_reset(iocp_tcp_socket* socket)
+//bool _create_server_ssl(iocp_tcp_socket* sock_ptr)
+//{
+//    sock_ptr->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+//
+//    if (!sock_ptr->ssl_ctx)
+//        return false;
+//
+//    SSL_CTX_set_verify(sock_ptr->ssl_ctx, SSL_VERIFY_NONE, 0);
+//
+//    int length = (int)strlen(server_cert_key_pem);
+//    BIO *bio_cert = BIO_new_mem_buf((void*)server_cert_key_pem, length);
+//    X509 *cert = PEM_read_bio_X509(bio_cert, 0, 0, 0);
+//    EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio_cert, 0, 0, 0);
+//
+//
+//    int ret = SSL_CTX_use_certificate(sock_ptr->ssl_ctx, cert);
+//
+//    if (ret != 1)
+//        goto FAIL;
+//
+//    ret = SSL_CTX_use_PrivateKey(sock_ptr->ssl_ctx, pkey);
+//
+//    if (ret != 1)
+//        goto FAIL;
+//    
+//    X509_free(cert);
+//    EVP_PKEY_free(pkey);
+//    BIO_free(bio_cert);
+//
+//    sock_ptr->ssl = SSL_new(sock_ptr->ssl_ctx);
+//
+//    sock_ptr->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+//    sock_ptr->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+//    SSL_set_bio(sock_ptr->ssl, sock_ptr->bio[BIO_RECV], sock_ptr->bio[BIO_SEND]);
+//
+//    return true;
+//
+//FAIL:
+//
+//    X509_free(cert);
+//    EVP_PKEY_free(pkey);
+//    BIO_free(bio_cert);
+//
+//    if (sock_ptr->ssl_ctx)
+//    {
+//        SSL_CTX_free(sock_ptr->ssl_ctx);
+//        sock_ptr->ssl_ctx = 0;
+//    }
+//    return false;
+//}
+//
+//bool _create_client_ssl(iocp_tcp_socket* sock_ptr)
+//{
+//    sock_ptr->ssl_ctx = SSL_CTX_new(SSLv23_method());
+//
+//    if (!sock_ptr->ssl_ctx)
+//        return false;
+//
+//    SSL_CTX_set_verify(sock_ptr->ssl_ctx, SSL_VERIFY_NONE, 0);
+//    sock_ptr->ssl = SSL_new(sock_ptr->ssl_ctx);
+//
+//    sock_ptr->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+//    sock_ptr->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+//    SSL_set_bio(sock_ptr->ssl, sock_ptr->bio[BIO_RECV], sock_ptr->bio[BIO_SEND]);
+//
+//    return true;
+//}
+//
+//void _destroy_ssl(iocp_tcp_socket* sock_ptr)
+//{
+//    if (sock_ptr->ssl)
+//    {
+//        SSL_free(sock_ptr->ssl);
+//        sock_ptr->ssl = 0;
+//    }
+//
+//    if (sock_ptr->ssl_ctx)
+//    {
+//        SSL_CTX_free(sock_ptr->ssl_ctx);
+//        sock_ptr->ssl_ctx = 0;
+//    }
+//}
+
+void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
 {
-    socket->user_data = 0;
-    socket->state = SOCKET_STATE_NONE;
+    sock_ptr->user_data = 0;
+    sock_ptr->state = SOCKET_STATE_NONE;
 
-    socket->recv_req = 0;
-    socket->recv_ack = 0;
+    sock_ptr->recv_req = 0;
+    sock_ptr->recv_ack = 0;
 
-    socket->send_req = 0;
-    socket->send_ack = 0;
+    sock_ptr->send_req = 0;
+    sock_ptr->send_ack = 0;
 
-    socket->data_need_send = 0;
-    socket->data_has_send = 0;
+    sock_ptr->data_need_send = 0;
+    sock_ptr->data_has_send = 0;
 
-    socket->data_has_recv = 0;
+    sock_ptr->data_has_recv = 0;
 
-    socket->data_delay_send_size = 0;
+    sock_ptr->data_delay_send_size = 0;
 
-    //socket->local_addr_info = 0;AF_INET6
-    //socket->peer_addr_info = 0;
-    memset(&socket->local_sockaddr, 0, sizeof(socket->local_sockaddr));
-    memset(&socket->peer_sockaddr, 0, sizeof(socket->peer_sockaddr));
+    //sock_ptr->local_addr_info = 0;AF_INET6
+    //sock_ptr->peer_addr_info = 0;
+    memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
+    memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
 
-    socket->timer_send = 0;
-    socket->timer_close = 0;
+    sock_ptr->timer_send = 0;
+    sock_ptr->timer_close = 0;
 }
 
 #define SOCKET_LOCK EnterCriticalSection(&mgr->socket_lock)
 #define SOCKET_UNLOCK LeaveCriticalSection(&mgr->socket_lock)
 
-bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* socket)
+bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* sock_ptr)
 {
-    if (CreateIoCompletionPort((HANDLE)socket->socket, socket->mgr->iocp_port, (ULONG_PTR)socket, 0))
+    if (CreateIoCompletionPort((HANDLE)sock_ptr->tcp_socket, sock_ptr->mgr->iocp_port, (ULONG_PTR)sock_ptr, 0))
     {
         return true;
     }
@@ -299,7 +374,7 @@ void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned in
 
 iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
 {
-    HSESSION socket = 0;
+    iocp_tcp_socket* sock_ptr = 0;
 
     if (recv_buf_size < 1024)
     {
@@ -312,53 +387,53 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
     }
 
     SOCKET_LOCK;
-    socket = memory_unit_alloc_ex(mgr->socket_pool, 0);
+    sock_ptr = memory_unit_alloc_ex(mgr->socket_pool, 0);
     SOCKET_UNLOCK;
 
-    if (socket)
+    if (sock_ptr)
     {
-        if (socket->mgr != mgr)
+        if (sock_ptr->mgr != mgr)
         {
             CRUSH_CODE();
         }
 
-        _iocp_tcp_socket_reset(socket);
+        _iocp_tcp_socket_reset(sock_ptr);
 
-        if (!socket->recv_loop_cache)
+        if (!sock_ptr->recv_loop_cache)
         {
-            if (socket->send_loop_cache)
+            if (sock_ptr->send_loop_cache)
             {
                 CRUSH_CODE();
             }
 
             SOCKET_LOCK;
-            socket->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
-            socket->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
+            sock_ptr->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
+            sock_ptr->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
             SOCKET_UNLOCK;
         }
         else
         {
-            if ((unsigned int)loop_cache_size(socket->recv_loop_cache) != recv_buf_size)
+            if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
             {
                 SOCKET_LOCK;
-                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(socket->recv_loop_cache), (unsigned int)loop_cache_size(socket->recv_loop_cache));
-                loop_cache_reset(socket->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
+                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
+                loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
                 SOCKET_UNLOCK;
             }
 
-            if ((unsigned int)loop_cache_size(socket->send_loop_cache) != send_buf_size)
+            if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
             {
                 SOCKET_LOCK;
-                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(socket->send_loop_cache), (unsigned int)loop_cache_size(socket->send_loop_cache));
-                loop_cache_reset(socket->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
+                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
+                loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
                 SOCKET_UNLOCK;
             }
         }
 
-        loop_cache_reinit(socket->recv_loop_cache);
-        loop_cache_reinit(socket->send_loop_cache);
+        loop_cache_reinit(sock_ptr->recv_loop_cache);
+        loop_cache_reinit(sock_ptr->send_loop_cache);
 
-        return socket;
+        return sock_ptr;
     }
     else
     {
@@ -366,172 +441,172 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
     }
 }
 
-void _iocp_tcp_manager_free_socket(HNETMANAGER mgr, HSESSION socket)
+void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_ptr)
 {
     SOCKET_LOCK;
-    memory_unit_free(mgr->socket_pool, socket);
+    memory_unit_free(mgr->socket_pool, sock_ptr);
     SOCKET_UNLOCK;
 }
 
-#define EVENT_LOCK EnterCriticalSection(&socket->mgr->evt_lock)
-#define EVENT_UNLOCK LeaveCriticalSection(&socket->mgr->evt_lock)
+#define EVENT_LOCK EnterCriticalSection(&sock_ptr->mgr->evt_lock)
+#define EVENT_UNLOCK LeaveCriticalSection(&sock_ptr->mgr->evt_lock)
 
-void _push_data_event(HSESSION socket, unsigned int data_len)
+void _push_data_event(iocp_tcp_socket* sock_ptr, unsigned int data_len)
 {
-    if (socket->state == SOCKET_STATE_ESTABLISH)
+    if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
         struct st_net_event* evt;
         size_t evt_len = sizeof(struct st_net_event);
 
         EVENT_LOCK;
-        loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+        loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
         if (evt_len != sizeof(struct st_net_event))
         {
             CRUSH_CODE();
         }
 
-        evt->socket = socket;
+        evt->socket_ptr = sock_ptr;
         evt->type = NET_EVENT_DATA;
         evt->evt.evt_data.data_len = data_len;
 
-        loop_cache_push(socket->mgr->evt_queue, evt_len);
+        loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
         EVENT_UNLOCK;
     }
 }
 
-void _push_establish_event(HLISTENER listener, HSESSION socket)
+void _push_establish_event(iocp_tcp_listener* listener, iocp_tcp_socket* sock_ptr)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
         CRUSH_CODE();
     }
 
-    evt->socket = socket;
+    evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_ESTABLISH;
     evt->evt.evt_establish.listener = listener;
 
-    loop_cache_push(socket->mgr->evt_queue, evt_len);
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
 }
 
-void _push_system_error_event(HSESSION socket, int err_code)
+void _push_system_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
         CRUSH_CODE();
     }
 
-    evt->socket = socket;
+    evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_SYSTEM_ERROR;
     evt->evt.evt_system_error.err_code = err_code;
 
-    loop_cache_push(socket->mgr->evt_queue, evt_len);
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
 }
 
-void _push_module_error_event(HSESSION socket, int err_code)
+void _push_module_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
         CRUSH_CODE();
     }
 
-    evt->socket = socket;
+    evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_MODULE_ERROR;
     evt->evt.evt_module_error.err_code = err_code;
 
-    loop_cache_push(socket->mgr->evt_queue, evt_len);
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
 }
 
-void _push_terminate_event(HSESSION socket)
+void _push_terminate_event(iocp_tcp_socket* sock_ptr)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
         CRUSH_CODE();
     }
 
-    evt->socket = socket;
+    evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_TERMINATE;
 
-    loop_cache_push(socket->mgr->evt_queue, evt_len);
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
 }
 
-void _push_connect_fail_event(HSESSION socket, int err_code)
+void _push_connect_fail_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
         CRUSH_CODE();
     }
 
-    evt->socket = socket;
+    evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_CONNECT_FAIL;
     evt->evt.evt_connect_fail.err_code = err_code;
 
-    loop_cache_push(socket->mgr->evt_queue, evt_len);
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
 }
 
-void _push_recv_active_event(HSESSION socket)
+void _push_recv_active_event(iocp_tcp_socket* sock_ptr)
 {
-    if (socket->state == SOCKET_STATE_ESTABLISH)
+    if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
         struct st_net_event* evt;
         size_t evt_len = sizeof(struct st_net_event);
         EVENT_LOCK;
-        loop_cache_get_free(socket->mgr->evt_queue, &evt, &evt_len);
+        loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
 
         if (evt_len != sizeof(struct st_net_event))
         {
             CRUSH_CODE();
         }
 
-        evt->socket = socket;
+        evt->socket_ptr = sock_ptr;
         evt->type = NET_EVENT_RECV_ACTIVE;
 
-        loop_cache_push(socket->mgr->evt_queue, evt_len);
+        loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
         EVENT_UNLOCK;
     }
 }
 
-void _iocp_tcp_socket_close(HSESSION socket, iocp_tcp_error error)
+void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, iocp_tcp_error error)
 {
-    if (SOCKET_STATE_ESTABLISH == InterlockedCompareExchange(&socket->state, SOCKET_STATE_TERMINATE, SOCKET_STATE_ESTABLISH))
+    if (SOCKET_STATE_ESTABLISH == InterlockedCompareExchange(&sock_ptr->state, SOCKET_STATE_TERMINATE, SOCKET_STATE_ESTABLISH))
     {
         switch (error)
         {
         //case ERROR_SYSTEM:
         case error_system:
         {
-            socket->data_has_send = socket->data_need_send;
-            _push_system_error_event(socket, WSAGetLastError());
+            sock_ptr->data_has_send = sock_ptr->data_need_send;
+            _push_system_error_event(sock_ptr, WSAGetLastError());
         }
         break;
         //case ERROR_SEND_OVERFLOW:
@@ -541,35 +616,35 @@ void _iocp_tcp_socket_close(HSESSION socket, iocp_tcp_error error)
         case error_recv_overflow:
         case error_packet:
         {
-            socket->data_has_send = socket->data_need_send;
-            _push_module_error_event(socket, error);
+            sock_ptr->data_has_send = sock_ptr->data_need_send;
+            _push_module_error_event(sock_ptr, error);
         }
         break;
         default:
         {
-            _push_terminate_event(socket);
+            _push_terminate_event(sock_ptr);
         }
         break;
         }
     }
 }
 
-bool _iocp_tcp_socket_post_recv_req(HSESSION socket)
+bool _iocp_tcp_socket_post_recv_req(iocp_tcp_socket* sock_ptr)
 {
-    ZeroMemory(&socket->iocp_recv_data.over_lapped, sizeof(socket->iocp_recv_data.over_lapped));
+    ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
 
-    ++socket->recv_req;
+    ++sock_ptr->recv_req;
 
-    if (PostQueuedCompletionStatus(socket->mgr->iocp_port, 0xffffffff, (ULONG_PTR)socket, &socket->iocp_recv_data.over_lapped))
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0xffffffff, (ULONG_PTR)sock_ptr, &sock_ptr->iocp_recv_data.over_lapped))
     {
         return true;
     }
 
-    --socket->recv_req;
+    --sock_ptr->recv_req;
     return false;
 }
 
-bool _iocp_tcp_socket_post_recv(HSESSION socket)
+bool _iocp_tcp_socket_post_recv(iocp_tcp_socket* sock_ptr)
 {
     DWORD byte_received;
     DWORD flags = 0;
@@ -577,20 +652,20 @@ bool _iocp_tcp_socket_post_recv(HSESSION socket)
     char* recv_ptr = 0;
     size_t recv_len = 0;
 
-    ZeroMemory(&socket->iocp_recv_data.over_lapped, sizeof(socket->iocp_recv_data.over_lapped));
+    ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
 
-    loop_cache_get_free(socket->recv_loop_cache, &recv_ptr, &recv_len);
+    loop_cache_get_free(sock_ptr->recv_loop_cache, &recv_ptr, &recv_len);
 
-    socket->iocp_recv_data.wsa_buf.buf = recv_ptr;
-    socket->iocp_recv_data.wsa_buf.len = (ULONG)recv_len;
+    sock_ptr->iocp_recv_data.wsa_buf.buf = recv_ptr;
+    sock_ptr->iocp_recv_data.wsa_buf.len = (ULONG)recv_len;
 
-    ++socket->recv_req;
+    ++sock_ptr->recv_req;
 
-    if (WSARecv(socket->socket, &socket->iocp_recv_data.wsa_buf, 1, &byte_received, &flags, &socket->iocp_recv_data.over_lapped, NULL))
+    if (WSARecv(sock_ptr->tcp_socket, &sock_ptr->iocp_recv_data.wsa_buf, 1, &byte_received, &flags, &sock_ptr->iocp_recv_data.over_lapped, NULL))
     {
         if (WSAGetLastError() != WSA_IO_PENDING)
         {
-            --socket->recv_req;
+            --sock_ptr->recv_req;
             return false;
         }
     }
@@ -598,16 +673,16 @@ bool _iocp_tcp_socket_post_recv(HSESSION socket)
     return true;
 }
 
-void _iocp_tcp_socket_on_recv(HSESSION socket, BOOL ret, DWORD trans_byte)
+void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
 {
-    ++socket->recv_ack;
+    ++sock_ptr->recv_ack;
     if (!ret)
     {
-        _iocp_tcp_socket_close(socket, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system);
         return;
     }
 
-    if (socket->state != SOCKET_STATE_ESTABLISH)
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
     {
         return;
     }
@@ -616,7 +691,7 @@ void _iocp_tcp_socket_on_recv(HSESSION socket, BOOL ret, DWORD trans_byte)
     {
     case 0:
     {
-        _iocp_tcp_socket_close(socket, error_ok);
+        _iocp_tcp_socket_close(sock_ptr, error_ok);
         return;
     }
     break;
@@ -629,56 +704,56 @@ void _iocp_tcp_socket_on_recv(HSESSION socket, BOOL ret, DWORD trans_byte)
 
     if (trans_byte)
     {
-        if (!loop_cache_push(socket->recv_loop_cache, trans_byte))
+        if (!loop_cache_push(sock_ptr->recv_loop_cache, trans_byte))
         {
             CRUSH_CODE();
         }
 
-        _push_data_event(socket, trans_byte);
+        _push_data_event(sock_ptr, trans_byte);
     }
 
-    if (loop_cache_free_size(socket->recv_loop_cache))
+    if (loop_cache_free_size(sock_ptr->recv_loop_cache))
     {
-        if (!_iocp_tcp_socket_post_recv(socket))
+        if (!_iocp_tcp_socket_post_recv(sock_ptr))
         {
-            _iocp_tcp_socket_close(socket, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system);
         }
     }
     else
     {
-        _push_recv_active_event(socket);
+        _push_recv_active_event(sock_ptr);
     }
 }
 
-bool _iocp_tcp_socket_post_send_req(HSESSION socket)
+bool _iocp_tcp_socket_post_send_req(iocp_tcp_socket* sock_ptr)
 {
-    ZeroMemory(&socket->iocp_send_data.over_lapped, sizeof(socket->iocp_send_data.over_lapped));
+    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
 
-    ++socket->send_req;
+    ++sock_ptr->send_req;
 
-    if (PostQueuedCompletionStatus(socket->mgr->iocp_port, 0xffffffff, (ULONG_PTR)socket, &socket->iocp_send_data.over_lapped))
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0xffffffff, (ULONG_PTR)socket, &sock_ptr->iocp_send_data.over_lapped))
     {
         return true;
     }
 
-    --socket->send_req;
+    --sock_ptr->send_req;
 
     return false;
 }
 
-bool _iocp_tcp_socket_post_send(HSESSION socket)
+bool _iocp_tcp_socket_post_send(iocp_tcp_socket* sock_ptr)
 {
     DWORD number_of_byte_sent = 0;
 
-    ZeroMemory(&socket->iocp_send_data.over_lapped, sizeof(socket->iocp_send_data.over_lapped));
+    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
 
-    ++socket->send_req;
+    ++sock_ptr->send_req;
 
-    if (WSASend(socket->socket, &socket->iocp_send_data.wsa_buf, 1, &number_of_byte_sent, 0, &socket->iocp_send_data.over_lapped, NULL))
+    if (WSASend(sock_ptr->tcp_socket, &sock_ptr->iocp_send_data.wsa_buf, 1, &number_of_byte_sent, 0, &sock_ptr->iocp_send_data.over_lapped, NULL))
     {
         if (WSAGetLastError() != WSA_IO_PENDING)
         {
-            --socket->send_req;
+            --sock_ptr->send_req;
             return false;
         }
     }
@@ -686,89 +761,89 @@ bool _iocp_tcp_socket_post_send(HSESSION socket)
     return true;
 }
 
-void _iocp_tcp_socket_on_send(HSESSION socket, BOOL ret, DWORD trans_byte)
+void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
 {
     char* send_ptr = 0;
     size_t send_len = 0;
 
     if (!ret)
     {
-        _iocp_tcp_socket_close(socket, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system);
 
-        InterlockedIncrement(&socket->send_ack);
+        InterlockedIncrement(&sock_ptr->send_ack);
         return;
     }
 
-    if ((socket->state != SOCKET_STATE_ESTABLISH) &&
-        (socket->state != SOCKET_STATE_TERMINATE))
+    if ((sock_ptr->state != SOCKET_STATE_ESTABLISH) &&
+        (sock_ptr->state != SOCKET_STATE_TERMINATE))
     {
-        InterlockedIncrement(&socket->send_ack);
+        InterlockedIncrement(&sock_ptr->send_ack);
         return;
     }
 
     if (0 == trans_byte)
     {
-        _iocp_tcp_socket_close(socket, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system);
 
-        InterlockedIncrement(&socket->send_ack);
+        InterlockedIncrement(&sock_ptr->send_ack);
         return;
     }
 
     if (0xffffffff == trans_byte)
     {
         trans_byte = 0;
-        socket->iocp_send_data.wsa_buf.len = 0;
+        sock_ptr->iocp_send_data.wsa_buf.len = 0;
     }
     else
     {
-        socket->data_has_send += trans_byte;
+        sock_ptr->data_has_send += trans_byte;
 
-        if (!loop_cache_pop(socket->send_loop_cache, trans_byte))
+        if (!loop_cache_pop(sock_ptr->send_loop_cache, trans_byte))
         {
             CRUSH_CODE();
         }
     }
 
-    loop_cache_get_data(socket->send_loop_cache, &send_ptr, &send_len);
+    loop_cache_get_data(sock_ptr->send_loop_cache, &send_ptr, &send_len);
 
     if (send_len)
     {
-        socket->iocp_send_data.wsa_buf.buf = send_ptr;
-        socket->iocp_send_data.wsa_buf.len = (ULONG)send_len;
+        sock_ptr->iocp_send_data.wsa_buf.buf = send_ptr;
+        sock_ptr->iocp_send_data.wsa_buf.len = (ULONG)send_len;
 
-        if (!_iocp_tcp_socket_post_send(socket))
+        if (!_iocp_tcp_socket_post_send(sock_ptr))
         {
-            _iocp_tcp_socket_close(socket, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system);
         }
     }
 
-    InterlockedIncrement(&socket->send_ack);
+    InterlockedIncrement(&sock_ptr->send_ack);
 }
 
-bool _iocp_tcp_socket_post_connect_req(HSESSION socket, BOOL reuse_addr)
+bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr, BOOL reuse_addr)
 {
-    ZeroMemory(&socket->iocp_recv_data.over_lapped, sizeof(socket->iocp_recv_data.over_lapped));
+    ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
 
-    ++socket->recv_req;
+    ++sock_ptr->recv_req;
 
-    socket->iocp_recv_data.operation = IOCP_OPT_CONNECT_REQ;
+    sock_ptr->iocp_recv_data.operation = IOCP_OPT_CONNECT_REQ;
 
-    if (PostQueuedCompletionStatus(socket->mgr->iocp_port, reuse_addr, (ULONG_PTR)socket, &socket->iocp_recv_data.over_lapped))
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, reuse_addr, (ULONG_PTR)sock_ptr, &sock_ptr->iocp_recv_data.over_lapped))
     {
         return true;
     }
 
-    --socket->recv_req;
+    --sock_ptr->recv_req;
     return false;
 }
 
-void _iocp_tcp_socket_connect_ex(HSESSION socket_ptr, BOOL reuse_addr)
+void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr, BOOL reuse_addr)
 {
     ++socket_ptr->recv_ack;
 
-    socket_ptr->socket = socket(socket_ptr->peer_sockaddr.sin6_family, SOCK_STREAM, IPPROTO_TCP);
+    socket_ptr->tcp_socket = socket(socket_ptr->peer_sockaddr.sin6_family, SOCK_STREAM, IPPROTO_TCP);
 
-    if (INVALID_SOCKET == socket_ptr->socket)
+    if (INVALID_SOCKET == socket_ptr->tcp_socket)
     {
         goto ERROR_DEAL;
     }
@@ -776,7 +851,7 @@ void _iocp_tcp_socket_connect_ex(HSESSION socket_ptr, BOOL reuse_addr)
     if (reuse_addr)
     {
         INT32 nReuse = 1;
-        if (setsockopt(socket_ptr->socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nReuse, sizeof(nReuse)) == SOCKET_ERROR)
+        if (setsockopt(socket_ptr->tcp_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nReuse, sizeof(nReuse)) == SOCKET_ERROR)
         {
             goto ERROR_DEAL;
         }
@@ -810,7 +885,7 @@ void _iocp_tcp_socket_connect_ex(HSESSION socket_ptr, BOOL reuse_addr)
     }
 
     if (SOCKET_ERROR ==
-        bind(socket_ptr->socket,
+        bind(socket_ptr->tcp_socket,
         (struct sockaddr*)&socket_ptr->local_sockaddr,
             local_sockaddr_len))
     {
@@ -827,7 +902,7 @@ void _iocp_tcp_socket_connect_ex(HSESSION socket_ptr, BOOL reuse_addr)
     ++socket_ptr->recv_req;
 
     if (!socket_ptr->mgr->func_connectex(
-        socket_ptr->socket, 
+        socket_ptr->tcp_socket, 
         (struct sockaddr*)&socket_ptr->peer_sockaddr,
         peer_sockaddr_len,
         0, 0, 0, &socket_ptr->iocp_recv_data.over_lapped))
@@ -845,108 +920,108 @@ ERROR_DEAL:
 
     _push_connect_fail_event(socket_ptr, WSAGetLastError());
 
-    if (socket_ptr->socket != INVALID_SOCKET)
+    if (socket_ptr->tcp_socket != INVALID_SOCKET)
     {
-        closesocket(socket_ptr->socket);
-        socket_ptr->socket = INVALID_SOCKET;
+        closesocket(socket_ptr->tcp_socket);
+        socket_ptr->tcp_socket = INVALID_SOCKET;
     }
 }
 
-void _iocp_tcp_socket_on_connect(HSESSION socket, BOOL ret)
+void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
 {
     //struct sockaddr_in addr = { 0 };
     struct sockaddr_storage addr = { 0 };
     int addr_len = sizeof(addr);
 
-    ++socket->recv_ack;
+    ++sock_ptr->recv_ack;
 
     if (!ret)
     {
         goto ERROR_DEAL;
     }
 
-    if (SOCKET_ERROR == setsockopt(socket->socket, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, 0, 0))
+    if (SOCKET_ERROR == setsockopt(sock_ptr->tcp_socket, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, 0, 0))
     {
         goto ERROR_DEAL;
     }
 
-    if (SOCKET_ERROR == getsockname(socket->socket, (struct sockaddr*)&addr, &addr_len))
+    if (SOCKET_ERROR == getsockname(sock_ptr->tcp_socket, (struct sockaddr*)&addr, &addr_len))
     {
         goto ERROR_DEAL;
     }
 
-    //socket->local_ip = addr.sin_addr.s_addr;
-    //socket->local_port = addr.sin_port;
-    memcpy(&socket->local_sockaddr, &addr, addr_len);
+    //sock_ptr->local_ip = addr.sin_addr.s_addr;
+    //sock_ptr->local_port = addr.sin_port;
+    memcpy(&sock_ptr->local_sockaddr, &addr, addr_len);
 
-    socket->state = SOCKET_STATE_ESTABLISH;
+    sock_ptr->state = SOCKET_STATE_ESTABLISH;
 
-    socket->iocp_recv_data.operation = IOCP_OPT_RECV;
-    socket->iocp_send_data.operation = IOCP_OPT_SEND;
+    sock_ptr->iocp_recv_data.operation = IOCP_OPT_RECV;
+    sock_ptr->iocp_send_data.operation = IOCP_OPT_SEND;
 
     int no_delay = 1;
-    setsockopt(socket->socket, IPPROTO_TCP,
+    setsockopt(sock_ptr->tcp_socket, IPPROTO_TCP,
         TCP_NODELAY, (char*)&no_delay, sizeof(no_delay));
 
-    _push_establish_event(0, socket);
+    _push_establish_event(0, sock_ptr);
 
-    if (!_iocp_tcp_socket_post_recv(socket))
+    if (!_iocp_tcp_socket_post_recv(sock_ptr))
     {
-        _iocp_tcp_socket_close(socket, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system);
     }
 
     return;
 
 ERROR_DEAL:
 
-    _push_connect_fail_event(socket, WSAGetLastError());
+    _push_connect_fail_event(sock_ptr, WSAGetLastError());
 
-    closesocket(socket->socket);
-    socket->socket = INVALID_SOCKET;
+    closesocket(sock_ptr->tcp_socket);
+    sock_ptr->tcp_socket = INVALID_SOCKET;
 }
 
-void _mod_timer_close(HSESSION socket, unsigned int elapse)
+void _mod_timer_close(iocp_tcp_socket* sock_ptr, unsigned int elapse)
 {
-    if (socket->timer_send)
+    if (sock_ptr->timer_send)
     {
-        timer_del(socket->timer_send);
-        socket->timer_send = 0;
+        timer_del(sock_ptr->timer_send);
+        sock_ptr->timer_send = 0;
     }
 
-    if (socket->timer_close)
+    if (sock_ptr->timer_close)
     {
-        timer_mod(socket->timer_close, elapse, -1, socket);
+        timer_mod(sock_ptr->timer_close, elapse, -1, sock_ptr);
         return;
     }
 
-    socket->timer_close = timer_add(socket->mgr->timer_mgr, elapse, -1, socket);
+    sock_ptr->timer_close = timer_add(sock_ptr->mgr->timer_mgr, elapse, -1, sock_ptr);
 
-    if (!socket->timer_close)
+    if (!sock_ptr->timer_close)
     {
         CRUSH_CODE();
     }
 }
 
-void _mod_timer_send(HSESSION socket, unsigned int elapse)
+void _mod_timer_send(iocp_tcp_socket* sock_ptr, unsigned int elapse)
 {
-    if (socket->timer_send)
+    if (sock_ptr->timer_send)
     {
-        timer_mod(socket->timer_send, elapse, -1, socket);
+        timer_mod(sock_ptr->timer_send, elapse, -1, sock_ptr);
         return;
     }
 
-    socket->timer_send = timer_add(socket->mgr->timer_mgr, elapse, -1, socket);
+    sock_ptr->timer_send = timer_add(sock_ptr->mgr->timer_mgr, elapse, -1, sock_ptr);
 
-    if (!socket->timer_send)
+    if (!sock_ptr->timer_send)
     {
         CRUSH_CODE();
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-bool _iocp_tcp_listener_bind_iocp_port(HLISTENER listener)
+bool _iocp_tcp_listener_bind_iocp_port(iocp_tcp_listener* listener)
 {
-    if (CreateIoCompletionPort((HANDLE)listener->socket, listener->mgr->iocp_port, (ULONG_PTR)listener, 0))
+    if (CreateIoCompletionPort((HANDLE)listener->tcp_socket, listener->mgr->iocp_port, (ULONG_PTR)listener, 0))
     {
         return true;
     }
@@ -954,7 +1029,7 @@ bool _iocp_tcp_listener_bind_iocp_port(HLISTENER listener)
     return false;
 }
 
-bool _iocp_tcp_listener_post_accept_ex(HLISTENER listener, struct st_iocp_listen_data* iocp_listen_data_ptr)
+bool _iocp_tcp_listener_post_accept_ex(iocp_tcp_listener* listener, struct st_iocp_listen_data* iocp_listen_data_ptr)
 {
     DWORD bytes = 0;
 
@@ -979,7 +1054,7 @@ bool _iocp_tcp_listener_post_accept_ex(HLISTENER listener, struct st_iocp_listen
     iocp_listen_data_ptr->data.pt.listener = listener;
 
     ret = listener->mgr->func_acceptex(
-        listener->socket,
+        listener->tcp_socket,
         accept_socket,
         iocp_listen_data_ptr->data.wsa_buf.buf,
         0,
@@ -1009,9 +1084,9 @@ ERROR_DEAL:
     return false;
 }
 
-void _iocp_tcp_listener_on_accept(HLISTENER listener, BOOL ret, struct st_iocp_listen_data* iocp_listen_data_ptr)
+void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct st_iocp_listen_data* iocp_listen_data_ptr)
 {
-    HSESSION socket;
+    iocp_tcp_socket* sock_ptr;
 
     SOCKET accept_socket;
 
@@ -1045,9 +1120,9 @@ void _iocp_tcp_listener_on_accept(HLISTENER listener, BOOL ret, struct st_iocp_l
         return;
     }
 
-    socket = _iocp_tcp_manager_alloc_socket(listener->mgr, listener->recv_buf_size, listener->send_buf_size);
+    sock_ptr = _iocp_tcp_manager_alloc_socket(listener->mgr, listener->recv_buf_size, listener->send_buf_size);
 
-    if (!socket)
+    if (!sock_ptr)
     {
         closesocket(accept_socket);
         return;
@@ -1063,54 +1138,54 @@ void _iocp_tcp_listener_on_accept(HLISTENER listener, BOOL ret, struct st_iocp_l
         (SOCKADDR**)&remote_addr,
         &remote_addr_len);
 
-    socket->socket = accept_socket;
+    sock_ptr->tcp_socket = accept_socket;
 
-    socket->on_establish = listener->on_establish;
-    socket->on_terminate = listener->on_terminate;
-    socket->on_error = listener->on_error;
-    socket->on_recv = listener->on_recv;
-    socket->pkg_parser = listener->pkg_parser;
+    sock_ptr->on_establish = listener->on_establish;
+    sock_ptr->on_terminate = listener->on_terminate;
+    sock_ptr->on_error = listener->on_error;
+    sock_ptr->on_recv = listener->on_recv;
+    sock_ptr->pkg_parser = listener->pkg_parser;
 
     
 
-    if (!_iocp_tcp_socket_bind_iocp_port(socket))
+    if (!_iocp_tcp_socket_bind_iocp_port(sock_ptr))
     {
         closesocket(accept_socket);
-        _iocp_tcp_manager_free_socket(listener->mgr, socket);
+        _iocp_tcp_manager_free_socket(listener->mgr, sock_ptr);
         return;
     }
 
-    memcpy(&socket->local_sockaddr, local_addr, 
-        min(local_addr_len, sizeof(socket->local_sockaddr)));
-    memcpy(&socket->peer_sockaddr, remote_addr, 
-        min(local_addr_len, sizeof(socket->peer_sockaddr)));
+    memcpy(&sock_ptr->local_sockaddr, local_addr, 
+        min(local_addr_len, sizeof(sock_ptr->local_sockaddr)));
+    memcpy(&sock_ptr->peer_sockaddr, remote_addr, 
+        min(local_addr_len, sizeof(sock_ptr->peer_sockaddr)));
 
-    socket->iocp_recv_data.operation = IOCP_OPT_RECV;
-    socket->iocp_send_data.operation = IOCP_OPT_SEND;
+    sock_ptr->iocp_recv_data.operation = IOCP_OPT_RECV;
+    sock_ptr->iocp_send_data.operation = IOCP_OPT_SEND;
 
-    socket->state = SOCKET_STATE_ESTABLISH;
+    sock_ptr->state = SOCKET_STATE_ESTABLISH;
 
     int no_delay = 1;
-    setsockopt(socket->socket, IPPROTO_TCP,
+    setsockopt(sock_ptr->tcp_socket, IPPROTO_TCP,
         TCP_NODELAY, (char*)&no_delay, sizeof(no_delay));
 
-    _push_establish_event(listener, socket);
+    _push_establish_event(listener, sock_ptr);
 
-    if (!_iocp_tcp_socket_post_recv(socket))
+    if (!_iocp_tcp_socket_post_recv(sock_ptr))
     {
-        _iocp_tcp_socket_close(socket, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system);
     }
 }
 
-void iocp_tcp_close_listener(HLISTENER listener)
+void iocp_tcp_close_listener(iocp_tcp_listener* listener)
 {
     unsigned int i;
     listener->state = SOCKET_STATE_NONE;
 
-    if (listener->socket != INVALID_SOCKET)
+    if (listener->tcp_socket != INVALID_SOCKET)
     {
-        closesocket(listener->socket);
-        listener->socket = INVALID_SOCKET;
+        closesocket(listener->tcp_socket);
+        listener->tcp_socket = INVALID_SOCKET;
     }
 
 CHECK_POST_ACCEPT_BEGIN:
@@ -1137,7 +1212,7 @@ CHECK_POST_ACCEPT_BEGIN:
     }
 }
 
-bool _iocp_tcp_listener_listen(HLISTENER listener, unsigned int max_accept_ex_num, const char* ip, UINT16 port, bool bReUseAddr)
+bool _iocp_tcp_listener_listen(iocp_tcp_listener* listener, unsigned int max_accept_ex_num, const char* ip, UINT16 port, bool bReUseAddr)
 {
     char sz_port[64];
     unsigned int i;
@@ -1162,11 +1237,11 @@ bool _iocp_tcp_listener_listen(HLISTENER listener, unsigned int max_accept_ex_nu
         goto ERROR_DEAL;
     }
 
-    listener->socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    listener->tcp_socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 
     memcpy(&listener->listen_sockaddr, result->ai_addr, min(sizeof(listener->listen_sockaddr), result->ai_addrlen));
 
-    if (INVALID_SOCKET == listener->socket)
+    if (INVALID_SOCKET == listener->tcp_socket)
     {
         goto ERROR_DEAL;
     }
@@ -1174,18 +1249,18 @@ bool _iocp_tcp_listener_listen(HLISTENER listener, unsigned int max_accept_ex_nu
     if (bReUseAddr)
     {
         INT32 nReuse = 1;
-        if (setsockopt(listener->socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nReuse, sizeof(nReuse)) == SOCKET_ERROR)
+        if (setsockopt(listener->tcp_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nReuse, sizeof(nReuse)) == SOCKET_ERROR)
         {
             goto ERROR_DEAL;
         }
     }
 
-    if (SOCKET_ERROR == bind(listener->socket, result->ai_addr, (int)result->ai_addrlen))
+    if (SOCKET_ERROR == bind(listener->tcp_socket, result->ai_addr, (int)result->ai_addrlen))
     {
         goto ERROR_DEAL;
     }
 
-    if (SOCKET_ERROR == listen(listener->socket, MAX_BACKLOG))
+    if (SOCKET_ERROR == listen(listener->tcp_socket, MAX_BACKLOG))
     {
         goto ERROR_DEAL;
     }
@@ -1242,7 +1317,7 @@ ERROR_DEAL:
 
 //////////////////////////////////////////////////////////////////////////
 
-bool _proc_net_event(HNETMANAGER mgr)
+bool _proc_net_event(iocp_tcp_manager* mgr)
 {
     struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
@@ -1254,12 +1329,12 @@ bool _proc_net_event(HNETMANAGER mgr)
         return false;
     }
 
-    if (evt->socket->mgr != mgr)
+    if (evt->socket_ptr->mgr != mgr)
     {
         CRUSH_CODE();
     }
 
-    HSESSION socket = evt->socket;
+    iocp_tcp_socket* sock_ptr = evt->socket_ptr;
 
     switch (evt->type)
     {
@@ -1269,21 +1344,21 @@ bool _proc_net_event(HNETMANAGER mgr)
         size_t data_len;
         unsigned int parser_len = 0;
 
-        socket->data_has_recv += evt->evt.evt_data.data_len;
+        sock_ptr->data_has_recv += evt->evt.evt_data.data_len;
 
-        data_len = socket->data_has_recv;
+        data_len = sock_ptr->data_has_recv;
 
-        loop_cache_get_data(socket->recv_loop_cache, &data_ptr, &data_len);
+        loop_cache_get_data(sock_ptr->recv_loop_cache, &data_ptr, &data_len);
 
-        if ((unsigned int)data_len < socket->data_has_recv)
+        if ((unsigned int)data_len < sock_ptr->data_has_recv)
         {
-            if (socket->data_has_recv > mgr->max_pkg_buf_size)
+            if (sock_ptr->data_has_recv > mgr->max_pkg_buf_size)
             {
                 for (;;)
                 {
                     mgr->max_pkg_buf_size += 1024;
 
-                    if (mgr->max_pkg_buf_size > socket->data_has_recv)
+                    if (mgr->max_pkg_buf_size > sock_ptr->data_has_recv)
                     {
                         free(mgr->max_pkg_buf);
                         mgr->max_pkg_buf = (char*)malloc(mgr->max_pkg_buf_size);
@@ -1292,7 +1367,7 @@ bool _proc_net_event(HNETMANAGER mgr)
                 }
             }
 
-            if (!loop_cache_copy_data(socket->recv_loop_cache, mgr->max_pkg_buf, socket->data_has_recv))
+            if (!loop_cache_copy_data(sock_ptr->recv_loop_cache, mgr->max_pkg_buf, sock_ptr->data_has_recv))
             {
                 CRUSH_CODE();
             }
@@ -1300,31 +1375,31 @@ bool _proc_net_event(HNETMANAGER mgr)
             data_ptr = mgr->max_pkg_buf;
         }
 
-        while (socket->data_has_recv)
+        while (sock_ptr->data_has_recv)
         {
             unsigned int pkg_len = 0;
-            if (socket->pkg_parser)
+            if (sock_ptr->pkg_parser)
             {
-                pkg_len = socket->pkg_parser(socket, data_ptr, socket->data_has_recv);
+                pkg_len = sock_ptr->pkg_parser(sock_ptr, data_ptr, sock_ptr->data_has_recv);
             }
             else
             {
-                pkg_len = socket->data_has_recv;
+                pkg_len = sock_ptr->data_has_recv;
             }
 
 
             if (pkg_len > 0)
             {
-                if (pkg_len > socket->data_has_recv)
+                if (pkg_len > sock_ptr->data_has_recv)
                 {
-                    _iocp_tcp_socket_close(socket, error_packet);
+                    _iocp_tcp_socket_close(sock_ptr, error_packet);
                     break;
                 }
 
-                socket->on_recv(socket, data_ptr, pkg_len);
+                sock_ptr->on_recv(sock_ptr, data_ptr, pkg_len);
 
                 data_ptr += pkg_len;
-                socket->data_has_recv -= pkg_len;
+                sock_ptr->data_has_recv -= pkg_len;
                 parser_len += pkg_len;
             }
             else
@@ -1335,7 +1410,7 @@ bool _proc_net_event(HNETMANAGER mgr)
 
         if (parser_len)
         {
-            if (!loop_cache_pop(socket->recv_loop_cache, parser_len))
+            if (!loop_cache_pop(sock_ptr->recv_loop_cache, parser_len))
             {
                 CRUSH_CODE();
             }
@@ -1344,49 +1419,49 @@ bool _proc_net_event(HNETMANAGER mgr)
     break;
     case NET_EVENT_ESTABLISH:
     {
-        _mod_timer_send(evt->socket, DELAY_SEND_CHECK);
-        socket->on_establish(evt->evt.evt_establish.listener, evt->socket);
+        _mod_timer_send(evt->socket_ptr, DELAY_SEND_CHECK);
+        sock_ptr->on_establish(evt->evt.evt_establish.listener, evt->socket_ptr);
     }
     break;
     case NET_EVENT_MODULE_ERROR:
     {
-        socket->on_error(evt->socket, evt->evt.evt_module_error.err_code, 0);
-        socket->on_terminate(evt->socket);
+        sock_ptr->on_error(evt->socket_ptr, evt->evt.evt_module_error.err_code, 0);
+        sock_ptr->on_terminate(evt->socket_ptr);
 
-        _mod_timer_close(evt->socket, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SYSTEM_ERROR:
     {
-        socket->on_error(evt->socket, error_system, evt->evt.evt_system_error.err_code);
-        socket->on_terminate(evt->socket);
+        sock_ptr->on_error(evt->socket_ptr, error_system, evt->evt.evt_system_error.err_code);
+        sock_ptr->on_terminate(evt->socket_ptr);
 
-        _mod_timer_close(evt->socket, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_TERMINATE:
     {
-        socket->on_terminate(evt->socket);
-        _mod_timer_close(evt->socket, DELAY_CLOSE_SOCKET);
+        sock_ptr->on_terminate(evt->socket_ptr);
+        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_CONNECT_FAIL:
     {
-        socket->on_error(evt->socket, error_connect_fail, evt->evt.evt_connect_fail.err_code);
-        evt->socket->state = SOCKET_STATE_TERMINATE;
+        sock_ptr->on_error(evt->socket_ptr, error_connect_fail, evt->evt.evt_connect_fail.err_code);
+        evt->socket_ptr->state = SOCKET_STATE_TERMINATE;
 
-        _mod_timer_close(evt->socket, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_RECV_ACTIVE:
     {
-        if (loop_cache_free_size(evt->socket->recv_loop_cache))
+        if (loop_cache_free_size(evt->socket_ptr->recv_loop_cache))
         {
-            _iocp_tcp_socket_post_recv_req(evt->socket);
+            _iocp_tcp_socket_post_recv_req(evt->socket_ptr);
         }
         else
         {
-            _iocp_tcp_socket_close(evt->socket, error_recv_overflow);
+            _iocp_tcp_socket_close(evt->socket_ptr, error_recv_overflow);
         }
     }
     break;
@@ -1402,10 +1477,10 @@ bool _proc_net_event(HNETMANAGER mgr)
 
 unsigned WINAPI _iocp_thread_func(LPVOID param)
 {
-    HNETMANAGER mgr = (HNETMANAGER)param;
+    iocp_tcp_manager* mgr = (iocp_tcp_manager*)param;
 
     struct st_iocp_data* iocp_data_ptr;
-    HSESSION iocp_tcp_socket_ptr;
+    iocp_tcp_socket* iocp_tcp_socket_ptr;
     BOOL ret;
     DWORD byte_transferred;
 
@@ -1453,7 +1528,7 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
     }
 }
 
-bool _start_iocp_thread(HNETMANAGER mgr)
+bool _start_iocp_thread(iocp_tcp_manager* mgr)
 {
     unsigned int i;
 
@@ -1492,7 +1567,7 @@ bool _start_iocp_thread(HNETMANAGER mgr)
     return true;
 }
 
-void _stop_iocp_thread(HNETMANAGER mgr)
+void _stop_iocp_thread(iocp_tcp_manager* mgr)
 {
     unsigned int i;
     ULONG_PTR ptr = 0;
@@ -1518,60 +1593,60 @@ void _stop_iocp_thread(HNETMANAGER mgr)
     free(mgr->work_threads);
 }
 
-void _iocp_tcp_socket_on_timer_send(HSESSION socket)
+void _iocp_tcp_socket_on_timer_send(iocp_tcp_socket* sock_ptr)
 {
-    if (socket->state == SOCKET_STATE_ESTABLISH)
+    if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
-        if (socket->data_need_send != socket->data_has_send)
+        if (sock_ptr->data_need_send != sock_ptr->data_has_send)
         {
-            if (socket->send_req == socket->send_ack)
+            if (sock_ptr->send_req == sock_ptr->send_ack)
             {
-                if (!_iocp_tcp_socket_post_send_req(socket))
+                if (!_iocp_tcp_socket_post_send_req(sock_ptr))
                 {
-                    _iocp_tcp_socket_close(socket, error_system);
+                    _iocp_tcp_socket_close(sock_ptr, error_system);
                 }
             }
         }
     }
 }
 
-void _iocp_tcp_socket_on_timer_close(HSESSION socket)
+void _iocp_tcp_socket_on_timer_close(iocp_tcp_socket* sock_ptr)
 {
-    switch (socket->state)
+    switch (sock_ptr->state)
     {
     case SOCKET_STATE_TERMINATE:
     {
-        if (socket->data_need_send != socket->data_has_send)
+        if (sock_ptr->data_need_send != sock_ptr->data_has_send)
         {
-            if (socket->send_req == socket->send_ack)
+            if (sock_ptr->send_req == sock_ptr->send_ack)
             {
-                if (!_iocp_tcp_socket_post_send_req(socket))
+                if (!_iocp_tcp_socket_post_send_req(sock_ptr))
                 {
-                    _iocp_tcp_socket_close(socket, error_system);
+                    _iocp_tcp_socket_close(sock_ptr, error_system);
                 }
             }
 
             return;
         }
 
-        shutdown(socket->socket, SD_RECEIVE);
+        shutdown(sock_ptr->tcp_socket, SD_RECEIVE);
 
-        socket->state = SOCKET_STATE_DELETE;
+        sock_ptr->state = SOCKET_STATE_DELETE;
     }
     break;
     case SOCKET_STATE_DELETE:
     {
-        if (socket->socket != INVALID_SOCKET)
+        if (sock_ptr->tcp_socket != INVALID_SOCKET)
         {
-            closesocket(socket->socket);
-            socket->socket = INVALID_SOCKET;
+            closesocket(sock_ptr->tcp_socket);
+            sock_ptr->tcp_socket = INVALID_SOCKET;
         }
 
-        if ((socket->recv_req == socket->recv_ack) && (socket->send_req == socket->send_ack))
+        if ((sock_ptr->recv_req == sock_ptr->recv_ack) && (sock_ptr->send_req == sock_ptr->send_ack))
         {
-            timer_del(socket->timer_close);
-            socket->timer_close = 0;
-            _iocp_tcp_manager_free_socket(socket->mgr, socket);
+            timer_del(sock_ptr->timer_close);
+            sock_ptr->timer_close = 0;
+            _iocp_tcp_manager_free_socket(sock_ptr->mgr, sock_ptr);
         }
     }
     break;
@@ -1580,20 +1655,20 @@ void _iocp_tcp_socket_on_timer_close(HSESSION socket)
 
 void _iocp_tcp_on_timer(HTIMERINFO timer)
 {
-    HSESSION socket = (HSESSION)timer_get_data(timer);
+    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)timer_get_data(timer);
 
-    if (!socket)
+    if (!sock_ptr)
     {
         CRUSH_CODE();
     }
 
-    if (socket->timer_send == timer)
+    if (sock_ptr->timer_send == timer)
     {
-        _iocp_tcp_socket_on_timer_send(socket);
+        _iocp_tcp_socket_on_timer_send(sock_ptr);
     }
-    else if (socket->timer_close == timer)
+    else if (sock_ptr->timer_close == timer)
     {
-        _iocp_tcp_socket_on_timer_close(socket);
+        _iocp_tcp_socket_on_timer_close(sock_ptr);
     }
     else
     {
@@ -1601,7 +1676,7 @@ void _iocp_tcp_on_timer(HTIMERINFO timer)
     }
 }
 
-bool _set_wsa_function(HNETMANAGER mgr)
+bool _set_wsa_function(iocp_tcp_manager* mgr)
 {
     DWORD bytes;
 
@@ -1662,7 +1737,7 @@ ERROR_DEAL:
     return false;
 }
 
-void destroy_iocp_tcp(HNETMANAGER mgr)
+void destroy_iocp_tcp(iocp_tcp_manager* mgr)
 {
     _stop_iocp_thread(mgr);
 
@@ -1712,7 +1787,7 @@ void destroy_iocp_tcp(HNETMANAGER mgr)
     free(mgr);
 }
 
-HNETMANAGER create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
+iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet,
     unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num)
 {
@@ -1720,9 +1795,9 @@ HNETMANAGER create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_terminate
     WSADATA wsa_data;
     unsigned int i;
 
-    HSESSION* arry_socket_ptr = 0;
+    iocp_tcp_socket** arry_socket_ptr = 0;
 
-    HNETMANAGER mgr = (HNETMANAGER)malloc(sizeof(struct st_iocp_tcp_manager));
+    iocp_tcp_manager* mgr = (iocp_tcp_manager*)malloc(sizeof(struct st_iocp_tcp_manager));
 
     mgr->max_socket_num = max_socket_num;
     mgr->work_thread_num = max_io_thread_num;
@@ -1762,7 +1837,7 @@ HNETMANAGER create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_terminate
         goto ERROR_DEAL;
     }
 
-    arry_socket_ptr = (HSESSION*)malloc(sizeof(HSESSION)*max_socket_num);
+    arry_socket_ptr = (iocp_tcp_socket**)malloc(sizeof(iocp_tcp_socket*)*max_socket_num);
 
     for (i = 0; i < max_socket_num; i++)
     {
@@ -1817,13 +1892,13 @@ ERROR_DEAL:
     return 0;
 }
 
-HSESSION(iocp_tcp_connect_ex)(HNETMANAGER mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, const char * bind_ip, unsigned short bind_port, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
+iocp_tcp_socket* (iocp_tcp_connect_ex)(iocp_tcp_manager* mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, const char * bind_ip, unsigned short bind_port, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
 {
     struct addrinfo hints;
     struct addrinfo* result = 0;
     char sz_port[64];
 
-    HSESSION socket_ptr = _iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
+    iocp_tcp_socket* socket_ptr = _iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
 
     if (!socket_ptr)
     {
@@ -1958,7 +2033,7 @@ HSESSION(iocp_tcp_connect_ex)(HNETMANAGER mgr, const char * ip, unsigned short p
     return socket_ptr;
 }
 
-HSESSION iocp_tcp_connect(HNETMANAGER mgr,
+iocp_tcp_socket* iocp_tcp_connect(iocp_tcp_manager* mgr,
     const char* ip, unsigned short port, unsigned int recv_buf_size,
     unsigned int send_buf_size, bool reuse_addr,
     const char* bind_ip, unsigned short bind_port)
@@ -1967,9 +2042,9 @@ HSESSION iocp_tcp_connect(HNETMANAGER mgr,
 }
 
 
-HLISTENER(iocp_tcp_listen_ex)(HNETMANAGER mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
+iocp_tcp_listener* (iocp_tcp_listen_ex)(iocp_tcp_manager* mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
 {
-    HLISTENER listener = (HLISTENER)malloc(sizeof(struct st_iocp_tcp_listener));
+    iocp_tcp_listener* listener = (iocp_tcp_listener*)malloc(sizeof(struct st_iocp_tcp_listener));
 
     listener->recv_buf_size = recv_buf_size;
     listener->send_buf_size = send_buf_size;
@@ -2033,7 +2108,7 @@ HLISTENER(iocp_tcp_listen_ex)(HNETMANAGER mgr, const char * ip, unsigned short p
     return listener;
 }
 
-HLISTENER iocp_tcp_listen(HNETMANAGER mgr,
+iocp_tcp_listener* iocp_tcp_listen(iocp_tcp_manager* mgr,
     const char* ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size,
     bool reuse_addr)
 {
@@ -2041,36 +2116,36 @@ HLISTENER iocp_tcp_listen(HNETMANAGER mgr,
 }
 
 
-bool iocp_tcp_send(HSESSION socket, const void* data, unsigned int len)
+bool iocp_tcp_send(iocp_tcp_socket* sock_ptr, const void* data, unsigned int len)
 {
     if (!len)
     {
         return true;
     }
 
-    if (socket->state != SOCKET_STATE_ESTABLISH)
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
     {
         return false;
     }
 
-    if (!loop_cache_push_data(socket->send_loop_cache, data, len))
+    if (!loop_cache_push_data(sock_ptr->send_loop_cache, data, len))
     {
-        _iocp_tcp_socket_close(socket, error_send_overflow);
+        _iocp_tcp_socket_close(sock_ptr, error_send_overflow);
         return false;
     }
 
-    socket->data_need_send += len;
+    sock_ptr->data_need_send += len;
 
-    if ((socket->data_need_send - socket->data_has_send) < socket->data_delay_send_size)
+    if ((sock_ptr->data_need_send - sock_ptr->data_has_send) < sock_ptr->data_delay_send_size)
     {
         return true;
     }
 
-    if (socket->send_req == socket->send_ack)
+    if (sock_ptr->send_req == sock_ptr->send_ack)
     {
-        if (!_iocp_tcp_socket_post_send_req(socket))
+        if (!_iocp_tcp_socket_post_send_req(sock_ptr))
         {
-            _iocp_tcp_socket_close(socket, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system);
             return false;
         }
     }
@@ -2078,12 +2153,12 @@ bool iocp_tcp_send(HSESSION socket, const void* data, unsigned int len)
     return true;
 }
 
-void iocp_tcp_close_session(HSESSION socket)
+void iocp_tcp_close_session(iocp_tcp_socket* sock_ptr)
 {
-    _iocp_tcp_socket_close(socket, error_ok);
+    _iocp_tcp_socket_close(sock_ptr, error_ok);
 }
 
-bool iocp_tcp_run(HNETMANAGER mgr, unsigned int run_time)
+bool iocp_tcp_run(iocp_tcp_manager* mgr, unsigned int run_time)
 {
     unsigned int tick = get_tick();
 
@@ -2108,53 +2183,53 @@ bool iocp_tcp_run(HNETMANAGER mgr, unsigned int run_time)
     return true;
 }
 
-SOCKET iocp_tcp_session_socket(HSESSION socket)
+SOCKET iocp_tcp_session_socket(iocp_tcp_socket* sock_ptr)
 {
-    return socket->socket;
+    return sock_ptr->tcp_socket;
 }
 
-SOCKET iocp_tcp_listener_socket(HLISTENER listener)
+SOCKET iocp_tcp_listener_socket(iocp_tcp_listener* listener)
 {
-    return listener->socket;
+    return listener->tcp_socket;
 }
 
-void iocp_tcp_set_listener_data(HLISTENER listener, void* user_data)
+void iocp_tcp_set_listener_data(iocp_tcp_listener* listener, void* user_data)
 {
     listener->user_data = user_data;
 }
 
-void iocp_tcp_set_session_data(HSESSION socket, void* user_data)
+void iocp_tcp_set_session_data(iocp_tcp_socket* sock_ptr, void* user_data)
 {
-    socket->user_data = user_data;
+    sock_ptr->user_data = user_data;
 }
 
-void* iocp_tcp_get_listener_data(HLISTENER listener)
+void* iocp_tcp_get_listener_data(iocp_tcp_listener* listener)
 {
     return listener->user_data;
 }
 
-void* iocp_tcp_get_session_data(HSESSION socket)
+void* iocp_tcp_get_session_data(iocp_tcp_socket* sock_ptr)
 {
-    return socket->user_data;
+    return sock_ptr->user_data;
 }
 
-type_ip_str iocp_tcp_get_peer_type_ip_str(HSESSION socket)
+type_ip_str iocp_tcp_get_peer_type_ip_str(iocp_tcp_socket* sock_ptr)
 {
     type_ip_str tmp;
-    if (socket->peer_sockaddr.sin6_family == AF_INET)
+    if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
     {
         tmp.ip_type = ip_v4;
-        struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&socket->peer_sockaddr;
+        struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->peer_sockaddr;
         inet_ntop(sockaddr_v4->sin_family,
             &sockaddr_v4->sin_addr,
             tmp.ip_str,
             sizeof(tmp.ip_str));
     }
-    else if (socket->peer_sockaddr.sin6_family == AF_INET6)
+    else if (sock_ptr->peer_sockaddr.sin6_family == AF_INET6)
     {
         tmp.ip_type = ip_v6;
-        inet_ntop(socket->peer_sockaddr.sin6_family,
-            &socket->peer_sockaddr.sin6_addr,
+        inet_ntop(sock_ptr->peer_sockaddr.sin6_family,
+            &sock_ptr->peer_sockaddr.sin6_addr,
             tmp.ip_str,
             sizeof(tmp.ip_str));
     }
@@ -2166,23 +2241,23 @@ type_ip_str iocp_tcp_get_peer_type_ip_str(HSESSION socket)
     return tmp;
 }
 
-type_ip_str iocp_tcp_get_local_type_ip_str(HSESSION socket)
+type_ip_str iocp_tcp_get_local_type_ip_str(iocp_tcp_socket* sock_ptr)
 {
     type_ip_str tmp;
-    if (socket->local_sockaddr.sin6_family == AF_INET)
+    if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
     {
         tmp.ip_type = ip_v4;
-        struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&socket->local_sockaddr;
+        struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->local_sockaddr;
         inet_ntop(sockaddr_v4->sin_family,
             &sockaddr_v4->sin_addr,
             tmp.ip_str,
             sizeof(tmp.ip_str));
     }
-    else if (socket->local_sockaddr.sin6_family == AF_INET6)
+    else if (sock_ptr->local_sockaddr.sin6_family == AF_INET6)
     {
         tmp.ip_type = ip_v6;
-        inet_ntop(socket->local_sockaddr.sin6_family,
-            &socket->local_sockaddr.sin6_addr,
+        inet_ntop(sock_ptr->local_sockaddr.sin6_family,
+            &sock_ptr->local_sockaddr.sin6_addr,
             tmp.ip_str,
             sizeof(tmp.ip_str));
     }
@@ -2194,23 +2269,23 @@ type_ip_str iocp_tcp_get_local_type_ip_str(HSESSION socket)
     return tmp;
 }
 
-unsigned short iocp_tcp_get_peer_port(HSESSION socket)
+unsigned short iocp_tcp_get_peer_port(iocp_tcp_socket* sock_ptr)
 {
-    return ntohs(socket->peer_sockaddr.sin6_port);
+    return ntohs(sock_ptr->peer_sockaddr.sin6_port);
 }
 
-unsigned short iocp_tcp_get_local_port(HSESSION socket)
+unsigned short iocp_tcp_get_local_port(iocp_tcp_socket* sock_ptr)
 {
-    return ntohs(socket->local_sockaddr.sin6_port);
+    return ntohs(sock_ptr->local_sockaddr.sin6_port);
 }
 
-unsigned int iocp_tcp_get_send_free_size(HSESSION socket)
+unsigned int iocp_tcp_get_send_free_size(iocp_tcp_socket* sock_ptr)
 {
-    return (unsigned int)loop_cache_free_size(socket->send_loop_cache);
+    return (unsigned int)loop_cache_free_size(sock_ptr->send_loop_cache);
 }
 
-void iocp_tcp_set_send_control(HSESSION socket, unsigned int pkg_size, unsigned int delay_time)
+void iocp_tcp_set_send_control(iocp_tcp_socket* sock_ptr, unsigned int pkg_size, unsigned int delay_time)
 {
-    socket->data_delay_send_size = pkg_size;
-    _mod_timer_send(socket, delay_time);
+    sock_ptr->data_delay_send_size = pkg_size;
+    _mod_timer_send(sock_ptr, delay_time);
 }
