@@ -75,7 +75,7 @@ typedef struct st_event_connect_fail
 
 typedef struct st_event_terminate
 {
-    struct st_iocp_tcp_socket* socket;
+    struct st_iocp_tcp_socket* socket_ptr;
 }event_terminate;
 
 typedef struct st_net_event
@@ -101,7 +101,7 @@ typedef struct st_iocp_data
     union
     {
         struct st_iocp_tcp_listener*    listener;
-        struct st_iocp_tcp_socket*      socket;
+        struct st_iocp_tcp_socket*      socket_ptr;
     }pt;
 }iocp_data;
 
@@ -1505,10 +1505,10 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         switch (iocp_data_ptr->operation)
         {
         case IOCP_OPT_RECV:
-            _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.socket, ret, byte_transferred);
+            _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.socket_ptr, ret, byte_transferred);
             break;
         case IOCP_OPT_SEND:
-            _iocp_tcp_socket_on_send(iocp_data_ptr->pt.socket, ret, byte_transferred);
+            _iocp_tcp_socket_on_send(iocp_data_ptr->pt.socket_ptr, ret, byte_transferred);
             break;
         case IOCP_OPT_ACCEPT:
         {
@@ -1517,10 +1517,10 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         }
         break;
         case IOCP_OPT_CONNECT_REQ:
-            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.socket, (BOOL)byte_transferred);
+            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.socket_ptr, (BOOL)byte_transferred);
             break;
         case IOCP_OPT_CONNECT:
-            _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.socket, ret);
+            _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.socket_ptr, ret);
             break;
         case IOCP_OPT_ACCEPT_REQ:
             break;
@@ -1846,8 +1846,8 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
         arry_socket_ptr[i]->mgr = mgr;
         arry_socket_ptr[i]->recv_loop_cache = 0;
         arry_socket_ptr[i]->send_loop_cache = 0;
-        arry_socket_ptr[i]->iocp_recv_data.pt.socket = arry_socket_ptr[i];
-        arry_socket_ptr[i]->iocp_send_data.pt.socket = arry_socket_ptr[i];
+        arry_socket_ptr[i]->iocp_recv_data.pt.socket_ptr = arry_socket_ptr[i];
+        arry_socket_ptr[i]->iocp_send_data.pt.socket_ptr = arry_socket_ptr[i];
     }
 
     for (i = 0; i < max_socket_num; i++)
