@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+extern void init_lib_svr(void);
+
 extern long long rand_integer(long long min, long long max);
 extern unsigned long long BKDRHash(const char* str);
 extern unsigned long long BKDRHashW(const wchar_t* str);

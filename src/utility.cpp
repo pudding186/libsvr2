@@ -7,6 +7,7 @@
 #include "../include/utility.hpp"
 #include "../include/share_memory.h"
 #include "../include/memory_pool.h"
+#include "../include/smemory.hpp"
 
 class RandomNumGenarator
 {
@@ -86,6 +87,11 @@ private:
     static const long long c1 = 12211;
     static const long long c2 = 3791;
 };
+
+void init_lib_svr(void)
+{
+    S_DELETE(S_NEW(char, 1));
+}
 
 long long rand_integer(long long min, long long max)
 {

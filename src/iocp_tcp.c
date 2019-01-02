@@ -40,12 +40,19 @@
 #define NET_EVENT_MODULE_ERROR  5
 #define NET_EVENT_RECV_ACTIVE   6
 #define NET_EVENT_CONNECT_FAIL  7
+#define NET_EVENT_SSL_ERROR     8
 
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
 
 #define BIO_RECV                0
 #define BIO_SEND                1
+
+#define DEF_SSL_SEND_CACHE_SIZE 4096
+#define DEF_SSL_RECV_CACHE_SIZE 4096
+
+#define SSL_UN_HAND_SHAKE       0
+#define SSL_HAND_SHAKE          1
 
 
 typedef struct st_event_establish
@@ -62,6 +69,11 @@ typedef struct st_event_system_error
 {
     unsigned int err_code;
 }event_system_error;
+
+typedef struct st_event_ssl_error
+{
+    unsigned int err_code;
+}event_ssl_error;
 
 typedef struct st_event_module_error
 {
@@ -87,6 +99,7 @@ typedef struct st_net_event
         struct st_event_establish       evt_establish;
         struct st_evt_data              evt_data;
         struct st_event_system_error    evt_system_error;
+        struct st_event_ssl_error       evt_ssl_error;
         struct st_event_module_error    evt_module_error;
         struct st_event_terminate       evt_terminate;
         struct st_event_connect_fail    evt_connect_fail;
@@ -101,7 +114,7 @@ typedef struct st_iocp_data
     union
     {
         struct st_iocp_tcp_listener*    listener;
-        struct st_iocp_tcp_socket*      socket;
+        struct st_iocp_tcp_socket*      sock_ptr;
     }pt;
 }iocp_data;
 
@@ -128,7 +141,22 @@ typedef struct st_iocp_tcp_listener
     void*                       user_data;
     struct st_iocp_tcp_manager* mgr;
     struct sockaddr_in6         listen_sockaddr;
+    SSL_CTX*                    svr_ssl_ctx;
 }iocp_tcp_listener;
+
+typedef struct st_iocp_ssl_data
+{
+    SSL*            ssl;
+    BIO*            bio[2];
+    char*           ssl_recv_buf;
+    unsigned int    ssl_recv_buf_size;
+    char*           ssl_send_buf;
+    unsigned int    ssl_send_buf_size;
+    unsigned int    ssl_read_length;
+    unsigned int    ssl_write_length;
+    unsigned int    ssl_state;
+    iocp_tcp_listener*  ssl_listener;
+}iocp_ssl_data;
 
 union un_ip
 {
@@ -173,6 +201,7 @@ typedef struct st_iocp_tcp_socket
     pfn_on_error                on_error;
     pfn_on_recv                 on_recv;
     struct st_iocp_tcp_manager* mgr;
+    iocp_ssl_data*              ssl_data;
     //SSL_CTX*                    ssl_ctx;
     //SSL*                        ssl;
     //BIO*                        bio[2];
@@ -211,128 +240,84 @@ typedef struct st_iocp_tcp_manager
     unsigned int                max_pkg_buf_size;
 }iocp_tcp_manager;
 
-//bool _create_server_ssl(iocp_tcp_socket* sock_ptr)
-//{
-//    sock_ptr->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-//
-//    if (!sock_ptr->ssl_ctx)
-//        return false;
-//
-//    SSL_CTX_set_verify(sock_ptr->ssl_ctx, SSL_VERIFY_NONE, 0);
-//
-//    int length = (int)strlen(server_cert_key_pem);
-//    BIO *bio_cert = BIO_new_mem_buf((void*)server_cert_key_pem, length);
-//    X509 *cert = PEM_read_bio_X509(bio_cert, 0, 0, 0);
-//    EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio_cert, 0, 0, 0);
-//
-//
-//    int ret = SSL_CTX_use_certificate(sock_ptr->ssl_ctx, cert);
-//
-//    if (ret != 1)
-//        goto FAIL;
-//
-//    ret = SSL_CTX_use_PrivateKey(sock_ptr->ssl_ctx, pkey);
-//
-//    if (ret != 1)
-//        goto FAIL;
-//    
-//    X509_free(cert);
-//    EVP_PKEY_free(pkey);
-//    BIO_free(bio_cert);
-//
-//    sock_ptr->ssl = SSL_new(sock_ptr->ssl_ctx);
-//
-//    sock_ptr->bio[BIO_RECV] = BIO_new(BIO_s_mem());
-//    sock_ptr->bio[BIO_SEND] = BIO_new(BIO_s_mem());
-//    SSL_set_bio(sock_ptr->ssl, sock_ptr->bio[BIO_RECV], sock_ptr->bio[BIO_SEND]);
-//
-//    return true;
-//
-//FAIL:
-//
-//    X509_free(cert);
-//    EVP_PKEY_free(pkey);
-//    BIO_free(bio_cert);
-//
-//    if (sock_ptr->ssl_ctx)
-//    {
-//        SSL_CTX_free(sock_ptr->ssl_ctx);
-//        sock_ptr->ssl_ctx = 0;
-//    }
-//    return false;
-//}
-//
-//bool _create_client_ssl(iocp_tcp_socket* sock_ptr)
-//{
-//    sock_ptr->ssl_ctx = SSL_CTX_new(SSLv23_method());
-//
-//    if (!sock_ptr->ssl_ctx)
-//        return false;
-//
-//    SSL_CTX_set_verify(sock_ptr->ssl_ctx, SSL_VERIFY_NONE, 0);
-//    sock_ptr->ssl = SSL_new(sock_ptr->ssl_ctx);
-//
-//    sock_ptr->bio[BIO_RECV] = BIO_new(BIO_s_mem());
-//    sock_ptr->bio[BIO_SEND] = BIO_new(BIO_s_mem());
-//    SSL_set_bio(sock_ptr->ssl, sock_ptr->bio[BIO_RECV], sock_ptr->bio[BIO_SEND]);
-//
-//    return true;
-//}
-//
-//void _destroy_ssl(iocp_tcp_socket* sock_ptr)
-//{
-//    if (sock_ptr->ssl)
-//    {
-//        SSL_free(sock_ptr->ssl);
-//        sock_ptr->ssl = 0;
-//    }
-//
-//    if (sock_ptr->ssl_ctx)
-//    {
-//        SSL_CTX_free(sock_ptr->ssl_ctx);
-//        sock_ptr->ssl_ctx = 0;
-//    }
-//}
+//////////////////////////////////////////////////////////////////////////
+#if OPENSSL_VERSION_NUMBER == 0x1000210fL
 
-void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
+struct CRYPTO_dynlock_value
 {
-    sock_ptr->user_data = 0;
-    sock_ptr->state = SOCKET_STATE_NONE;
+    CRITICAL_SECTION lock;
+};
 
-    sock_ptr->recv_req = 0;
-    sock_ptr->recv_ack = 0;
+int ssl_locks_num = 0;
+CRITICAL_SECTION* ssl_locks_arry = 0;
 
-    sock_ptr->send_req = 0;
-    sock_ptr->send_ack = 0;
-
-    sock_ptr->data_need_send = 0;
-    sock_ptr->data_has_send = 0;
-
-    sock_ptr->data_has_recv = 0;
-
-    sock_ptr->data_delay_send_size = 0;
-
-    //sock_ptr->local_addr_info = 0;AF_INET6
-    //sock_ptr->peer_addr_info = 0;
-    memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
-    memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
-
-    sock_ptr->timer_send = 0;
-    sock_ptr->timer_close = 0;
+void ssl_lock_callback(int mode, int n, const char *file, int line)
+{
+    file;
+    line;
+    if (mode & CRYPTO_LOCK)
+        EnterCriticalSection(&ssl_locks_arry[n]);
+    else
+        LeaveCriticalSection(&ssl_locks_arry[n]);
 }
 
-#define SOCKET_LOCK EnterCriticalSection(&mgr->socket_lock)
-#define SOCKET_UNLOCK LeaveCriticalSection(&mgr->socket_lock)
-
-bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* sock_ptr)
+struct CRYPTO_dynlock_value* ssl_lock_dyn_create_callback(const char *file, int line)
 {
-    if (CreateIoCompletionPort((HANDLE)sock_ptr->tcp_socket, sock_ptr->mgr->iocp_port, (ULONG_PTR)sock_ptr, 0))
+    file;
+    line;
+    struct CRYPTO_dynlock_value *l = (struct CRYPTO_dynlock_value*)malloc(sizeof(struct CRYPTO_dynlock_value));
+    InitializeCriticalSection(&l->lock);
+    return l;
+}
+
+void ssl_lock_dyn_callback(int mode, struct CRYPTO_dynlock_value* l, const char *file, int line)
+{
+    file;
+    line;
+    if (mode & CRYPTO_LOCK)
+        EnterCriticalSection(&l->lock);
+    else
+        LeaveCriticalSection(&l->lock);
+}
+
+void ssl_lock_dyn_destroy_callback(struct CRYPTO_dynlock_value* l, const char *file, int line)
+{
+    file;
+    line;
+    DeleteCriticalSection(&l->lock);
+    free(l);
+}
+
+void _ssl_init(void)
+{
+
+    ssl_locks_num = CRYPTO_num_locks();
+
+    if (ssl_locks_num > 0)
     {
-        return true;
+        ssl_locks_arry = (CRITICAL_SECTION*)malloc(ssl_locks_num * sizeof(CRITICAL_SECTION));
+        for (int i = 0; i < ssl_locks_num; ++i)
+        {
+            InitializeCriticalSection(&ssl_locks_arry[i]);
+        }
     }
+#ifdef _DEBUG
+    CRYPTO_malloc_debug_init();
+    CRYPTO_dbg_set_options(V_CRYPTO_MDEBUG_ALL);
+    CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
+#endif
 
-    return false;
+    CRYPTO_set_locking_callback(&ssl_lock_callback);
+    CRYPTO_set_dynlock_create_callback(&ssl_lock_dyn_create_callback);
+    CRYPTO_set_dynlock_lock_callback(&ssl_lock_dyn_callback);
+    CRYPTO_set_dynlock_destroy_callback(&ssl_lock_dyn_destroy_callback);
+
+
+    SSL_load_error_strings();
+    SSL_library_init();
 }
+
+#endif
 
 void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_size)
 {
@@ -372,6 +357,116 @@ void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned in
     memory_unit_free(check_unit, mem);
 }
 
+
+void _create_server_ssl(iocp_tcp_listener* listener, iocp_tcp_socket* sock_ptr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+{
+    EnterCriticalSection(&sock_ptr->mgr->socket_lock);
+    sock_ptr->ssl_data = _iocp_tcp_manager_alloc_memory(sock_ptr->mgr, sizeof(iocp_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+    LeaveCriticalSection(&sock_ptr->mgr->socket_lock);
+
+    sock_ptr->ssl_data->ssl_listener = listener;
+    sock_ptr->ssl_data->ssl_state = SSL_UN_HAND_SHAKE;
+
+    sock_ptr->ssl_data->ssl_recv_buf = ((char*)sock_ptr->ssl_data) + sizeof(iocp_ssl_data);
+    sock_ptr->ssl_data->ssl_send_buf = ((char*)sock_ptr->ssl_data) + sizeof(iocp_ssl_data) + ssl_recv_cache_size;
+
+    sock_ptr->ssl_data->ssl_recv_buf_size = ssl_recv_cache_size;
+    sock_ptr->ssl_data->ssl_send_buf_size = ssl_send_cache_size;
+
+    sock_ptr->ssl_data->ssl_read_length = 0;
+    sock_ptr->ssl_data->ssl_write_length = 0;
+
+    sock_ptr->ssl_data->ssl = SSL_new(listener->svr_ssl_ctx);
+
+    sock_ptr->ssl_data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+    sock_ptr->ssl_data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+    SSL_set_bio(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data->bio[BIO_SEND]);
+
+    SSL_set_accept_state(sock_ptr->ssl_data->ssl);
+}
+
+void _create_client_ssl(iocp_tcp_socket* sock_ptr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+{
+    SSL_CTX* cli_ssl_ctx = (SSL_CTX*)sock_ptr->ssl_data;
+    EnterCriticalSection(&sock_ptr->mgr->socket_lock);
+    sock_ptr->ssl_data = _iocp_tcp_manager_alloc_memory(sock_ptr->mgr, sizeof(iocp_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+    LeaveCriticalSection(&sock_ptr->mgr->socket_lock);
+
+    sock_ptr->ssl_data->ssl_listener = 0;
+    sock_ptr->ssl_data->ssl_state = SSL_UN_HAND_SHAKE;
+    sock_ptr->ssl_data->ssl_recv_buf = ((char*)sock_ptr->ssl_data) + sizeof(iocp_ssl_data);
+    sock_ptr->ssl_data->ssl_send_buf = ((char*)sock_ptr->ssl_data) + sizeof(iocp_ssl_data) + ssl_recv_cache_size;
+
+    sock_ptr->ssl_data->ssl_recv_buf_size = ssl_recv_cache_size;
+    sock_ptr->ssl_data->ssl_send_buf_size = ssl_send_cache_size;
+
+    sock_ptr->ssl_data->ssl_read_length = 0;
+    sock_ptr->ssl_data->ssl_write_length = 0;
+
+    sock_ptr->ssl_data->ssl = SSL_new(cli_ssl_ctx);
+
+    sock_ptr->ssl_data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+    sock_ptr->ssl_data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+    SSL_set_bio(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data->bio[BIO_SEND]);
+
+    SSL_set_connect_state(sock_ptr->ssl_data->ssl);
+}
+
+void _destroy_socket_ssl(iocp_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->ssl_data)
+    {
+        if (sock_ptr->ssl_data->ssl)
+        {
+            SSL_free(sock_ptr->ssl_data->ssl);
+        }
+        EnterCriticalSection(&sock_ptr->mgr->socket_lock);
+        _iocp_tcp_manager_free_memory(sock_ptr->mgr, sock_ptr->ssl_data, sizeof(iocp_ssl_data) + sock_ptr->ssl_data->ssl_recv_buf_size + sock_ptr->ssl_data->ssl_send_buf_size);
+        LeaveCriticalSection(&sock_ptr->mgr->socket_lock);
+
+        sock_ptr->ssl_data = 0;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
+{
+    sock_ptr->user_data = 0;
+    sock_ptr->state = SOCKET_STATE_NONE;
+
+    sock_ptr->recv_req = 0;
+    sock_ptr->recv_ack = 0;
+
+    sock_ptr->send_req = 0;
+    sock_ptr->send_ack = 0;
+
+    sock_ptr->data_need_send = 0;
+    sock_ptr->data_has_send = 0;
+
+    sock_ptr->data_has_recv = 0;
+
+    sock_ptr->data_delay_send_size = 0;
+
+    //sock_ptr->local_addr_info = 0;AF_INET6
+    //sock_ptr->peer_addr_info = 0;
+    memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
+    memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
+
+    sock_ptr->timer_send = 0;
+    sock_ptr->timer_close = 0;
+}
+
+bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* sock_ptr)
+{
+    if (CreateIoCompletionPort((HANDLE)sock_ptr->tcp_socket, sock_ptr->mgr->iocp_port, (ULONG_PTR)sock_ptr, 0))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
 {
     iocp_tcp_socket* sock_ptr = 0;
@@ -386,9 +481,9 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
         send_buf_size = 1024;
     }
 
-    SOCKET_LOCK;
+    EnterCriticalSection(&mgr->socket_lock);
     sock_ptr = memory_unit_alloc_ex(mgr->socket_pool, 0);
-    SOCKET_UNLOCK;
+    LeaveCriticalSection(&mgr->socket_lock);
 
     if (sock_ptr)
     {
@@ -406,27 +501,27 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
                 CRUSH_CODE();
             }
 
-            SOCKET_LOCK;
+            EnterCriticalSection(&mgr->socket_lock);
             sock_ptr->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
             sock_ptr->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
-            SOCKET_UNLOCK;
+            LeaveCriticalSection(&mgr->socket_lock);
         }
         else
         {
             if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
             {
-                SOCKET_LOCK;
+                EnterCriticalSection(&mgr->socket_lock);
                 _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
                 loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
-                SOCKET_UNLOCK;
+                LeaveCriticalSection(&mgr->socket_lock);
             }
 
             if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
             {
-                SOCKET_LOCK;
+                EnterCriticalSection(&mgr->socket_lock);
                 _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
                 loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
-                SOCKET_UNLOCK;
+                LeaveCriticalSection(&mgr->socket_lock);
             }
         }
 
@@ -443,9 +538,10 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
 
 void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_ptr)
 {
-    SOCKET_LOCK;
+    _destroy_socket_ssl(sock_ptr);
+    EnterCriticalSection(&mgr->socket_lock);
     memory_unit_free(mgr->socket_pool, sock_ptr);
-    SOCKET_UNLOCK;
+    LeaveCriticalSection(&mgr->socket_lock);
 }
 
 #define EVENT_LOCK EnterCriticalSection(&sock_ptr->mgr->evt_lock)
@@ -510,6 +606,26 @@ void _push_system_error_event(iocp_tcp_socket* sock_ptr, int err_code)
     evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_SYSTEM_ERROR;
     evt->evt.evt_system_error.err_code = err_code;
+
+    loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
+    EVENT_UNLOCK;
+}
+
+void _push_ssl_error_event(iocp_tcp_socket* sock_ptr, int err_code)
+{
+    struct st_net_event* evt;
+    size_t evt_len = sizeof(struct st_net_event);
+    EVENT_LOCK;
+    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+
+    if (evt_len != sizeof(struct st_net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->socket_ptr = sock_ptr;
+    evt->type = NET_EVENT_SSL_ERROR;
+    evt->evt.evt_ssl_error.err_code = err_code;
 
     loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
@@ -609,15 +725,18 @@ void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, iocp_tcp_error error)
             _push_system_error_event(sock_ptr, WSAGetLastError());
         }
         break;
-        //case ERROR_SEND_OVERFLOW:
-        //case ERROR_RECV_OVERFLOW:
-        //case ERROR_PACKET:
         case error_send_overflow:
         case error_recv_overflow:
         case error_packet:
         {
             sock_ptr->data_has_send = sock_ptr->data_need_send;
             _push_module_error_event(sock_ptr, error);
+        }
+        break;
+        case error_ssl:
+        {
+            sock_ptr->data_has_send = sock_ptr->data_need_send;
+            _push_ssl_error_event(sock_ptr, ERR_get_error());
         }
         break;
         default:
@@ -642,6 +761,33 @@ bool _iocp_tcp_socket_post_recv_req(iocp_tcp_socket* sock_ptr)
 
     --sock_ptr->recv_req;
     return false;
+}
+
+bool _iocp_ssl_socket_post_recv(iocp_tcp_socket* sock_ptr)
+{
+    DWORD byte_received;
+    DWORD flags = 0;
+
+    //char* recv_ptr = 0;
+    //size_t recv_len = 0;
+
+    ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
+
+    sock_ptr->iocp_recv_data.wsa_buf.buf = sock_ptr->ssl_data->ssl_recv_buf;
+    sock_ptr->iocp_recv_data.wsa_buf.len = (ULONG)sock_ptr->ssl_data->ssl_recv_buf_size;
+
+    ++sock_ptr->recv_req;
+
+    if (WSARecv(sock_ptr->tcp_socket, &sock_ptr->iocp_recv_data.wsa_buf, 1, &byte_received, &flags, &sock_ptr->iocp_recv_data.over_lapped, NULL))
+    {
+        if (WSAGetLastError() != WSA_IO_PENDING)
+        {
+            --sock_ptr->recv_req;
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool _iocp_tcp_socket_post_recv(iocp_tcp_socket* sock_ptr)
@@ -671,6 +817,302 @@ bool _iocp_tcp_socket_post_recv(iocp_tcp_socket* sock_ptr)
     }
 
     return true;
+}
+
+bool _is_ssl_error(int ssl_error)
+{
+    switch (ssl_error)
+    {
+    case SSL_ERROR_NONE:
+    case SSL_ERROR_WANT_READ:
+    case SSL_ERROR_WANT_WRITE:
+    case SSL_ERROR_WANT_CONNECT:
+    case SSL_ERROR_WANT_ACCEPT:
+        return false;
+
+    default: return true;
+    }
+}
+
+bool _iocp_tcp_socket_post_send(iocp_tcp_socket* sock_ptr)
+{
+    DWORD number_of_byte_sent = 0;
+
+    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
+
+    ++sock_ptr->send_req;
+
+    if (WSASend(sock_ptr->tcp_socket, &sock_ptr->iocp_send_data.wsa_buf, 1, &number_of_byte_sent, 0, &sock_ptr->iocp_send_data.over_lapped, NULL))
+    {
+        if (WSAGetLastError() != WSA_IO_PENDING)
+        {
+            --sock_ptr->send_req;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void _iocp_ssl_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
+{
+    int ssl_ret = 0;
+    int bio_ret = 0;
+    char* send_ptr = 0;
+    size_t send_len = 0;
+
+    if (!ret)
+    {
+        _iocp_tcp_socket_close(sock_ptr, error_system);
+
+        InterlockedIncrement(&sock_ptr->send_ack);
+        return;
+    }
+
+    if ((sock_ptr->state != SOCKET_STATE_ESTABLISH) &&
+        (sock_ptr->state != SOCKET_STATE_TERMINATE))
+    {
+        InterlockedIncrement(&sock_ptr->send_ack);
+        return;
+    }
+
+    if (0 == trans_byte)
+    {
+        _iocp_tcp_socket_close(sock_ptr, error_system);
+
+        InterlockedIncrement(&sock_ptr->send_ack);
+        return;
+    }
+
+    for (;;)
+    {
+        loop_cache_get_data(sock_ptr->send_loop_cache, &send_ptr, &send_len);
+
+        if (send_len > 0)
+        {
+            ssl_ret = SSL_write(sock_ptr->ssl_data->ssl, send_ptr, (int)send_len);
+
+            if (ssl_ret > 0)
+            {
+                if (!loop_cache_pop(sock_ptr->send_loop_cache, ssl_ret))
+                {
+                    CRUSH_CODE();
+                }
+                sock_ptr->data_has_send += ssl_ret;
+
+                send_len = 0;
+            }
+            else
+            {
+                if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
+                {
+                    _iocp_tcp_socket_close(sock_ptr, error_ssl);
+
+                    InterlockedIncrement(&sock_ptr->send_ack);
+                    return;
+                }
+
+                break;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+
+    if (trans_byte != 0xffffffff)
+    {
+        if (trans_byte > sock_ptr->ssl_data->ssl_write_length)
+        {
+            CRUSH_CODE();
+        }
+        sock_ptr->ssl_data->ssl_write_length -= trans_byte;
+
+        if (sock_ptr->ssl_data->ssl_write_length)
+        {
+            memcpy(sock_ptr->ssl_data->ssl_send_buf, sock_ptr->ssl_data->ssl_send_buf + trans_byte, sock_ptr->ssl_data->ssl_write_length);
+        }
+    }
+
+    if (BIO_pending(sock_ptr->ssl_data->bio[BIO_SEND]))
+    {
+        bio_ret = BIO_read(sock_ptr->ssl_data->bio[BIO_SEND], sock_ptr->ssl_data->ssl_send_buf + sock_ptr->ssl_data->ssl_write_length, sock_ptr->ssl_data->ssl_send_buf_size - sock_ptr->ssl_data->ssl_write_length);
+
+        if (bio_ret > 0)
+        {
+            sock_ptr->ssl_data->ssl_write_length += bio_ret;
+        }
+        else
+        {
+            if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, bio_ret)))
+            {
+                {
+                    unsigned long ulErr = ERR_get_error(); // 获取错误号
+                    char szErrMsg[1024] = { 0 };
+                    char *pTmp = NULL;
+                    ERR_load_crypto_strings();
+                    pTmp = ERR_error_string(ulErr, szErrMsg); // 格式：error:errId:库:函数:原因
+                    const char* re = ERR_reason_error_string(ulErr);
+
+                    printf("%s", re);
+                }
+                _iocp_tcp_socket_close(sock_ptr, error_ssl);
+
+                InterlockedIncrement(&sock_ptr->send_ack);
+                return;
+            }
+        }
+    }
+
+    if (sock_ptr->ssl_data->ssl_write_length)
+    {
+        sock_ptr->iocp_send_data.wsa_buf.buf = sock_ptr->ssl_data->ssl_send_buf;
+        sock_ptr->iocp_send_data.wsa_buf.len = sock_ptr->ssl_data->ssl_write_length;
+        if (!_iocp_tcp_socket_post_send(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
+    }
+
+
+    InterlockedIncrement(&sock_ptr->send_ack);
+}
+
+bool _iocp_tcp_socket_post_send_req(iocp_tcp_socket* sock_ptr)
+{
+    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
+
+    ++sock_ptr->send_req;
+
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0xffffffff, (ULONG_PTR)socket, &sock_ptr->iocp_send_data.over_lapped))
+    {
+        return true;
+    }
+
+    --sock_ptr->send_req;
+
+    return false;
+}
+
+void _iocp_ssl_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
+{
+    int bio_ret;
+    int ssl_ret;
+    unsigned int decrypted_data_length = 0;
+
+    ++sock_ptr->recv_ack;
+
+    if (!ret)
+    {
+        _iocp_tcp_socket_close(sock_ptr, error_system);
+        return;
+    }
+
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
+    {
+        return;
+    }
+
+    if (trans_byte == 0)
+    {
+        _iocp_tcp_socket_close(sock_ptr, error_ok);
+        return;
+    }
+    else if (trans_byte == 0xffffffff)
+    {
+        trans_byte = 0;
+    }
+
+    if (trans_byte)
+    {
+        bio_ret = BIO_write(sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data->ssl_recv_buf, trans_byte);
+
+        if (bio_ret <= 0)
+        {
+            if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, bio_ret)))
+            {
+                _iocp_tcp_socket_close(sock_ptr, error_ssl);
+                return;
+            }
+        }
+    }
+
+    do 
+    {
+        ssl_ret = SSL_read(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->ssl_recv_buf + sock_ptr->ssl_data->ssl_read_length, sock_ptr->ssl_data->ssl_recv_buf_size - sock_ptr->ssl_data->ssl_read_length);
+
+        if (ssl_ret > 0)
+        {
+            if (loop_cache_push_data(sock_ptr->recv_loop_cache, sock_ptr->ssl_data->ssl_recv_buf, ssl_ret + sock_ptr->ssl_data->ssl_read_length))
+            {
+                decrypted_data_length += ssl_ret + sock_ptr->ssl_data->ssl_read_length;
+
+                sock_ptr->ssl_data->ssl_read_length = 0;
+            }
+            else
+            {
+                sock_ptr->ssl_data->ssl_read_length += ssl_ret;
+                break;
+            }
+        }
+        else
+        {
+            if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
+            {
+                {
+                    unsigned long ulErr = ERR_get_error(); // 获取错误号
+                    char szErrMsg[1024] = { 0 };
+                    char *pTmp = NULL;
+                    ERR_load_crypto_strings();
+                    pTmp = ERR_error_string(ulErr, szErrMsg); // 格式：error:errId:库:函数:原因
+                    const char* re = ERR_reason_error_string(ulErr);
+
+                    printf("%s", re);
+                }
+                _iocp_tcp_socket_close(sock_ptr, error_ssl);
+                return;
+            }
+        }
+
+    } while (ssl_ret > 0);
+
+    if (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE)
+    {
+        if (sock_ptr->send_req == sock_ptr->send_ack)
+        {
+            if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+            {
+                _iocp_tcp_socket_close(sock_ptr, error_system);
+            }
+        }
+
+        if (SSL_is_init_finished(sock_ptr->ssl_data->ssl))
+        {
+            sock_ptr->ssl_data->ssl_state = SSL_HAND_SHAKE;
+            _push_establish_event(sock_ptr->ssl_data->ssl_listener, sock_ptr);
+        }
+    }
+    else
+    {
+        if (decrypted_data_length)
+        {
+            _push_data_event(sock_ptr, decrypted_data_length);
+        }
+    }
+
+    if (sock_ptr->ssl_data->ssl_read_length)
+    {
+        _push_recv_active_event(sock_ptr);
+    }
+    else
+    {
+        if (!_iocp_ssl_socket_post_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
+    }
 }
 
 void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
@@ -723,42 +1165,6 @@ void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     {
         _push_recv_active_event(sock_ptr);
     }
-}
-
-bool _iocp_tcp_socket_post_send_req(iocp_tcp_socket* sock_ptr)
-{
-    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
-
-    ++sock_ptr->send_req;
-
-    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0xffffffff, (ULONG_PTR)socket, &sock_ptr->iocp_send_data.over_lapped))
-    {
-        return true;
-    }
-
-    --sock_ptr->send_req;
-
-    return false;
-}
-
-bool _iocp_tcp_socket_post_send(iocp_tcp_socket* sock_ptr)
-{
-    DWORD number_of_byte_sent = 0;
-
-    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
-
-    ++sock_ptr->send_req;
-
-    if (WSASend(sock_ptr->tcp_socket, &sock_ptr->iocp_send_data.wsa_buf, 1, &number_of_byte_sent, 0, &sock_ptr->iocp_send_data.over_lapped, NULL))
-    {
-        if (WSAGetLastError() != WSA_IO_PENDING)
-        {
-            --sock_ptr->send_req;
-            return false;
-        }
-    }
-
-    return true;
 }
 
 void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
@@ -963,12 +1369,26 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
     setsockopt(sock_ptr->tcp_socket, IPPROTO_TCP,
         TCP_NODELAY, (char*)&no_delay, sizeof(no_delay));
 
-    _push_establish_event(0, sock_ptr);
-
-    if (!_iocp_tcp_socket_post_recv(sock_ptr))
+    if (sock_ptr->ssl_data)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+        _create_client_ssl(sock_ptr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+
+        if (!_iocp_ssl_socket_post_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
     }
+    else
+    {
+        _push_establish_event(0, sock_ptr);
+
+        if (!_iocp_tcp_socket_post_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
+    }
+
+
 
     return;
 
@@ -1145,6 +1565,7 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
     sock_ptr->on_error = listener->on_error;
     sock_ptr->on_recv = listener->on_recv;
     sock_ptr->pkg_parser = listener->pkg_parser;
+    sock_ptr->ssl_data = 0;
 
     
 
@@ -1169,11 +1590,23 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
     setsockopt(sock_ptr->tcp_socket, IPPROTO_TCP,
         TCP_NODELAY, (char*)&no_delay, sizeof(no_delay));
 
-    _push_establish_event(listener, sock_ptr);
-
-    if (!_iocp_tcp_socket_post_recv(sock_ptr))
+    if (listener->svr_ssl_ctx)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+        _create_server_ssl(listener, sock_ptr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+
+        if (!_iocp_ssl_socket_post_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
+    }
+    else
+    {
+        _push_establish_event(listener, sock_ptr);
+
+        if (!_iocp_tcp_socket_post_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system);
+        }
     }
 }
 
@@ -1210,6 +1643,8 @@ CHECK_POST_ACCEPT_BEGIN:
         free(listener->arry_iocp_data);
         listener->arry_iocp_data = 0;
     }
+
+    free(listener);
 }
 
 bool _iocp_tcp_listener_listen(iocp_tcp_listener* listener, unsigned int max_accept_ex_num, const char* ip, UINT16 port, bool bReUseAddr)
@@ -1309,8 +1744,6 @@ ERROR_DEAL:
         freeaddrinfo(result);
         result = 0;
     }
-
-    iocp_tcp_close_listener(listener);
 
     return false;
 }
@@ -1425,23 +1858,44 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     break;
     case NET_EVENT_MODULE_ERROR:
     {
-        sock_ptr->on_error(evt->socket_ptr, evt->evt.evt_module_error.err_code, 0);
-        sock_ptr->on_terminate(evt->socket_ptr);
+        if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(evt->socket_ptr, evt->evt.evt_module_error.err_code, 0);
+            sock_ptr->on_terminate(evt->socket_ptr);
+        }
+
+        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    case NET_EVENT_SSL_ERROR:
+    {
+        if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(evt->socket_ptr, error_ssl, evt->evt.evt_ssl_error.err_code);
+            sock_ptr->on_terminate(evt->socket_ptr);
+        }
 
         _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SYSTEM_ERROR:
     {
-        sock_ptr->on_error(evt->socket_ptr, error_system, evt->evt.evt_system_error.err_code);
-        sock_ptr->on_terminate(evt->socket_ptr);
+        if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(evt->socket_ptr, error_system, evt->evt.evt_system_error.err_code);
+            sock_ptr->on_terminate(evt->socket_ptr);
+        }
 
         _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_TERMINATE:
     {
-        sock_ptr->on_terminate(evt->socket_ptr);
+        if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_terminate(evt->socket_ptr);
+        }
+
         _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
@@ -1505,11 +1959,29 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         switch (iocp_data_ptr->operation)
         {
         case IOCP_OPT_RECV:
-            _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.socket, ret, byte_transferred);
-            break;
+        {
+            if (iocp_data_ptr->pt.sock_ptr->ssl_data)
+            {
+                _iocp_ssl_socket_on_recv(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+            else
+            {
+                _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+        }
+        break;
         case IOCP_OPT_SEND:
-            _iocp_tcp_socket_on_send(iocp_data_ptr->pt.socket, ret, byte_transferred);
-            break;
+        {
+            if (iocp_data_ptr->pt.sock_ptr->ssl_data)
+            {
+                _iocp_ssl_socket_on_send(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+            else
+            {
+                _iocp_tcp_socket_on_send(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+        }
+        break;
         case IOCP_OPT_ACCEPT:
         {
             struct st_iocp_listen_data* iocp_listen_data_ptr = (struct st_iocp_listen_data*)iocp_data_ptr;
@@ -1517,10 +1989,10 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         }
         break;
         case IOCP_OPT_CONNECT_REQ:
-            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.socket, (BOOL)byte_transferred);
+            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.sock_ptr, (BOOL)byte_transferred);
             break;
         case IOCP_OPT_CONNECT:
-            _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.socket, ret);
+            _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.sock_ptr, ret);
             break;
         case IOCP_OPT_ACCEPT_REQ:
             break;
@@ -1812,6 +2284,8 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     InitializeCriticalSection(&mgr->evt_lock);
     InitializeCriticalSection(&mgr->socket_lock);
 
+    _ssl_init();
+
     version_requested = MAKEWORD(2, 2);
 
     if (WSAStartup(version_requested, &wsa_data))
@@ -1846,8 +2320,8 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
         arry_socket_ptr[i]->mgr = mgr;
         arry_socket_ptr[i]->recv_loop_cache = 0;
         arry_socket_ptr[i]->send_loop_cache = 0;
-        arry_socket_ptr[i]->iocp_recv_data.pt.socket = arry_socket_ptr[i];
-        arry_socket_ptr[i]->iocp_send_data.pt.socket = arry_socket_ptr[i];
+        arry_socket_ptr[i]->iocp_recv_data.pt.sock_ptr = arry_socket_ptr[i];
+        arry_socket_ptr[i]->iocp_send_data.pt.sock_ptr = arry_socket_ptr[i];
     }
 
     for (i = 0; i < max_socket_num; i++)
@@ -1892,12 +2366,103 @@ ERROR_DEAL:
     return 0;
 }
 
-iocp_tcp_socket* (iocp_tcp_connect_ex)(iocp_tcp_manager* mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, const char * bind_ip, unsigned short bind_port, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
+bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr, 
+    const char * ip,
+    unsigned short port,
+    bool reuse_addr,
+    const char * bind_ip,
+    unsigned short bind_port)
 {
     struct addrinfo hints;
     struct addrinfo* result = 0;
     char sz_port[64];
 
+    ZeroMemory(&hints, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = 0;
+
+    if (bind_ip)
+    {
+        hints.ai_flags = AI_PASSIVE;
+
+        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(bind_ip, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            return false;
+        }
+        else
+        {
+            memcpy(&socket_ptr->local_sockaddr,
+                result->ai_addr,
+                min(sizeof(socket_ptr->local_sockaddr), result->ai_addrlen));
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    {
+        hints.ai_flags = 0;
+        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(ip, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            return false;
+        }
+        else
+        {
+            memcpy(&socket_ptr->peer_sockaddr,
+                result->ai_addr,
+                min(sizeof(socket_ptr->peer_sockaddr), result->ai_addrlen));
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    if (socket_ptr->local_sockaddr.sin6_family)
+    {
+        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
+        {
+            return false;
+        }
+    }
+
+    socket_ptr->state = SOCKET_STATE_CONNECT;
+
+    if (!_iocp_tcp_socket_post_connect_req(socket_ptr, reuse_addr))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+iocp_tcp_socket* iocp_tcp_connect(
+    iocp_tcp_manager* mgr,
+    const char * ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    const char * bind_ip,
+    unsigned short bind_port,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
     iocp_tcp_socket* socket_ptr = _iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
 
     if (!socket_ptr)
@@ -1955,75 +2520,10 @@ iocp_tcp_socket* (iocp_tcp_connect_ex)(iocp_tcp_manager* mgr, const char * ip, u
         socket_ptr->pkg_parser = mgr->def_parse_packet;
     }
 
-    ZeroMemory(&hints, sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = 0;
+    socket_ptr->ssl_data = 0;
 
-    if (bind_ip)
-    {
-        hints.ai_flags = AI_PASSIVE;
 
-        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
-
-        if (getaddrinfo(bind_ip, sz_port, &hints, &result))
-        {
-            _iocp_tcp_manager_free_socket(mgr, socket_ptr);
-
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
-
-            return 0;
-        }
-        else
-        {
-            memcpy(&socket_ptr->local_sockaddr,
-                result->ai_addr,
-                min(sizeof(socket_ptr->local_sockaddr), result->ai_addrlen));
-            freeaddrinfo(result);
-            result = 0;
-        }
-    }
-
-    {
-        hints.ai_flags = 0;
-        _itoa_s(port, sz_port, sizeof(sz_port), 10);
-
-        if (getaddrinfo(ip, sz_port, &hints, &result))
-        {
-            _iocp_tcp_manager_free_socket(mgr, socket_ptr);
-
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
-
-            return 0;
-        }
-        else
-        {
-            memcpy(&socket_ptr->peer_sockaddr,
-                result->ai_addr,
-                min(sizeof(socket_ptr->peer_sockaddr), result->ai_addrlen));
-            freeaddrinfo(result);
-            result = 0;
-        }
-    }
-
-    if (socket_ptr->local_sockaddr.sin6_family)
-    {
-        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
-        {
-            _iocp_tcp_manager_free_socket(mgr, socket_ptr);
-            return 0;
-        }
-    }
-
-    socket_ptr->state = SOCKET_STATE_CONNECT;
-
-    if (!_iocp_tcp_socket_post_connect_req(socket_ptr, reuse_addr))
+    if (!_iocp_tcp_connector_connect(socket_ptr, ip, port, reuse_addr, bind_ip, bind_port))
     {
         _iocp_tcp_manager_free_socket(mgr, socket_ptr);
 
@@ -2033,21 +2533,187 @@ iocp_tcp_socket* (iocp_tcp_connect_ex)(iocp_tcp_manager* mgr, const char * ip, u
     return socket_ptr;
 }
 
-iocp_tcp_socket* iocp_tcp_connect(iocp_tcp_manager* mgr,
-    const char* ip, unsigned short port, unsigned int recv_buf_size,
-    unsigned int send_buf_size, bool reuse_addr,
-    const char* bind_ip, unsigned short bind_port)
+iocp_tcp_socket* (iocp_ssl_connect)(
+    iocp_tcp_manager* mgr,
+    const char* ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    const char* bind_ip,
+    unsigned short bind_port,
+    void* cli_ssl_ctx,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
 {
-    return iocp_tcp_connect_ex(mgr, ip, port, recv_buf_size, send_buf_size, reuse_addr, bind_ip, bind_port, 0, 0, 0, 0, 0);
+    iocp_tcp_socket* socket_ptr = _iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
+
+    if (!socket_ptr)
+    {
+        return 0;
+    }
+
+    if (mgr != socket_ptr->mgr)
+    {
+        CRUSH_CODE();
+    }
+
+    if (func_on_establish)
+    {
+        socket_ptr->on_establish = func_on_establish;
+    }
+    else
+    {
+        socket_ptr->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        socket_ptr->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        socket_ptr->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        socket_ptr->on_error = func_on_error;
+    }
+    else
+    {
+        socket_ptr->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        socket_ptr->on_recv = func_on_recv;
+    }
+    else
+    {
+        socket_ptr->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        socket_ptr->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        socket_ptr->pkg_parser = mgr->def_parse_packet;
+    }
+
+    socket_ptr->ssl_data = (iocp_ssl_data*)cli_ssl_ctx;
+
+    if (!_iocp_tcp_connector_connect(socket_ptr, ip, port, reuse_addr, bind_ip, bind_port))
+    {
+        _iocp_tcp_manager_free_socket(mgr, socket_ptr);
+
+        return 0;
+    }
+
+    return socket_ptr;
 }
 
 
-iocp_tcp_listener* (iocp_tcp_listen_ex)(iocp_tcp_manager* mgr, const char * ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size, bool reuse_addr, pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate, pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet)
+iocp_tcp_listener* iocp_tcp_listen(
+    iocp_tcp_manager* mgr,
+    const char * ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
 {
     iocp_tcp_listener* listener = (iocp_tcp_listener*)malloc(sizeof(struct st_iocp_tcp_listener));
 
     listener->recv_buf_size = recv_buf_size;
     listener->send_buf_size = send_buf_size;
+
+    listener->mgr = mgr;
+
+    listener->svr_ssl_ctx = 0;
+
+    if (func_on_establish)
+    {
+        listener->on_establish = func_on_establish;
+    }
+    else
+    {
+        listener->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        listener->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        listener->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        listener->on_error = func_on_error;
+    }
+    else
+    {
+        listener->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        listener->on_recv = func_on_recv;
+    }
+    else
+    {
+        listener->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        listener->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        listener->pkg_parser = mgr->def_parse_packet;
+    }
+
+    if (!_iocp_tcp_listener_listen(listener, mgr->max_accept_ex_num, ip, port, reuse_addr))
+    {
+        iocp_tcp_close_listener(listener);
+
+        return 0;
+    }
+
+    return listener;
+}
+
+iocp_tcp_listener* iocp_ssl_listen(HNETMANAGER mgr,
+    const char* ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    void* svr_ssl_ctx,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
+    iocp_tcp_listener* listener = (iocp_tcp_listener*)malloc(sizeof(struct st_iocp_tcp_listener));
+
+    listener->recv_buf_size = recv_buf_size;
+    listener->send_buf_size = send_buf_size;
+    listener->svr_ssl_ctx = (SSL_CTX*)svr_ssl_ctx;
 
     listener->mgr = mgr;
 
@@ -2100,20 +2766,12 @@ iocp_tcp_listener* (iocp_tcp_listen_ex)(iocp_tcp_manager* mgr, const char * ip, 
     {
         iocp_tcp_close_listener(listener);
 
-        free(listener);
-
         return 0;
     }
 
     return listener;
 }
 
-iocp_tcp_listener* iocp_tcp_listen(iocp_tcp_manager* mgr,
-    const char* ip, unsigned short port, unsigned int recv_buf_size, unsigned int send_buf_size,
-    bool reuse_addr)
-{
-    return iocp_tcp_listen_ex(mgr, ip, port, recv_buf_size, send_buf_size, reuse_addr, 0, 0, 0, 0, 0);
-}
 
 
 bool iocp_tcp_send(iocp_tcp_socket* sock_ptr, const void* data, unsigned int len)

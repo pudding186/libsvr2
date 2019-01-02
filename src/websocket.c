@@ -1535,13 +1535,48 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
 
-    listener->listener = iocp_tcp_listen_ex(
+    listener->listener = iocp_tcp_listen(
         mgr->net_mgr,
         ip,
         port,
         recv_buf_size,
         send_buf_size,
         false,
+        _ws_on_establish,
+        _ws_on_terminate,
+        _ws_on_error,
+        _ws_on_recv,
+        _ws_parser_packet);
+
+    if (!listener->listener)
+    {
+        free(listener);
+        return 0;
+    }
+    else
+    {
+        iocp_tcp_set_listener_data(listener->listener, listener);
+    }
+
+
+    listener->mgr = mgr;
+
+    return listener;
+}
+
+ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
+    unsigned int recv_buf_size, unsigned int send_buf_size, HSSLCTX svr_ssl_ctx)
+{
+    ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
+
+    listener->listener = iocp_ssl_listen(
+        mgr->net_mgr,
+        ip,
+        port,
+        recv_buf_size,
+        send_buf_size,
+        false,
+        svr_ssl_ctx,
         _ws_on_establish,
         _ws_on_terminate,
         _ws_on_error,
@@ -1746,7 +1781,7 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         host_name[host_name_seg.mem_size] = 0;
     }
 
-    HSESSION session = iocp_tcp_connect_ex(
+    HSESSION session = iocp_tcp_connect(
         ws_mgr->net_mgr, host_name,
         (unsigned short)port,
         recv_buf_size,

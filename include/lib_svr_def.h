@@ -38,6 +38,7 @@ typedef struct st_iocp_tcp_manager*     HNETMANAGER;
 
 typedef enum e_iocp_tcp_error
 {
+    error_ssl           = -6,
     error_connect_fail  = -5,
     error_system        = -4,
     error_send_overflow = -3,
@@ -67,6 +68,7 @@ typedef void (*pfn_on_recv)(HSESSION session, const char* data, const unsigned i
 typedef struct st_ws_socket*    HWSSESSION;
 typedef struct st_ws_listener*  HWSLISTENER;
 typedef struct st_ws_manager*   HWSMANAGER;
+typedef void*                   HSSLCTX;
 
 //typedef enum e_web_socket_error
 //{
