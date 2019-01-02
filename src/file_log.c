@@ -19,6 +19,8 @@ typedef enum st_log_option
 {
     opt_write = 0x00000001,
     opt_flush = (0x00000001 << 1),
+    opt_close = (0x00000001 << 2),
+    opt_open  = (0x00000001 << 3),
 }log_option;
 
 typedef struct st_log_queue
@@ -286,6 +288,95 @@ bool _check_log(file_log* log, time_t cur_time)
 
 file_log_level g_last_print_level = log_dbg;
 
+void _proc_log_cmd(log_cmd* cmd)
+{
+    switch (cmd->option)
+    {
+    case opt_write:
+    {
+        struct tm st_cur_time;
+        int write_size;
+        char* data;
+
+        _check_log(cmd->log, cmd->time);
+
+        data = cmd->data;
+        if (cmd->data_ex)
+        {
+            data = cmd->data_ex;
+        }
+
+        localtime_s(&st_cur_time, &cmd->time);
+        write_size = fprintf_s(cmd->log->file,
+            "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
+            st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
+            st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
+            log_lv_to_str(cmd->level), data);
+
+        if (write_size > 0)
+        {
+            cmd->log->size += write_size;
+        }
+
+    }
+    break;
+    case opt_flush:
+    {
+        fflush(cmd->log->file);
+    }
+    break;
+    case opt_close:
+    {
+        fclose(cmd->log->file);
+        free(cmd->log);
+    }
+    break;
+    case opt_open:
+    {
+        _mk_dir(cmd->log->path);
+        _check_log(cmd->log, cmd->time);
+    }
+    break;
+    }
+}
+
+void _proc_print_cmd(log_cmd* cmd)
+{
+    switch (cmd->option)
+    {
+    case opt_write:
+    {
+        struct tm st_cur_time;
+        char* data;
+
+        data = cmd->data;
+        if (cmd->data_ex)
+        {
+            data = cmd->data_ex;
+        }
+
+        localtime_s(&st_cur_time, &cmd->time);
+
+        if (g_last_print_level != cmd->level)
+        {
+            _begin_console(cmd->level);
+            g_last_print_level = cmd->level;
+        }
+
+        printf("%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
+            st_cur_time.tm_year + 1900,
+            st_cur_time.tm_mon + 1,
+            st_cur_time.tm_mday,
+            st_cur_time.tm_hour,
+            st_cur_time.tm_min,
+            st_cur_time.tm_sec,
+            log_lv_to_str(cmd->level),
+            data);
+    }
+    break;
+    }
+}
+
 bool _proc_print(log_thread_param* param)
 {
     bool need_sleep = true;
@@ -318,39 +409,7 @@ bool _proc_print(log_thread_param* param)
 
             proc->queue[param->thread_idx].to_rcy = cmd;
 
-            switch (cmd->option)
-            {
-            case opt_write:
-            {
-                struct tm st_cur_time;
-                char* data;
-
-                data = cmd->data;
-                if (cmd->data_ex)
-                {
-                    data = cmd->data_ex;
-                }
-
-                localtime_s(&st_cur_time, &cmd->time);
-
-                if (g_last_print_level != cmd->level)
-                {
-                    _begin_console(cmd->level);
-                    g_last_print_level = cmd->level;
-                }
-
-                printf("%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-                    st_cur_time.tm_year + 1900, 
-                    st_cur_time.tm_mon + 1, 
-                    st_cur_time.tm_mday,
-                    st_cur_time.tm_hour, 
-                    st_cur_time.tm_min, 
-                    st_cur_time.tm_sec,
-                    log_lv_to_str(cmd->level), 
-                    data);
-            }
-            break;
-            }
+            _proc_print_cmd(cmd);
         }
 
 
@@ -388,40 +447,7 @@ void _proc_print_end(log_thread_param* param)
         {
             is_busy = true;
 
-            switch (cmd->option)
-            {
-            case opt_write:
-            {
-                struct tm st_cur_time;
-                char* data;
-
-
-                data = cmd->data;
-                if (cmd->data_ex)
-                {
-                    data = cmd->data_ex;
-                }
-
-                localtime_s(&st_cur_time, &cmd->time);
-
-                if (g_last_print_level != cmd->level)
-                {
-                    _begin_console(cmd->level);
-                    g_last_print_level = cmd->level;
-                }
-
-                printf("%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-                    st_cur_time.tm_year + 1900, 
-                    st_cur_time.tm_mon + 1, 
-                    st_cur_time.tm_mday,
-                    st_cur_time.tm_hour, 
-                    st_cur_time.tm_min, 
-                    st_cur_time.tm_sec,
-                    log_lv_to_str(cmd->level), 
-                    data);
-            }
-            break;
-            }
+            _proc_print_cmd(cmd);
         }
 
         proc = proc->next_proc;
@@ -460,42 +486,7 @@ bool _proc_log(log_thread_param* param)
 
             proc->queue[param->thread_idx].to_rcy = cmd;
 
-            switch (cmd->option)
-            {
-            case opt_write:
-            {
-                struct tm st_cur_time;
-                int write_size;
-                char* data;
-
-                _check_log(cmd->log, cmd->time);
-
-                data = cmd->data;
-                if (cmd->data_ex)
-                {
-                    data = cmd->data_ex;
-                }
-
-                localtime_s(&st_cur_time, &cmd->time);
-                write_size = fprintf_s(cmd->log->file,
-                    "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-                    st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
-                    st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
-                    log_lv_to_str(cmd->level), data);
-
-                if (write_size > 0)
-                {
-                    cmd->log->size += write_size;
-                }
-
-            }
-            break;
-            case opt_flush:
-            {
-                fflush(cmd->log->file);
-            }
-            break;
-            }
+            _proc_log_cmd(cmd);
         }
         
 
@@ -533,42 +524,7 @@ void _proc_log_end(log_thread_param* param)
         {
             is_busy = true;
 
-            switch (cmd->option)
-            {
-            case opt_write:
-            {
-                struct tm st_cur_time;
-                int write_size;
-                char* data;
-
-                _check_log(cmd->log, cmd->time);
-
-                data = cmd->data;
-                if (cmd->data_ex)
-                {
-                    data = cmd->data_ex;
-                }
-
-                localtime_s(&st_cur_time, &cmd->time);
-                write_size = fprintf_s(cmd->log->file,
-                    "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-                    st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
-                    st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
-                    log_lv_to_str(cmd->level), data);
-
-                if (write_size > 0)
-                {
-                    cmd->log->size += write_size;
-                }
-
-            }
-            break;
-            case opt_flush:
-            {
-                fflush(cmd->log->file);
-            }
-            break;
-            }
+            _proc_log_cmd(cmd);
         }
 
         proc = proc->next_proc;
@@ -632,6 +588,109 @@ log_proc* _get_thread_log_proc(void)
     }
 
     return _thread_log_proc;
+}
+
+log_cmd* _fetch_log_cmd(file_log* log, log_proc* proc)
+{
+    log_cmd* cmd = 0;
+
+    for (;;)
+    {
+        log_cmd* check_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
+        if (!check_cmd)
+        {
+            check_cmd = loop_ptr_queue_pop(proc->queue[PRINT_THREAD_IDX].rcy_queue);
+
+            if (!check_cmd)
+            {
+                break;
+            }
+            else
+            {
+                check_cmd->end_print = true;
+
+                if (check_cmd->begin_log)
+                {
+                    if (!check_cmd->end_log)
+                    {
+                        continue;
+                    }
+                }
+
+                cmd = check_cmd;
+                break;
+            }
+        }
+        else
+        {
+            check_cmd->end_log = true;
+            if (check_cmd->begin_print)
+            {
+                if (!check_cmd->end_print)
+                {
+                    continue;
+                }
+            }
+            cmd = check_cmd;
+            break;
+        }
+    }
+
+    if (cmd)
+    {
+        if (cmd->data_ex)
+        {
+            memory_manager_free(proc->mem_mgr, cmd->data_ex);
+            cmd->data_ex = 0;
+        }
+    }
+    else
+    {
+        cmd = memory_unit_alloc(proc->cmd_unit, 4096);
+        cmd->data_ex = 0;
+    }
+
+    return cmd;
+}
+
+bool _push_log_cmd(file_log* log, log_cmd* cmd, log_proc* proc, bool need_print)
+{
+    while (!loop_ptr_queue_push(proc->queue[log->thread_idx].cmd_queue, cmd))
+    {
+        if (g_file_log_mgr.m_is_run)
+        {
+            log_cmd* rcy_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
+            if (rcy_cmd)
+            {
+                if (rcy_cmd->data_ex)
+                {
+                    memory_manager_free(proc->mem_mgr, rcy_cmd->data_ex);
+                }
+
+                memory_unit_free(proc->cmd_unit, rcy_cmd);
+            }
+            else
+            {
+                Sleep(10);
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    cmd->begin_log = true;
+
+    if (need_print)
+    {
+        if (loop_ptr_queue_push(proc->queue[PRINT_THREAD_IDX].cmd_queue, cmd))
+        {
+            cmd->begin_print = true;
+        }
+    }
+
+    return true;
 }
 
 size_t log_thread_busy_pct(size_t thread_idx)
@@ -753,17 +812,21 @@ file_log* create_wfile_log(const wchar_t* path, const wchar_t* name, size_t log_
     log->time = 0;
     log->flag = 0;
 
-    if (!_mk_dir(log->path))
-    {
-        free(log);
-        return 0;
-    }
+    log_proc* proc = _get_thread_log_proc();
 
-    if (!_check_log(log, get_time()))
-    {
-        free(log);
-        return 0;
-    }
+    log_cmd* cmd = _fetch_log_cmd(log, proc);
+
+    cmd->option = opt_open;
+    cmd->level = log_dbg;
+    cmd->data_len = 0;
+    cmd->log = log;
+    cmd->time = get_time();
+    cmd->begin_log = false;
+    cmd->begin_print = false;
+    cmd->end_log = false;
+    cmd->end_print = false;
+
+    _push_log_cmd(log, cmd, proc, false);
 
     return log;
 }
@@ -788,71 +851,28 @@ file_log* create_file_log(const char* path, const char* name, size_t log_thread_
 
 void destroy_file_log(file_log* log)
 {
-    fclose(log->file);
-    free(log);
+    log_proc* proc = _get_thread_log_proc();
+
+    log_cmd* cmd = _fetch_log_cmd(log, proc);
+
+    cmd->option = opt_close;
+    cmd->level = log_dbg;
+    cmd->data_len = 0;
+    cmd->log = log;
+    cmd->time = 0;
+    cmd->begin_log = false;
+    cmd->begin_print = false;
+    cmd->end_log = false;
+    cmd->end_print = false;
+
+    _push_log_cmd(log, cmd, proc, false);
 }
 
-void file_log_flush(HFILELOG log)
+void file_log_flush(file_log* log)
 {
     log_proc* proc = _get_thread_log_proc();
 
-    log_cmd* cmd = 0;
-
-    for (;;)
-    {
-        log_cmd* check_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
-        if (!check_cmd)
-        {
-            check_cmd = loop_ptr_queue_pop(proc->queue[PRINT_THREAD_IDX].rcy_queue);
-
-            if (!check_cmd)
-            {
-                break;
-            }
-            else
-            {
-                check_cmd->end_print = true;
-
-                if (check_cmd->begin_log)
-                {
-                    if (!check_cmd->end_log)
-                    {
-                        continue;
-                    }
-                }
-
-                cmd = check_cmd;
-                break;
-            }
-        }
-        else
-        {
-            check_cmd->end_log = true;
-            if (check_cmd->begin_print)
-            {
-                if (!check_cmd->end_print)
-                {
-                    continue;
-                }
-            }
-            cmd = check_cmd;
-            break;
-        }
-    }
-
-    if (cmd)
-    {
-        if (cmd->data_ex)
-        {
-            memory_manager_free(proc->mem_mgr, cmd->data_ex);
-            cmd->data_ex = 0;
-        }
-    }
-    else
-    {
-        cmd = memory_unit_alloc(proc->cmd_unit, 4096);
-        cmd->data_ex = 0;
-    }
+    log_cmd* cmd = _fetch_log_cmd(log, proc);
 
     cmd->option = opt_flush;
     cmd->level = log_dbg;
@@ -864,95 +884,14 @@ void file_log_flush(HFILELOG log)
     cmd->end_log = false;
     cmd->end_print = false;
 
-    while (!loop_ptr_queue_push(proc->queue[log->thread_idx].cmd_queue, cmd))
-    {
-        if (g_file_log_mgr.m_is_run)
-        {
-            log_cmd* rcy_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
-            if (rcy_cmd)
-            {
-                if (rcy_cmd->data_ex)
-                {
-                    memory_manager_free(proc->mem_mgr, rcy_cmd->data_ex);
-                }
-
-                memory_unit_free(proc->cmd_unit, rcy_cmd);
-            }
-            else
-            {
-                Sleep(10);
-            }
-        }
-        else
-        {
-            return;
-        }
-    }
-
-    cmd->begin_log = true;
+    _push_log_cmd(log, cmd, proc, false);
 }
 
 bool file_log_write(file_log* log, file_log_level lv, const char* format, ...)
 {
     log_proc* proc = _get_thread_log_proc();
 
-    log_cmd* cmd = 0;
-
-    for (;;)
-    {
-        log_cmd* check_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
-        if (!check_cmd)
-        {
-            check_cmd = loop_ptr_queue_pop(proc->queue[PRINT_THREAD_IDX].rcy_queue);
-
-            if (!check_cmd)
-            {
-                break;
-            }
-            else
-            {
-                check_cmd->end_print = true;
-
-                if (check_cmd->begin_log)
-                {
-                    if (!check_cmd->end_log)
-                    {
-                        continue;
-                    }
-                }
-
-                cmd = check_cmd;
-                break;
-            }
-        }
-        else
-        {
-            check_cmd->end_log = true;
-            if (check_cmd->begin_print)
-            {
-                if (!check_cmd->end_print)
-                {
-                    continue;
-                }
-            }
-            cmd = check_cmd;
-            break;
-        }
-    }
-
-    if (cmd)
-    {
-        if (cmd->data_ex)
-        {
-            memory_manager_free(proc->mem_mgr, cmd->data_ex);
-            cmd->data_ex = 0;
-        }
-    }
-    else
-    {
-        cmd = memory_unit_alloc(proc->cmd_unit, 4096);
-        cmd->data_ex = 0;
-    }
+    log_cmd* cmd = _fetch_log_cmd(log, proc);
 
     cmd->option = opt_write;
     cmd->level = lv;
@@ -994,37 +933,5 @@ bool file_log_write(file_log* log, file_log_level lv, const char* format, ...)
         }
     }
 
-    while (!loop_ptr_queue_push(proc->queue[log->thread_idx].cmd_queue, cmd))
-    {
-        if (g_file_log_mgr.m_is_run)
-        {
-            log_cmd* rcy_cmd = loop_ptr_queue_pop(proc->queue[log->thread_idx].rcy_queue);
-            if (rcy_cmd)
-            {
-                if (rcy_cmd->data_ex)
-                {
-                    memory_manager_free(proc->mem_mgr, rcy_cmd->data_ex);
-                }
-
-                memory_unit_free(proc->cmd_unit, rcy_cmd);
-            }
-            else
-            {
-                Sleep(10);
-            }
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    cmd->begin_log = true;
-
-    if (loop_ptr_queue_push(proc->queue[PRINT_THREAD_IDX].cmd_queue, cmd))
-    {
-        cmd->begin_print = true;
-    }
-
-    return true;
+    return _push_log_cmd(log, cmd, proc, true);
 }
