@@ -33,6 +33,13 @@ extern HWSLISTENER(wss_listen)(HWSMANAGER mgr,
     unsigned int send_buf_size,
     HSSLCTX svr_ssl_ctx);
 
+extern HWSSESSION wss_connect(HWSMANAGER ws_mgr,
+    const char* uri,
+    const char* extra_headers,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    HSSLCTX cli_ssl_ctx);
+
 extern bool (ws_send_text)(HWSSESSION ws_session, const char* data, unsigned int length, bool compress);
 
 extern bool (ws_send_binary)(HWSSESSION ws_session, const char* data, unsigned int length, bool compress);

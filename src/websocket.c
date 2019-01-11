@@ -158,19 +158,21 @@ unsigned int _ws_deflate(ws_manager* mgr, const char* data, unsigned int length)
     dfs->avail_in = length;
 
 
-
+    unsigned int last_deflate_cache_size = 0;
     for (;;)
     {
+        last_deflate_cache_size = mgr->deflate_cache_size - deflate_length;
         dfs->next_out = (Bytef*)(mgr->deflate_cache + deflate_length);
-        dfs->avail_out = mgr->deflate_cache_size - deflate_length;
+        dfs->avail_out = last_deflate_cache_size;
 
         err = deflate(dfs, Z_SYNC_FLUSH);
 
         if (Z_OK == err && dfs->avail_out == 0)
         {
-            deflate_length += ZLIB_CACHE_EXTEND_SIZE;
+            deflate_length += last_deflate_cache_size - dfs->avail_out;
             mgr->deflate_cache_size += ZLIB_CACHE_EXTEND_SIZE;
-            mgr->deflate_cache = libsvr_memory_manager_realloc(mgr->deflate_cache, mgr->deflate_cache_size);
+            //mgr->deflate_cache = libsvr_memory_manager_realloc(mgr->deflate_cache, mgr->deflate_cache_size);
+            mgr->deflate_cache = realloc(mgr->deflate_cache, mgr->deflate_cache_size);
         }
         else
         {
@@ -179,7 +181,7 @@ unsigned int _ws_deflate(ws_manager* mgr, const char* data, unsigned int length)
 
     }
 
-    deflate_length += ZLIB_CACHE_EXTEND_SIZE - dfs->avail_out - 4;
+    deflate_length += last_deflate_cache_size - dfs->avail_out - 4;
 
     deflateReset(dfs);
 
@@ -196,10 +198,12 @@ unsigned int _ws_inflate(ws_manager* mgr, const char* data, unsigned int length)
     ifs->next_in = (Bytef*)data;
     ifs->avail_in = length;
 
+    unsigned int last_inflate_cache_size = 0;
     for (;;)
     {
+        last_inflate_cache_size = mgr->inflate_cache_size - inflate_length;
         ifs->next_out = (Bytef *)(mgr->inflate_cache + inflate_length);
-        ifs->avail_out = mgr->inflate_cache_size - inflate_length;
+        ifs->avail_out = last_inflate_cache_size;
 
         err = inflate(ifs, Z_FINISH);
 
@@ -208,9 +212,10 @@ unsigned int _ws_inflate(ws_manager* mgr, const char* data, unsigned int length)
             break;
         }
 
-        inflate_length += ZLIB_CACHE_EXTEND_SIZE;
+        inflate_length += last_inflate_cache_size - ifs->avail_out;
         mgr->inflate_cache_size += ZLIB_CACHE_EXTEND_SIZE;
-        mgr->inflate_cache = libsvr_memory_manager_realloc(mgr->inflate_cache, mgr->inflate_cache_size);
+        //mgr->inflate_cache = libsvr_memory_manager_realloc(mgr->inflate_cache, mgr->inflate_cache_size);
+        mgr->inflate_cache = realloc(mgr->inflate_cache, mgr->inflate_cache_size);
 
         if (err != Z_BUF_ERROR)
         {
@@ -225,7 +230,7 @@ unsigned int _ws_inflate(ws_manager* mgr, const char* data, unsigned int length)
         return 0;
     }
 
-    inflate_length += ZLIB_CACHE_EXTEND_SIZE - ifs->avail_out;
+    inflate_length += last_inflate_cache_size - ifs->avail_out;
 
     return inflate_length;
 }
@@ -439,7 +444,8 @@ bool _ws_client_data(ws_socket* ws_session, ws_op_code code, const char* data, u
 
     if (ws_session->mgr->mask_buffer_size < length + 4)
     {
-        ws_session->mgr->mask_buffer = libsvr_memory_manager_realloc(ws_session->mgr->mask_buffer, length + 4);
+        //ws_session->mgr->mask_buffer = libsvr_memory_manager_realloc(ws_session->mgr->mask_buffer, length + 4);
+        ws_session->mgr->mask_buffer = realloc(ws_session->mgr->mask_buffer, length + 4);
     }
 
     _unmask_data_overflow(ws_session->mgr->mask_buffer, data, (char*)&mask, length);
@@ -668,12 +674,15 @@ mem_seg _response_extensions_deflate(ws_socket* ws_session, http_header* header_
     seg.mem = 0;
     seg.mem_size = 0;
 
-    if (memmem(header_extensions->value, header_extensions->value_length, "permessage-deflate", strlen("permessage-deflate")))
+    if (header_extensions)
     {
-        ws_session->extension_options |= ws_ext_defalte;
+        if (memmem(header_extensions->value, header_extensions->value_length, "permessage-deflate", strlen("permessage-deflate")))
+        {
+            ws_session->extension_options |= ws_ext_defalte;
 
-        seg.mem = "permessage-deflate; client_no_context_takeover";
-        seg.mem_size = strlen(seg.mem);
+            seg.mem = "permessage-deflate; client_no_context_takeover";
+            seg.mem_size = strlen(seg.mem);
+        }
     }
 
     return seg;
@@ -932,6 +941,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
 
@@ -952,6 +962,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             libsvr_memory_manager_free(ws_session->fragment_data);
+            //free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
         }
@@ -1062,6 +1073,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
         }
@@ -1090,6 +1102,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
         }
@@ -1179,6 +1192,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
 
@@ -1199,6 +1213,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             libsvr_memory_manager_free(ws_session->fragment_data);
+            //free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
         }
@@ -1309,6 +1324,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
         }
@@ -1337,6 +1353,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
             }
 
             ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
         }
@@ -1357,6 +1374,7 @@ void _ws_free_socket(ws_manager* mgr, ws_socket* sock)
     if (sock->fragment_data)
     {
         libsvr_memory_manager_free(sock->fragment_data);
+        //free(sock->fragment_data);
         sock->fragment_data = 0;
     }
     memory_unit_free(mgr->ws_socket_unit, sock);
@@ -1389,6 +1407,7 @@ void _ws_on_establish(HLISTENER net_handle, HSESSION session)
         ws_session->state = ws_client_http;
         iocp_tcp_send(ws_session->session, ws_session->fragment_data, ws_session->fragment_size);
         libsvr_memory_manager_free(ws_session->fragment_data);
+        //free(ws_session->fragment_data);
         ws_session->fragment_data = 0;
         ws_session->fragment_size = 0;
     }
@@ -1500,26 +1519,32 @@ ws_manager* create_ws_manager(HNETMANAGER net_mgr,
     deflateInit2(&mgr->deflation_stream, 1, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
 
     mgr->deflate_cache_size = ZLIB_CACHE_EXTEND_SIZE;
-    mgr->deflate_cache = libsvr_memory_manager_alloc(mgr->deflate_cache_size);
+    //mgr->deflate_cache = libsvr_memory_manager_alloc(mgr->deflate_cache_size);
+    mgr->deflate_cache = malloc(mgr->deflate_cache_size);
 
     mgr->inflate_cache_size = ZLIB_CACHE_EXTEND_SIZE;
-    mgr->inflate_cache = libsvr_memory_manager_alloc(mgr->inflate_cache_size);
+    //mgr->inflate_cache = libsvr_memory_manager_alloc(mgr->inflate_cache_size);
+    mgr->inflate_cache = malloc(mgr->inflate_cache_size);
 
     mgr->mask_buffer_size = CLIENT_MASK_CACHE_SIZE;
-    mgr->mask_buffer = libsvr_memory_manager_alloc(mgr->mask_buffer_size);
+    //mgr->mask_buffer = libsvr_memory_manager_alloc(mgr->mask_buffer_size);
+    mgr->mask_buffer = malloc(mgr->mask_buffer_size);
 
     return mgr;
 }
 
 void destroy_ws_manager(ws_manager* ws_mgr)
 {
-    libsvr_memory_manager_free(ws_mgr->mask_buffer);
+    //libsvr_memory_manager_free(ws_mgr->mask_buffer);
+    free(ws_mgr->mask_buffer);
     ws_mgr->mask_buffer_size = 0;
 
-    libsvr_memory_manager_free(ws_mgr->deflate_cache);
+    //libsvr_memory_manager_free(ws_mgr->deflate_cache);
+    free(ws_mgr->deflate_cache);
     ws_mgr->deflate_cache_size = 0;
 
-    libsvr_memory_manager_free(ws_mgr->inflate_cache);
+    //libsvr_memory_manager_free(ws_mgr->inflate_cache);
+    free(ws_mgr->inflate_cache);
     ws_mgr->inflate_cache_size = 0;
 
     inflateEnd(&ws_mgr->inflation_stream);
@@ -1811,11 +1836,109 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
     ws_session->extension_options = 0;
     ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
     ws_session->fragment_data = libsvr_memory_manager_alloc(MAX_HTTP_REQUEST_SIZE);
+    //ws_session->fragment_data = malloc(MAX_HTTP_REQUEST_SIZE);
     ws_session->fragment_size = MAX_HTTP_REQUEST_SIZE;
     {
         size_t copy_length = 0;
         size_t extra_headers_length = strlen(extra_headers);
         
+        char sz_port[16] = { 0 };
+        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+        size_t port_length = strlen(sz_port);
+
+        const char* tmp_data =
+            " HTTP/1.1\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n"
+            "Host: ";
+
+        const char* tmp_data1 =
+            "\r\n"
+            "Sec-WebSocket-Version: 13\r\n";
+
+
+        _append_http_request("GET /", 5);
+        _append_http_request(path_seg.mem, path_seg.mem_size);
+        _append_http_request(tmp_data, 103);
+        _append_http_request(host_name_seg.mem, host_name_seg.mem_size);
+        _append_http_request(":", 1);
+        _append_http_request(sz_port, port_length);
+        _append_http_request(tmp_data1, 29);
+        _append_http_request(extra_headers, extra_headers_length);
+        _append_http_request("\r\n", 2);
+
+        ws_session->fragment_size = (unsigned int)copy_length;
+    }
+
+    iocp_tcp_set_session_data(ws_session->session, ws_session);
+
+    return ws_session;
+FAIL:
+    _ws_free_socket(ws_mgr, ws_session);
+    return 0;
+}
+
+ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, HSSLCTX cli_ssl_ctx)
+{
+    mem_seg host_name_seg;
+    mem_seg path_seg;
+    char host_name[256];
+    int port;
+    bool is_secure;
+
+    if (!_parser_uri(uri, &is_secure, &host_name_seg, &path_seg, &port))
+    {
+        return 0;
+    }
+
+    if (sizeof(host_name) <= host_name_seg.mem_size)
+    {
+        return 0;
+    }
+    else
+    {
+        memcpy(host_name, host_name_seg.mem, host_name_seg.mem_size);
+        host_name[host_name_seg.mem_size] = 0;
+    }
+
+    HSESSION session = iocp_ssl_connect(
+        ws_mgr->net_mgr, host_name,
+        (unsigned short)port,
+        recv_buf_size,
+        send_buf_size,
+        false,
+        0,
+        0,
+        cli_ssl_ctx,
+        _ws_on_establish,
+        _ws_on_terminate,
+        _ws_on_error,
+        _ws_on_recv,
+        _ws_parser_packet);
+
+    if (!session)
+    {
+        return 0;
+    }
+
+    ws_socket* ws_session = _ws_alloc_socket(ws_mgr);
+
+    ws_session->session = session;
+    ws_session->listener = 0;
+    ws_session->state = ws_client_tcp;
+    ws_session->mgr = ws_mgr;
+    ws_session->error_type = ws_error_ok;
+    ws_session->error_code = 0;
+    ws_session->extension_options = 0;
+    ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
+    ws_session->fragment_data = libsvr_memory_manager_alloc(MAX_HTTP_REQUEST_SIZE);
+    //ws_session->fragment_data = malloc(MAX_HTTP_REQUEST_SIZE);
+    ws_session->fragment_size = MAX_HTTP_REQUEST_SIZE;
+    {
+        size_t copy_length = 0;
+        size_t extra_headers_length = strlen(extra_headers);
+
         char sz_port[16] = { 0 };
         _itoa_s(port, sz_port, sizeof(sz_port), 10);
         size_t port_length = strlen(sz_port);
