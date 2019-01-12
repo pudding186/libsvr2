@@ -1494,25 +1494,15 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
 
     if (sock_ptr->ssl_data)
     {
-        if (sock_ptr->send_req == sock_ptr->send_ack)
+        if (_init_client_ssl_data(sock_ptr))
         {
-            if (_init_client_ssl_data(sock_ptr))
+            if (_iocp_tcp_socket_post_recv_req(sock_ptr))
             {
-                if (_iocp_tcp_socket_post_send_req(sock_ptr))
-                {
-                    if (_iocp_tcp_socket_post_recv_req(sock_ptr))
-                    {
-                        return;
-                    }
-                }
+                return;
             }
+        }
 
-            _iocp_tcp_socket_close(sock_ptr, error_system);
-        }
-        else
-        {
-            CRUSH_CODE();
-        }
+        _iocp_tcp_socket_close(sock_ptr, error_system);
     }
     else
     {
