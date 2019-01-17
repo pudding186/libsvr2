@@ -145,7 +145,6 @@ typedef struct st_ptr_info
 }PtrInfo;
 
 //////////////////////////////////////////////////////////////////////////
-typedef struct st_file_log_manager* HFILELOGMANAGER;
 typedef struct st_file_log* HFILELOG;
 
 typedef enum st_file_log_level

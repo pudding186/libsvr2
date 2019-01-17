@@ -8,10 +8,7 @@
 #include "../include/memory_pool.h"
 #include "../include/rb_tree.h"
 #include "../include/iocp_tcp.h"
-
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/x509v3.h>
+#include "../include/ssl_tcp.h"
 
 #define MAX_BACKLOG     256
 #define MAX_ADDR_SIZE   ((sizeof(struct sockaddr_in6)+16)*2)
@@ -160,7 +157,8 @@ typedef struct st_iocp_ssl_data
         iocp_tcp_listener*  ssl_listener;
         SSL_CTX*            ssl_ctx_client;
     }ssl_pt;
-    
+
+    CRITICAL_SECTION    ssl_lock;
 }iocp_ssl_data;
 
 union un_ip
@@ -207,9 +205,6 @@ typedef struct st_iocp_tcp_socket
     pfn_on_recv                 on_recv;
     struct st_iocp_tcp_manager* mgr;
     iocp_ssl_data*              ssl_data;
-    //SSL_CTX*                    ssl_ctx;
-    //SSL*                        ssl;
-    //BIO*                        bio[2];
 }iocp_tcp_socket;
 
 typedef struct st_iocp_tcp_manager
@@ -246,83 +241,6 @@ typedef struct st_iocp_tcp_manager
 }iocp_tcp_manager;
 
 //////////////////////////////////////////////////////////////////////////
-#if OPENSSL_VERSION_NUMBER == 0x1000210fL
-
-struct CRYPTO_dynlock_value
-{
-    CRITICAL_SECTION lock;
-};
-
-int ssl_locks_num = 0;
-CRITICAL_SECTION* ssl_locks_arry = 0;
-
-void ssl_lock_callback(int mode, int n, const char *file, int line)
-{
-    file;
-    line;
-    if (mode & CRYPTO_LOCK)
-        EnterCriticalSection(&ssl_locks_arry[n]);
-    else
-        LeaveCriticalSection(&ssl_locks_arry[n]);
-}
-
-struct CRYPTO_dynlock_value* ssl_lock_dyn_create_callback(const char *file, int line)
-{
-    file;
-    line;
-    struct CRYPTO_dynlock_value *l = (struct CRYPTO_dynlock_value*)malloc(sizeof(struct CRYPTO_dynlock_value));
-    InitializeCriticalSection(&l->lock);
-    return l;
-}
-
-void ssl_lock_dyn_callback(int mode, struct CRYPTO_dynlock_value* l, const char *file, int line)
-{
-    file;
-    line;
-    if (mode & CRYPTO_LOCK)
-        EnterCriticalSection(&l->lock);
-    else
-        LeaveCriticalSection(&l->lock);
-}
-
-void ssl_lock_dyn_destroy_callback(struct CRYPTO_dynlock_value* l, const char *file, int line)
-{
-    file;
-    line;
-    DeleteCriticalSection(&l->lock);
-    free(l);
-}
-
-void _ssl_init(void)
-{
-
-    ssl_locks_num = CRYPTO_num_locks();
-
-    if (ssl_locks_num > 0)
-    {
-        ssl_locks_arry = (CRITICAL_SECTION*)malloc(ssl_locks_num * sizeof(CRITICAL_SECTION));
-        for (int i = 0; i < ssl_locks_num; ++i)
-        {
-            InitializeCriticalSection(&ssl_locks_arry[i]);
-        }
-    }
-#ifdef _DEBUG
-    CRYPTO_malloc_debug_init();
-    CRYPTO_dbg_set_options(V_CRYPTO_MDEBUG_ALL);
-    CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
-#endif
-
-    CRYPTO_set_locking_callback(&ssl_lock_callback);
-    CRYPTO_set_dynlock_create_callback(&ssl_lock_dyn_create_callback);
-    CRYPTO_set_dynlock_lock_callback(&ssl_lock_dyn_callback);
-    CRYPTO_set_dynlock_destroy_callback(&ssl_lock_dyn_destroy_callback);
-
-
-    SSL_load_error_strings();
-    SSL_library_init();
-}
-
-#endif
 
 void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_size)
 {
@@ -384,12 +302,15 @@ iocp_ssl_data* _iocp_ssl_data_alloc(iocp_tcp_manager* mgr, unsigned int ssl_recv
     data->bio[BIO_RECV] = 0;
     data->bio[BIO_SEND] = 0;
 
+    InitializeCriticalSection(&data->ssl_lock);
+
     return data;
 }
 
 void _iocp_ssl_data_free(iocp_tcp_manager* mgr, iocp_ssl_data* data)
 {
     EnterCriticalSection(&mgr->socket_lock);
+    DeleteCriticalSection(&data->ssl_lock);
     _iocp_tcp_manager_free_memory(mgr, data, sizeof(iocp_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
     LeaveCriticalSection(&mgr->socket_lock);
 }
@@ -1021,43 +942,43 @@ void _iocp_ssl_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
         return;
     }
 
-    for (;;)
+    EnterCriticalSection(&sock_ptr->ssl_data->ssl_lock);
+    while (loop_cache_data_size(sock_ptr->send_loop_cache))
     {
         loop_cache_get_data(sock_ptr->send_loop_cache, &send_ptr, &send_len);
 
-        if (send_len > 0)
+        if (!send_len)
         {
-            ssl_ret = SSL_write(sock_ptr->ssl_data->ssl, send_ptr, (int)send_len);
+            CRUSH_CODE();
+        }
 
-            if (ssl_ret > 0)
+        ssl_ret = SSL_write(sock_ptr->ssl_data->ssl, send_ptr, (int)send_len);
+
+        if (ssl_ret > 0)
+        {
+            if (!loop_cache_pop(sock_ptr->send_loop_cache, ssl_ret))
             {
-                if (!loop_cache_pop(sock_ptr->send_loop_cache, ssl_ret))
-                {
-                    CRUSH_CODE();
-                }
-                sock_ptr->data_has_send += ssl_ret;
-
-                send_len = 0;
+                CRUSH_CODE();
             }
-            else
-            {
-                if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
-                {
-                    _iocp_tcp_socket_close(sock_ptr, error_ssl);
+            sock_ptr->data_has_send += ssl_ret;
 
-                    InterlockedIncrement(&sock_ptr->send_ack);
-                    return;
-                }
-
-                break;
-            }
+            send_len = 0;
         }
         else
         {
+            if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
+            {
+                _iocp_tcp_socket_close(sock_ptr, error_ssl);
+
+                InterlockedIncrement(&sock_ptr->send_ack);
+                LeaveCriticalSection(&sock_ptr->ssl_data->ssl_lock);
+                return;
+            }
+
             break;
         }
     }
-
+    LeaveCriticalSection(&sock_ptr->ssl_data->ssl_lock);
 
     if (trans_byte != 0xffffffff)
     {
@@ -1127,7 +1048,7 @@ void _iocp_ssl_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
 {
     int bio_ret;
     int ssl_ret;
-    unsigned int decrypted_data_length = 0;
+    unsigned int decrypt_len = 0;
 
     ++sock_ptr->recv_ack;
 
@@ -1173,34 +1094,44 @@ void _iocp_ssl_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
         }
     }
 
+    EnterCriticalSection(&sock_ptr->ssl_data->ssl_lock);
     do 
     {
-        ssl_ret = SSL_read(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->ssl_recv_buf + sock_ptr->ssl_data->ssl_read_length, sock_ptr->ssl_data->ssl_recv_buf_size - sock_ptr->ssl_data->ssl_read_length);
+        char* free_data_ptr = 0;
+        size_t free_data_len = 0;
+        loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_ptr, &free_data_len);
 
-        if (ssl_ret > 0)
+        if (free_data_len)
         {
-            if (loop_cache_push_data(sock_ptr->recv_loop_cache, sock_ptr->ssl_data->ssl_recv_buf, ssl_ret + sock_ptr->ssl_data->ssl_read_length))
-            {
-                decrypted_data_length += ssl_ret + sock_ptr->ssl_data->ssl_read_length;
+            ssl_ret = SSL_read(sock_ptr->ssl_data->ssl, free_data_ptr, (int)free_data_len);
 
-                sock_ptr->ssl_data->ssl_read_length = 0;
+            if (ssl_ret > 0)
+            {
+                if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
+                {
+                    CRUSH_CODE();
+                }
+                decrypt_len += ssl_ret;
             }
             else
             {
-                sock_ptr->ssl_data->ssl_read_length += ssl_ret;
+                if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
+                {
+                    _iocp_tcp_socket_close(sock_ptr, error_ssl);
+                    return;
+                }
                 break;
             }
         }
         else
         {
-            if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
-            {
-                _iocp_tcp_socket_close(sock_ptr, error_ssl);
-                return;
-            }
+            LeaveCriticalSection(&sock_ptr->ssl_data->ssl_lock);
+            _push_recv_active_event(sock_ptr);
+            return;
         }
 
-    } while (ssl_ret > 0);
+    } while (loop_cache_free_size(sock_ptr->recv_loop_cache));
+    LeaveCriticalSection(&sock_ptr->ssl_data->ssl_lock);
 
     if (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE)
     {
@@ -1220,22 +1151,12 @@ void _iocp_ssl_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     }
     else
     {
-        if (decrypted_data_length)
-        {
-            _push_data_event(sock_ptr, decrypted_data_length);
-        }
+        _push_data_event(sock_ptr, decrypt_len);
     }
 
-    if (sock_ptr->ssl_data->ssl_read_length)
+    if (!_iocp_ssl_socket_post_recv(sock_ptr))
     {
-        _push_recv_active_event(sock_ptr);
-    }
-    else
-    {
-        if (!_iocp_ssl_socket_post_recv(sock_ptr))
-        {
-            _iocp_tcp_socket_close(sock_ptr, error_system);
-        }
+        _iocp_tcp_socket_close(sock_ptr, error_system);
     }
 }
 
@@ -2422,8 +2343,6 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     InitializeCriticalSection(&mgr->evt_lock);
     InitializeCriticalSection(&mgr->socket_lock);
 
-    _ssl_init();
-
     version_requested = MAKEWORD(2, 2);
 
     if (WSAStartup(version_requested, &wsa_data))
@@ -2680,7 +2599,7 @@ iocp_tcp_socket* (iocp_ssl_connect)(
     bool reuse_addr,
     const char* bind_ip,
     unsigned short bind_port,
-    void* cli_ssl_ctx,
+    SSL_CTX* cli_ssl_ctx,
     pfn_on_establish func_on_establish,
     pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error,
@@ -2850,7 +2769,7 @@ iocp_tcp_listener* iocp_ssl_listen(HNETMANAGER mgr,
     unsigned int recv_buf_size,
     unsigned int send_buf_size,
     bool reuse_addr,
-    void* svr_ssl_ctx,
+    SSL_CTX* svr_ssl_ctx,
     pfn_on_establish func_on_establish,
     pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error,

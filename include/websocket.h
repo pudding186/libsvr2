@@ -1,6 +1,7 @@
 #pragma once
 #include "./lib_svr_def.h"
 #include "./iocp_tcp.h"
+#include "./ssl_tcp.h"
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -31,14 +32,14 @@ extern HWSLISTENER(wss_listen)(HWSMANAGER mgr,
     unsigned short port,
     unsigned int recv_buf_size,
     unsigned int send_buf_size,
-    HSSLCTX svr_ssl_ctx);
+    SSL_CTX* svr_ssl_ctx);
 
 extern HWSSESSION wss_connect(HWSMANAGER ws_mgr,
     const char* uri,
     const char* extra_headers,
     unsigned int recv_buf_size,
     unsigned int send_buf_size,
-    HSSLCTX cli_ssl_ctx);
+    SSL_CTX* cli_ssl_ctx);
 
 extern bool (ws_send_text)(HWSSESSION ws_session, const char* data, unsigned int length, bool compress);
 

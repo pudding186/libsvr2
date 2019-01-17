@@ -31,6 +31,7 @@
     <ClInclude Include="include\rb_tree.h" />
     <ClInclude Include="include\share_memory.h" />
     <ClInclude Include="include\smemory.hpp" />
+    <ClInclude Include="include\ssl_tcp.h" />
     <ClInclude Include="include\timer.h" />
     <ClInclude Include="include\tree_help.h" />
     <ClInclude Include="include\utility.hpp" />
@@ -56,6 +57,7 @@
     <ClCompile Include="src\share_memory.c" />
     <ClCompile Include="src\sha_1.c" />
     <ClCompile Include="src\smemory.cpp" />
+    <ClCompile Include="src\ssl_tcp.c" />
     <ClCompile Include="src\timer.c" />
     <ClCompile Include="src\tree_help.c" />
     <ClCompile Include="src\utility.cpp" />

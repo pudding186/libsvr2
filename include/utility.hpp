@@ -129,5 +129,34 @@ extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_siz
 	++ s_func_perf_info.hit_count;\
 	CFuncPerformanceCheck func_perf_check(&s_func_perf_info, DefFuncPerfMgr());
 
+//////////////////////////////////////////////////////////////////////////
+
+template <size_t N>
+inline void StrSafeCopy(char(&Destination)[N], const char* Source) throw() {
+    static_assert(N > 0, "StrSafeCopy dst size == 0");
+
+    // initialize for check below
+    if (NULL == Source) {
+        Destination[0] = '\0';
+        return;
+    }
+
+    size_t nSrcLen = strnlen(Source, N - 1);
+    memcpy(Destination, Source, nSrcLen + 1);
+    Destination[N - 1] = '\0';
+}
+
+template <typename T>
+inline void StrSafeCopy(T& Destination, const char* Source, size_t len)
+{
+    // Use cast to ensure that we only allow character arrays
+    (static_cast<char[sizeof(Destination)]>(Destination));
+    size_t size = sizeof(Destination);
+
+    size_t l = min(size - 1, len);
+    strncpy(Destination, Source, l);
+    Destination[l] = 0;
+}
+
 #endif
 

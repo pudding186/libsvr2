@@ -1590,7 +1590,7 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
 }
 
 ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
-    unsigned int recv_buf_size, unsigned int send_buf_size, HSSLCTX svr_ssl_ctx)
+    unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* svr_ssl_ctx)
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
 
@@ -1879,7 +1879,7 @@ FAIL:
     return 0;
 }
 
-ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, HSSLCTX cli_ssl_ctx)
+ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* cli_ssl_ctx)
 {
     mem_seg host_name_seg;
     mem_seg path_seg;
