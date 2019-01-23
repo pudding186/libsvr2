@@ -63,13 +63,13 @@ extern void* (iocp_tcp_get_listener_data)(HLISTENER listener);
 
 extern void* (iocp_tcp_get_session_data)(HSESSION socket);
 
-extern type_ip_str iocp_tcp_get_peer_type_ip_str(HSESSION socket);
+extern bool (iocp_tcp_get_peer_ip_port)(HSESSION socket, ip_info* info);
 
-extern unsigned short (iocp_tcp_get_peer_port)(HSESSION socket);
+extern bool (iocp_tcp_get_local_ip_port)(HSESSION socket, ip_info* info);
 
-extern type_ip_str iocp_tcp_get_local_type_ip_str(HSESSION socket);
+extern bool (iocp_tcp_get_peer_sock_addr)(HSESSION socket, addr_info* info);
 
-extern unsigned short (iocp_tcp_get_local_port)(HSESSION socket);
+extern bool (iocp_tcp_get_local_sock_addr)(HSESSION socket, addr_info* info);
 
 extern unsigned int (iocp_tcp_get_send_free_size)(HSESSION socket);
 

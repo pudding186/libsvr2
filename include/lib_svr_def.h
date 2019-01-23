@@ -47,7 +47,7 @@ typedef enum e_iocp_tcp_error
     error_ok            = 0,
 }iocp_tcp_error;
 
-typedef struct st_type_ip_str
+typedef struct st_ip_info
 {
     enum
     {
@@ -56,7 +56,24 @@ typedef struct st_type_ip_str
         ip_v6 = 23
     }ip_type;
     char ip_str[64];
-}type_ip_str;
+    unsigned short port;
+}ip_info;
+
+typedef struct st_addr_info
+{
+    enum
+    {
+        addr_unknow = 0,
+        addr_v4 = 2,
+        addr_v6 = 23
+    }addr_type;
+
+    union 
+    {
+        struct sockaddr_in* v4;
+        struct sockaddr_in6* v6;
+    }sock_addr_ptr;
+}addr_info;
 
 typedef unsigned int(*pfn_parse_packet)(HSESSION session, const char* data, const unsigned int len);
 typedef void (*pfn_on_establish)(HLISTENER net_handle, HSESSION session);

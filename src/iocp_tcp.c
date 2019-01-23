@@ -2938,71 +2938,134 @@ void* iocp_tcp_get_session_data(iocp_tcp_socket* sock_ptr)
     return sock_ptr->user_data;
 }
 
-type_ip_str iocp_tcp_get_peer_type_ip_str(iocp_tcp_socket* sock_ptr)
+bool iocp_tcp_get_peer_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
 {
-    type_ip_str tmp;
     if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
     {
-        tmp.ip_type = ip_v4;
+        info->ip_type = ip_v4;
         struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->peer_sockaddr;
         inet_ntop(sockaddr_v4->sin_family,
             &sockaddr_v4->sin_addr,
-            tmp.ip_str,
-            sizeof(tmp.ip_str));
+            info->ip_str,
+            sizeof(info->ip_str));
+        info->port = ntohs(sockaddr_v4->sin_port);
+
+        return true;
     }
     else if (sock_ptr->peer_sockaddr.sin6_family == AF_INET6)
     {
-        tmp.ip_type = ip_v6;
+        info->ip_type = ip_v6;
         inet_ntop(sock_ptr->peer_sockaddr.sin6_family,
             &sock_ptr->peer_sockaddr.sin6_addr,
-            tmp.ip_str,
-            sizeof(tmp.ip_str));
+            info->ip_str,
+            sizeof(info->ip_str));
+
+        info->port = ntohs(sock_ptr->peer_sockaddr.sin6_port);
+
+        return true;
     }
     else
     {
-        tmp.ip_type = ip_unknow;
+        info->ip_type = ip_unknow;
     }
 
-    return tmp;
+    return false;
 }
 
-type_ip_str iocp_tcp_get_local_type_ip_str(iocp_tcp_socket* sock_ptr)
+bool iocp_tcp_get_local_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
 {
-    type_ip_str tmp;
     if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
     {
-        tmp.ip_type = ip_v4;
+        info->ip_type = ip_v4;
         struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->local_sockaddr;
         inet_ntop(sockaddr_v4->sin_family,
             &sockaddr_v4->sin_addr,
-            tmp.ip_str,
-            sizeof(tmp.ip_str));
+            info->ip_str,
+            sizeof(info->ip_str));
+        info->port = ntohs(sockaddr_v4->sin_port);
+
+        return true;
     }
     else if (sock_ptr->local_sockaddr.sin6_family == AF_INET6)
     {
-        tmp.ip_type = ip_v6;
+        info->ip_type = ip_v6;
         inet_ntop(sock_ptr->local_sockaddr.sin6_family,
             &sock_ptr->local_sockaddr.sin6_addr,
-            tmp.ip_str,
-            sizeof(tmp.ip_str));
+            info->ip_str,
+            sizeof(info->ip_str));
+
+        info->port = ntohs(sock_ptr->local_sockaddr.sin6_port);
+
+        return true;
     }
     else
     {
-        tmp.ip_type = ip_unknow;
+        info->ip_type = ip_unknow;
+        info->port = 0;
     }
 
-    return tmp;
+    return false;
 }
 
-unsigned short iocp_tcp_get_peer_port(iocp_tcp_socket* sock_ptr)
+bool iocp_tcp_get_peer_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
 {
-    return ntohs(sock_ptr->peer_sockaddr.sin6_port);
+    if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
+    {
+        info->addr_type = addr_v4;
+        info->sock_addr_ptr.v4 = (struct sockaddr_in*)&sock_ptr->peer_sockaddr;
+
+        return true;
+    }
+    else if (sock_ptr->peer_sockaddr.sin6_family == AF_INET6)
+    {
+        info->addr_type = addr_v6;
+        info->sock_addr_ptr.v6 = &sock_ptr->peer_sockaddr;
+
+        return true;
+    }
+    else
+    {
+        info->addr_type = addr_unknow;
+        info->sock_addr_ptr.v4 = 0;
+    }
+
+    return false;
 }
 
-unsigned short iocp_tcp_get_local_port(iocp_tcp_socket* sock_ptr)
+bool iocp_tcp_get_local_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
 {
-    return ntohs(sock_ptr->local_sockaddr.sin6_port);
+    if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
+    {
+        info->addr_type = addr_v4;
+        info->sock_addr_ptr.v4 = (struct sockaddr_in*)&sock_ptr->local_sockaddr;
+
+        return true;
+    }
+    else if (sock_ptr->local_sockaddr.sin6_family == AF_INET6)
+    {
+        info->addr_type = addr_v6;
+        info->sock_addr_ptr.v6 = &sock_ptr->local_sockaddr;
+
+        return true;
+    }
+    else
+    {
+        info->addr_type = addr_unknow;
+        info->sock_addr_ptr.v4 = 0;
+    }
+
+    return false;
 }
+
+//unsigned short iocp_tcp_get_peer_port(iocp_tcp_socket* sock_ptr)
+//{
+//    return ntohs(sock_ptr->peer_sockaddr.sin6_port);
+//}
+//
+//unsigned short iocp_tcp_get_local_port(iocp_tcp_socket* sock_ptr)
+//{
+//    return ntohs(sock_ptr->local_sockaddr.sin6_port);
+//}
 
 unsigned int iocp_tcp_get_send_free_size(iocp_tcp_socket* sock_ptr)
 {
