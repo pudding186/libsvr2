@@ -1,5 +1,5 @@
 #pragma once
-#include <WinSock2.h>
+//#include <WinSock2.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
