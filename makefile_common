@@ -1,0 +1,115 @@
+#==============================================
+#comm makefile option
+#==============================================
+BINEXT=elf
+
+DIR_TOP = /home/work/libsvr
+
+#==============================================
+# edition type
+#-------------------------------------------
+# DEBUG		: debug edition
+# RELEASE	: release edition
+#==============================================
+BUILD = DEBUG
+
+ifeq ($(BUILD),DEBUG)
+D = D
+endif
+
+ifeq ($(BUILD),RELEASE)
+D = D
+endif
+
+#==============================================
+#global dir
+#==============================================
+DIR_SRC		= $(DIR_TOP)/src
+DIR_LIB 	= $(DIR_TOP)/lib
+DIR_INC		= $(DIR_TOP)/include
+DIR_BIN		= $(DIR_TOP)/bin
+
+
+#==============================================
+#libsvr includes
+#==============================================
+INC_LIBSVR		= -I$(DIR_INC)
+
+#==============================================
+#mysql libs and includes
+#==============================================
+#DIR_MYSQL_LIB	= /usr/lib/mysql
+#INC_MYSQL     = -I/usr/include/mysql
+#LIB_MYSQL     = -L$(DIR_MYSQL_LIB) -lmysqlclient -lz
+
+#==============================================
+#other libs and includes
+#==============================================
+LIB_THREAD    = -lpthread
+LIB_RT        = -lrt
+LIB_SYSTEM    = $(LIB_THREAD) $(LIB_RT)
+#=============================================
+#3rd libs
+#=============================================
+#LIB_CURL     = -L$(DIR_TOP)/../lib3rd/libcurl/lib -lcurl
+#LIB_3RD      = $(LIB_CURL)
+#LIB_SSL     = -lssl
+#==============================================
+#svrlib libs
+#==============================================
+#LIBF_NET = $(DIR_LIB)/libnet$(D).a
+#LIBF_DB = $(DIR_LIB)/libdb$(D).a
+#LIBF_UTILITY = $(DIR_LIB)/libutility$(D).a
+#LIBF_TIMER= $(DIR_LIB)/libtimer$(D).a
+#LIBF_LOG= $(DIR_LIB)/liblog$(D).a
+
+#LIB_NET = -L$(DIR_LIB) -lnet$(D)
+#LIB_DB = -L$(DIR_LIB) -ldb$(D)
+#LIB_UTILITY = -L$(DIR_LIB) -lutility$(D)
+#LIB_TIMER= -L$(DIR_LIB) -ltimer$(D)
+#LIB_LOG= -L$(DIR_LIB) -llog$(D)
+
+LIBF_SVR = $(DIR_LIB)/libsvr$(D).a
+
+LIB_SVR = -L$(DIR_LIB) -lsvr$(D)
+
+#LIB_SVRLIB = $(LIB_NET) $(LIB_DB) $(LIB_UTILITY) $(LIB_TIMER) $(LIB_LOG)
+
+
+#LIBF_WMSYSTEM	= $(DIR_LIB)/libwmsystem$(D).a
+#LIBF_WMHELPER	= $(DIR_LIB)/libwmhelper$(D).a
+#LIBF_WMNETWORK	= $(DIR_LIB)/libwmnetwork$(D).a
+#LIBF_WMMYSQL	= $(DIR_LIB)/libwmmysql$(D).a
+#LIBF_WMKERNELSHARE = $(DIR_LIB)/libwmkernelshare$(D).a
+
+#LIB_WMSYSTEM	= -L$(DIR_LIB) -lwmsystem$(D)
+#LIB_WMHELPER	= -L$(DIR_LIB) -lwmhelper$(D)
+#LIB_WMNETWORK	= -L$(DIR_LIB) -lwmnetwork$(D)
+#LIB_WMMYSQL		= -L$(DIR_LIB) -lwmmysql$(D)
+#LIB_WMKERNELSHARE = -L$(DIR_LIB) -lwmkernelshare$(D)
+
+#LIB_WMKERNEL	= $(LIB_WMNETWORK) $(LIB_WMMYSQL) $(LIB_WMHELPER) $(LIB_WMSYSTEM) $(LIB_WMKERNELSHARE) $(LIB_MYSQL) $(LIB_THREAD) -static -lstdc++ -lcrypt 
+
+#==============================================
+#flags
+#==============================================
+ifeq ($(BUILD), DEBUG)
+C_LFLAGS		= -std=gnu11 -g -Wall -D_DEBUG -DLINUX
+CXX_LFLAGS 		= -std=gnu++11 -g -Wall -Woverloaded-virtual -D_DEBUG -DLINUX
+endif
+
+ifeq ($(BUILD), RELEASE)
+C_LFLAGS		= -std=gnu11 -g -Wall -DNDEBUG -DLINUX
+CXX_LFLAGS 		= -std=gnu++11 -g -Wall -Woverloaded-virtual -DNDEBUG -DLINUX
+endif
+
+LDFLAGS			= -s
+ARFLAGS			= -rc
+
+CC		= gcc
+CPP		= g++
+AR		= ar
+LD		= ld
+NM		= nm
+RANLIB	= ranlib
+STRIP	= strip
