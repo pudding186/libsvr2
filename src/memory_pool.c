@@ -4,7 +4,7 @@
 #include "../include/memory_pool.h"
 #include "../include/avl_tree.h"
 
-__declspec(thread) HMEMORYMANAGER lib_svr_mem_mgr = 0;
+TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr = 0;
 
 mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 {
@@ -32,6 +32,32 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
     return block;
 }
 
+void memory_unit_set_grow_bytes(HMEMORYUNIT unit, size_t grow_bytes)
+{
+    if (grow_bytes)
+    {
+        size_t real_unit_size = sizeof(void*) + unit->unit_size;
+
+        if (grow_bytes > (sizeof(mem_block) + real_unit_size))
+        {
+            unit->grow_count = (grow_bytes - sizeof(mem_block)) / real_unit_size;
+        }
+        else
+        {
+            unit->grow_count = 1;
+        }
+    }
+    else
+    {
+        unit->grow_count = 0;
+    }
+}
+
+void memory_unit_set_grow_count(HMEMORYUNIT unit, size_t grow_count)
+{
+    unit->grow_count = grow_count;
+}
+
 mem_unit* create_memory_unit(size_t unit_size)
 {
     mem_unit* unit = (mem_unit*)malloc(sizeof(mem_unit));
@@ -39,6 +65,8 @@ mem_unit* create_memory_unit(size_t unit_size)
     unit->unit_size = unit_size;
     unit->block_head = 0;
     unit->unit_free_head = 0;
+
+    memory_unit_set_grow_bytes(unit, 4 * 1024);
 
     return unit;
 }
@@ -56,46 +84,18 @@ void destroy_memory_unit(mem_unit* unit)
     free(unit);
 }
 
-void* memory_unit_alloc(mem_unit* unit, size_t grow_size)
+void* memory_unit_alloc(HMEMORYUNIT unit)
 {
     void* alloc_mem;
 
     if (!unit->unit_free_head)
     {
-        size_t real_unit_size = sizeof(void*) + unit->unit_size;
-
-        if (grow_size > (sizeof(mem_block) + real_unit_size))
-        {
-            _create_memory_block(unit,
-                (grow_size - sizeof(mem_block)) / real_unit_size);
-        }
-        else
-        {
-            _create_memory_block(unit, 1);
-        }
-    }
-
-    alloc_mem = unit->unit_free_head;
-
-    unit->unit_free_head = *(void**)alloc_mem;
-
-    *(void**)alloc_mem = unit;
-
-    return (unsigned char*)alloc_mem + sizeof(void*);
-}
-
-void* memory_unit_alloc_ex(mem_unit* unit, size_t grow_count)
-{
-    void* alloc_mem;
-
-    if (!unit->unit_free_head)
-    {
-        if (!grow_count)
+        if (!unit->grow_count)
         {
             return 0;
         }
 
-        _create_memory_block(unit, grow_count);
+        _create_memory_block(unit, unit->grow_count);
     }
 
     alloc_mem = unit->unit_free_head;
@@ -106,6 +106,57 @@ void* memory_unit_alloc_ex(mem_unit* unit, size_t grow_count)
 
     return (unsigned char*)alloc_mem + sizeof(void*);
 }
+
+//void* memory_unit_alloc(mem_unit* unit, size_t grow_size)
+//{
+//    void* alloc_mem;
+//
+//    if (!unit->unit_free_head)
+//    {
+//        size_t real_unit_size = sizeof(void*) + unit->unit_size;
+//
+//        if (grow_size > (sizeof(mem_block) + real_unit_size))
+//        {
+//            _create_memory_block(unit,
+//                (grow_size - sizeof(mem_block)) / real_unit_size);
+//        }
+//        else
+//        {
+//            _create_memory_block(unit, 1);
+//        }
+//    }
+//
+//    alloc_mem = unit->unit_free_head;
+//
+//    unit->unit_free_head = *(void**)alloc_mem;
+//
+//    *(void**)alloc_mem = unit;
+//
+//    return (unsigned char*)alloc_mem + sizeof(void*);
+//}
+//
+//void* memory_unit_alloc_ex(mem_unit* unit, size_t grow_count)
+//{
+//    void* alloc_mem;
+//
+//    if (!unit->unit_free_head)
+//    {
+//        if (!grow_count)
+//        {
+//            return 0;
+//        }
+//
+//        _create_memory_block(unit, grow_count);
+//    }
+//
+//    alloc_mem = unit->unit_free_head;
+//
+//    unit->unit_free_head = *(void**)alloc_mem;
+//
+//    *(void**)alloc_mem = unit;
+//
+//    return (unsigned char*)alloc_mem + sizeof(void*);
+//}
 
 void memory_unit_free(mem_unit* unit, void* mem)
 {
@@ -255,13 +306,15 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
 
     if (pool->units[i])
     {
-        return memory_unit_alloc(pool->units[i], pool->grow);
+        return memory_unit_alloc(pool->units[i]);
     }
     else
     {
         pool->units[i] = create_memory_unit(pool->min_mem_size + i * pool->align);
 
-        return memory_unit_alloc(pool->units[i], pool->grow);
+        memory_unit_set_grow_bytes(pool->units[i], pool->grow);
+
+        return memory_unit_alloc(pool->units[i]);
     }
 }
 
@@ -362,8 +415,9 @@ mem_mgr* create_memory_manager(size_t align, size_t start_size, size_t max_size,
     mgr->mem_pool_map.key_cmp = 0;
     mgr->mem_pool_map.tree_unit = 0;
     mgr->mem_pool_map.node_unit = create_memory_unit(sizeof(avl_node));
+    memory_unit_set_grow_count(mgr->mem_pool_map.node_unit, 32);
 
-    avl_node* tmp_node = memory_unit_alloc_ex(mgr->mem_pool_map.node_unit, 32);
+    avl_node* tmp_node = memory_unit_alloc(mgr->mem_pool_map.node_unit);
     memory_unit_free(mgr->mem_pool_map.node_unit, tmp_node);
 
     while (start_size <= max_size)

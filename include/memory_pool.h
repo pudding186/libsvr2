@@ -6,8 +6,11 @@ extern "C" {
 
 extern HMEMORYUNIT(create_memory_unit)(size_t unit_size);
 extern void (destroy_memory_unit)(HMEMORYUNIT unit);
-extern void* (memory_unit_alloc)(HMEMORYUNIT unit, size_t grow_byte);
-extern void* (memory_unit_alloc_ex)(HMEMORYUNIT unit, size_t grow_number);
+extern void* (memory_unit_alloc)(HMEMORYUNIT unit);
+extern void (memory_unit_set_grow_bytes)(HMEMORYUNIT unit, size_t grow_bytes);
+extern void (memory_unit_set_grow_count)(HMEMORYUNIT unit, size_t grow_count);
+//extern void* (memory_unit_alloc)(HMEMORYUNIT unit, size_t grow_byte);
+//extern void* (memory_unit_alloc_ex)(HMEMORYUNIT unit, size_t grow_number);
 extern void (memory_unit_free)(HMEMORYUNIT unit, void* mem);
 extern void (memory_unit_quick_free)(HMEMORYUNIT unit, void** ptr_mem_unit);
 extern bool (memory_unit_check)(HMEMORYUNIT unit, void* mem);

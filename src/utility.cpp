@@ -1,6 +1,15 @@
+
+#ifdef _MSC_VER
 #include <intrin.h>
-#include <tchar.h>
 #include <windows.h>
+#elif __GNUC__
+#include <limits.h>
+#else
+#error "unknown compiler"
+#endif
+
+
+#include <time.h>
 #include <stdio.h>
 
 #include "./lib_svr_common_def.h"
@@ -102,7 +111,7 @@ long long rand_integer(long long min, long long max)
         return min;
 
     long long rnd = rnd_gen64.GetOneRandNum64(range + 1);
-    rnd = _abs64(rnd);
+    rnd = llabs(rnd);
 
     return min + rnd;
 }
@@ -174,47 +183,114 @@ void push_back(dir_file_node** head, dir_file_node** tail, dir_file_node* node)
     }
 }
 
-int mb_to_wc(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size)
+//int mb_to_wc(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size)
+//{
+//    int translate_len = MultiByteToWideChar(code_page, 0, src, c_len, dst, w_size);
+//
+//    if (!translate_len)
+//    {
+//        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+//        {
+//            return MultiByteToWideChar(code_page, 0, src, c_len, 0, 0);
+//        }
+//
+//        return 0;
+//    }
+//
+//    return translate_len;
+//}
+//
+//int wc_to_mb(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size)
+//{
+//    int translate_len = WideCharToMultiByte(code_page, 0, src, w_len, dst, c_size, 0, 0);
+//
+//    if (!translate_len)
+//    {
+//        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+//        {
+//            return WideCharToMultiByte(code_page, 0, src, w_len, 0, 0, 0, 0);
+//        }
+//
+//        return 0;
+//    }
+//
+//    return translate_len;
+//}
+
+size_t ulltostr(unsigned long long val, char* buf, size_t size, unsigned int radix)
 {
-    int translate_len = MultiByteToWideChar(code_page, 0, src, c_len, dst, w_size);
+    char* p;
+    char* firstdig;
+    char temp;
+    unsigned digval;
+    size_t length;
 
-    if (!translate_len)
+    length = 0;
+
+    p = buf;
+
+    firstdig = p;
+
+    do
     {
-        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-        {
-            return MultiByteToWideChar(code_page, 0, src, c_len, 0, 0);
-        }
+        digval = (unsigned)(val%radix);
+        val /= radix;
 
+        if (digval > 9)
+            *p++ = (char)(digval - 10 + 'a');
+        else
+            *p++ = (char)(digval + '0');
+
+        length++;
+
+    } while (val > 0 && length < size);
+
+    if (length >= size)
+    {
+        buf[0] = '\0';
         return 0;
     }
 
-    return translate_len;
+    *p-- = '\0';
+
+    do
+    {
+        temp = *p;
+        *p = *firstdig;
+        *firstdig = temp;
+        --p;
+        ++firstdig;
+    } while (firstdig < p);
+
+    return length;
 }
 
-int wc_to_mb(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size)
+size_t lltostr(long long val, char* buf, size_t size, unsigned int radix)
 {
-    int translate_len = WideCharToMultiByte(code_page, 0, src, w_len, dst, c_size, 0, 0);
-
-    if (!translate_len)
+    if (val < 0)
     {
-        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+        if (size < 2)
         {
-            return WideCharToMultiByte(code_page, 0, src, w_len, 0, 0, 0, 0);
+            return false;
         }
 
-        return 0;
+        *buf = '-';
+        buf++;
+        size--;
+        val = -val;
     }
 
-    return translate_len;
+    return ulltostr(val, buf, size, radix);
 }
 
+#ifdef _MSC_VER
 bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, void* user_data)
 {
     HMEMORYUNIT dir_file_node_unit = create_memory_unit(sizeof(dir_file_node));
     WIN32_FIND_DATAW FindFileDataW;
     HANDLE hFind = INVALID_HANDLE_VALUE;
 
-    dir_file_node* node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit, 4096);
+    dir_file_node* node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit);
 
     dir_file_node* dir_list_head = 0;
     dir_file_node* dir_list_tail = 0;
@@ -260,7 +336,7 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
                 wcscmp(FindFileDataW.cFileName, L".") &&
                 wcscmp(FindFileDataW.cFileName, L".."))
             {
-                node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit, 4096);
+                node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit);
 
                 wcscpy_s(node->dir_file_full_path, MAX_FILE_FULL_PATH, dir_list_head->dir_file_full_path);
                 wcscat_s(node->dir_file_full_path, MAX_FILE_FULL_PATH, FindFileDataW.cFileName);
@@ -301,7 +377,7 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
                     wcscmp(FindFileDataW.cFileName, L".") &&
                     wcscmp(FindFileDataW.cFileName, L".."))
                 {
-                    node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit, 4096);
+                    node = (dir_file_node*)memory_unit_alloc(dir_file_node_unit);
 
                     wcscpy_s(node->dir_file_full_path, MAX_FILE_FULL_PATH, dir_list_head->dir_file_full_path);
                     wcscat_s(node->dir_file_full_path, MAX_FILE_FULL_PATH, FindFileDataW.cFileName);
@@ -346,6 +422,7 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
     return true;
 }
 
+
 //////////////////////////////////////////////////////////////////////////
 
 const void *memmem(const void *haystack, size_t haystacklen,
@@ -382,6 +459,7 @@ const void *memmem(const void *haystack, size_t haystacklen,
     else
         return memchr(haystack, *(char*)needle, haystacklen);
 }
+#endif
 
 size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split, size_t  split_size, mem_seg* segs, size_t max_mem_seg)
 {
@@ -519,12 +597,8 @@ public:
         else
             m_shm_key = shm_key;
 
-        TCHAR sz_key[32];
-
-        _itot_s(m_shm_key, sz_key, 32, 10);
-
         size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
-        m_func_stack = (struct func_stack*)shm_alloc(sz_key, (unsigned int)shm_size);
+        m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
         if (!m_func_stack)
         {
             return false;
@@ -592,7 +666,14 @@ HFUNCPERFMGR CreateFuncPerfMgr(int shm_key)
 
     if (!shm_key)
     {
+#ifdef _MSC_VER
         shm_key = ::GetCurrentThreadId();
+#elif __GNUC__
+        shm_key = (int)pthread_self();
+#else
+#error "unknown compiler"
+#endif
+        
     }
 
     if (mgr->Init(shm_key))
@@ -608,7 +689,7 @@ HFUNCPERFMGR CreateFuncPerfMgr(int shm_key)
     }
 }
 
-__declspec(thread) CFuncPerformanceMgr* def_func_perf_mgr = 0;
+TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr = 0;
 
 void DestroyFuncPerfMgr(HFUNCPERFMGR mgr)
 {
@@ -639,7 +720,7 @@ CFuncPerformanceInfo* GetStackFuncPerfInfo(HFUNCPERFMGR mgr, int idx)
 size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
 {
     int total_len = 0;
-    int format_len = sprintf_s(cache, cache_size, "****** call stack ******\r\n");
+    int format_len = snprintf(cache, cache_size, "****** call stack ******\r\n");
     int stack_idx = mgr->StackTop();
 
     if (format_len < 0)
@@ -656,12 +737,12 @@ size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
         CFuncPerformanceInfo* info = mgr->StackFuncPerfInfo(stack_idx - 1);
         if (info)
         {
-            format_len = sprintf_s(cache + total_len, cache_size - total_len,
+            format_len = snprintf(cache + total_len, cache_size - total_len,
                 "[stack:%2d] call %s()\r\n", stack_idx, info->func_name);
         }
         else
         {
-            format_len = sprintf_s(cache + total_len, cache_size - total_len,
+            format_len = snprintf(cache + total_len, cache_size - total_len,
                 "[stack:%2d] call ?()\r\n", stack_idx);
         }
 

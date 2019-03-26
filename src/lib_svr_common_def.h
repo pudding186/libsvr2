@@ -4,6 +4,14 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#ifdef _MSC_VER
+#define TLS_VAR __declspec(thread)
+#elif __GNUC__
+#define TLS_VAR __thread
+#else
+#error "unknown compiler"
+#endif
+
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -20,6 +28,7 @@ typedef struct st_mem_unit
     size_t                  unit_size;      //内存单元的大小
     struct st_mem_block*    block_head;     //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
+    size_t                  grow_count;     //内存池每次增长个数
 }mem_unit;
 
 typedef struct st_mem_pool
@@ -66,9 +75,6 @@ typedef struct st_avl_tree
     mem_unit*           node_unit;
 }avl_tree;
 
-extern __declspec(thread) HMEMORYUNIT def_avl_tree_unit;
-extern __declspec(thread) HMEMORYUNIT def_avl_node_unit;
-
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_rb_node
 {
@@ -97,16 +103,11 @@ typedef struct st_rb_tree
     mem_unit*           node_unit;
 }rb_tree;
 
-extern __declspec(thread) HMEMORYUNIT def_rb_tree_unit;
-extern __declspec(thread) HMEMORYUNIT def_rb_node_unit;
-
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_mem_mgr
 {
     avl_tree    mem_pool_map;
 }mem_mgr;
-
-extern __declspec(thread) HMEMORYMANAGER lib_svr_mem_mgr;
 
 extern void* (libsvr_memory_manager_realloc)(void* old_mem, size_t mem_size);
 
@@ -230,15 +231,6 @@ typedef struct st_json_struct
 
 //////////////////////////////////////////////////////////////////////////
 
-extern __declspec(thread) HMEMORYUNIT def_json_struct_unit;
-extern __declspec(thread) HMEMORYUNIT def_json_node_unit;
-
-extern __declspec(thread) HRBTREE trace_info_map;
-extern __declspec(thread) HRBTREE trace_ptr_map;
-
-extern __declspec(thread) HMEMORYUNIT trace_info_unit;
-extern __declspec(thread) HMEMORYUNIT trace_ptr_unit;
-
 extern ptrdiff_t trace_info_cmp(void* info1, void* info2);
 extern ptrdiff_t trace_ptr_cmp(void* ptr1, void* ptr2);
 
@@ -247,6 +239,5 @@ extern ptrdiff_t trace_ptr_cmp(void* ptr1, void* ptr2);
 
 //////////////////////////////////////////////////////////////////////////
 //typedef class CFuncPerformanceMgr* HFUNCPERFMGR;
-extern __declspec(thread) CFuncPerformanceMgr* def_func_perf_mgr;
 
 #endif // __cplusplus

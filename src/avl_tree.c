@@ -1,10 +1,11 @@
+#include <math.h>
 #include "./lib_svr_common_def.h"
 #include "../include/avl_tree.h"
 #include "../include/memory_pool.h"
 #include "../include/utility.hpp"
 
-__declspec(thread) HMEMORYUNIT def_avl_tree_unit = 0;
-__declspec(thread) HMEMORYUNIT def_avl_node_unit = 0;
+TLS_VAR HMEMORYUNIT def_avl_tree_unit = 0;
+TLS_VAR HMEMORYUNIT def_avl_node_unit = 0;
 
 
 __inline int _avl_node_height(avl_node* node)
@@ -74,6 +75,9 @@ __inline void _avl_link_node(avl_tree* tree, avl_node* node, avl_node* parent, a
 
 void _avl_roate(avl_tree* tree, avl_node* node)
 {
+    int h0;
+    int h1;
+
     const size_t side = (node != node->avl_parent->avl_child[0]);
     const size_t other_side = !side;
 
@@ -97,22 +101,53 @@ void _avl_roate(avl_tree* tree, avl_node* node)
 
     parent->avl_parent = node;
 
-    parent->avl_height = 1 + max(_avl_node_height(parent->avl_child[0]),
-        _avl_node_height(parent->avl_child[1]));
-    node->avl_height = 1 + max(_avl_node_height(node->avl_child[0]),
-        _avl_node_height(node->avl_child[1]));
+    h0 = _avl_node_height(parent->avl_child[0]);
+    h1 = _avl_node_height(parent->avl_child[1]);
+
+    if (h0 > h1)
+    {
+        parent->avl_height = 1 + h0;
+    }
+    else
+    {
+        parent->avl_height = 1 + h1;
+    }
+
+    h0 = _avl_node_height(node->avl_child[0]);
+    h1 = _avl_node_height(node->avl_child[1]);
+
+    if (h0 > h1)
+    {
+        node->avl_height = 1 + h0;
+    }
+    else
+    {
+        node->avl_height = 1 + h1;
+    }
 }
 
 void _avl_balance(avl_tree* tree, avl_node* node)
 {
+    int h0;
+    int h1;
+
     while (node)
     {
         ptrdiff_t balance;
+        
+        h0 = _avl_node_height(node->avl_child[0]);
+        h1 = _avl_node_height(node->avl_child[1]);
 
-        node->avl_height = 1 + max(_avl_node_height(node->avl_child[0]),
-            _avl_node_height(node->avl_child[1]));
+        if (h0 > h1)
+        {
+            node->avl_height = 1 + h0;
+        }
+        else
+        {
+            node->avl_height = 1 + h1;
+        }
 
-        balance = _avl_node_height(node->avl_child[0]) - _avl_node_height(node->avl_child[1]);
+        balance = h0 - h1;
 
         if (balance == 2 || balance == -2)
         {
@@ -166,7 +201,7 @@ void _avl_splice_out(avl_tree* tree, avl_node* node)
 
 avl_tree* create_avl_tree(compare_func key_cmp_func)
 {
-    avl_tree* tree = (avl_tree*)memory_unit_alloc(def_avl_tree_unit, 256);
+    avl_tree* tree = (avl_tree*)memory_unit_alloc(def_avl_tree_unit);
     tree->tree_unit = def_avl_tree_unit;
     tree->node_unit = def_avl_node_unit;
 
@@ -193,7 +228,7 @@ avl_tree* create_avl_tree_ex(compare_func key_cmp_func, HMEMORYUNIT tree_unit, H
         node_unit = def_avl_node_unit;
     }
 
-    tree = (avl_tree*)memory_unit_alloc(tree_unit, 256);
+    tree = (avl_tree*)memory_unit_alloc(tree_unit);
     tree->tree_unit = tree_unit;
     tree->node_unit = node_unit;
 
@@ -405,7 +440,7 @@ avl_node* avl_tree_insert_integer(avl_tree* tree, size_t key, void* user_data)
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (avl_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -441,7 +476,7 @@ bool avl_tree_try_insert_integer(avl_tree* tree, size_t key, void* user_data, av
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (avl_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -502,7 +537,7 @@ avl_node* avl_tree_insert_user(avl_tree* tree, void* key, void* user_data)
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (avl_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;
@@ -540,7 +575,7 @@ bool avl_tree_try_insert_user(avl_tree* tree, void* key, void* user_data, avl_no
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (avl_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;

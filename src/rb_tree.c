@@ -10,8 +10,8 @@
 #define rb_is_red(r)    (!rb_color(r))
 #define rb_is_black(r)  rb_color(r)
 
-__declspec(thread) HMEMORYUNIT def_rb_tree_unit = 0;
-__declspec(thread) HMEMORYUNIT def_rb_node_unit = 0;
+TLS_VAR HMEMORYUNIT def_rb_tree_unit = 0;
+TLS_VAR HMEMORYUNIT def_rb_node_unit = 0;
 
 __inline void _rb_link_node(rb_tree* root, rb_node* node, rb_node* parent, rb_node** rb_link)
 {
@@ -149,8 +149,10 @@ static void _rb_rotate_right(rb_node *node, rb_tree *root)
     node->rb_parent = left;
 }
 
+#ifdef _MSC_VER
 #pragma warning( push )
 #pragma warning( disable : 4706 )
+#endif
 
 void _rb_insert_balance(rb_node *node, rb_tree *root)
 {
@@ -223,7 +225,9 @@ void _rb_insert_balance(rb_node *node, rb_tree *root)
     root->root->rb_color = RB_BLACK;
 }
 
+#ifdef _MSC_VER
 #pragma warning( pop )
+#endif
 
 void _rb_erase_balance(rb_node *node, rb_node *parent, rb_tree *root)
 {
@@ -413,7 +417,7 @@ size_t rb_tree_size(HRBTREE tree)
 
 rb_tree* create_rb_tree(compare_func key_cmp_func)
 {
-    rb_tree* tree = (rb_tree*)memory_unit_alloc(def_rb_tree_unit, 256);
+    rb_tree* tree = (rb_tree*)memory_unit_alloc(def_rb_tree_unit);
     tree->tree_unit = def_rb_tree_unit;
     tree->node_unit = def_rb_node_unit;
 
@@ -440,7 +444,7 @@ rb_tree* create_rb_tree_ex(compare_func key_cmp_func, HMEMORYUNIT tree_unit, HME
         node_unit = def_rb_node_unit;
     }
 
-    tree = (rb_tree*)memory_unit_alloc(tree_unit, 256);
+    tree = (rb_tree*)memory_unit_alloc(tree_unit);
     tree->tree_unit = tree_unit;
     tree->node_unit = node_unit;
 
@@ -561,7 +565,7 @@ rb_node* rb_tree_insert_integer(rb_tree* tree, size_t key, void* user_data)
         }
     }
 
-    node = (rb_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (rb_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -597,7 +601,7 @@ bool rb_tree_try_insert_integer(rb_tree* tree, size_t key, void* user_data, rb_n
         }
     }
 
-    node = (rb_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (rb_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -658,7 +662,7 @@ rb_node* rb_tree_insert_user(rb_tree* tree, void* key, void* user_data)
         }
     }
 
-    node = (rb_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (rb_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;
@@ -696,7 +700,7 @@ bool rb_tree_try_insert_user(rb_tree* tree, void* key, void* user_data, rb_node*
         }
     }
 
-    node = (rb_node*)memory_unit_alloc(tree->node_unit, 1024);
+    node = (rb_node*)memory_unit_alloc(tree->node_unit);
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;

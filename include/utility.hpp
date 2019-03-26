@@ -1,5 +1,6 @@
 #pragma once
 #include <wchar.h>
+#include <string.h>
 #include "./lib_svr_def.h"
 #ifdef  __cplusplus
 extern "C" {
@@ -17,8 +18,11 @@ extern int (base64_encode)(const char *in, int in_len, char *out, int out_size);
 
 extern int (base64_decode)(const char *in, int in_len, char *out, int out_size);
 
-extern int (mb_to_wc)(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size);
-extern int (wc_to_mb)(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size);
+//extern int (mb_to_wc)(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size);
+//extern int (wc_to_mb)(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size);
+
+extern size_t (lltostr)(long long val, char* buf, size_t size, unsigned int radix);
+extern size_t (ulltostr)(unsigned long long val, char* buf, size_t size, unsigned int radix);
 
 extern bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, void* user_data);
 
@@ -27,13 +31,15 @@ typedef struct st_mem_seg
     const void* mem;
     size_t      mem_size;
 }mem_seg;
-
+#ifdef _MSC_VER
 extern const void* (memmem)(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
+#endif
 extern size_t (split_mem_to_segments)(const void* mem, size_t mem_size, const void* split, size_t  split_size, mem_seg* segs, size_t max_mem_seg);
 
 #ifdef  __cplusplus
 }
 
+#include <algorithm>
 //////////////////////////////////////////////////////////////////////////
 #define DECLARE_SINGLETON(cls)\
 private:\
@@ -125,7 +131,7 @@ extern HFUNCPERFMGR(DefFuncPerfMgr)(void);
 extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_size);
 
 #define FUNC_PERFORMANCE_CHECK \
-	__declspec(thread) static CFuncPerformanceInfo s_func_perf_info(__FUNCTION__, DefFuncPerfMgr());\
+	static thread_local CFuncPerformanceInfo s_func_perf_info(__FUNCTION__, DefFuncPerfMgr());\
 	++ s_func_perf_info.hit_count;\
 	CFuncPerformanceCheck func_perf_check(&s_func_perf_info, DefFuncPerfMgr());
 
@@ -134,7 +140,6 @@ extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_siz
 template <size_t N>
 inline void StrSafeCopy(char(&Destination)[N], const char* Source) throw() {
     static_assert(N > 0, "StrSafeCopy dst size == 0");
-
     // initialize for check below
     if (NULL == Source) {
         Destination[0] = '\0';
@@ -153,7 +158,12 @@ inline void StrSafeCopy(T& Destination, const char* Source, size_t len)
     (static_cast<char[sizeof(Destination)]>(Destination));
     size_t size = sizeof(Destination);
 
-    size_t l = min(size - 1, len);
+    size_t l = size - 1;
+
+    if (l < len)
+    {
+        l = len;
+    }
     strncpy(Destination, Source, l);
     Destination[l] = 0;
 }

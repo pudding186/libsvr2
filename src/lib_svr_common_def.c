@@ -10,7 +10,11 @@ bkdr_str* alloc_bkdr_str(const char* str, bool is_copy)
         void* ptr = libsvr_memory_manager_alloc(sizeof(bkdr_str) + str_len + 1);
         ((bkdr_str*)ptr)->hash_code = BKDRHash(str);
         ((bkdr_str*)ptr)->str = (char*)ptr + sizeof(bkdr_str);
-        strcpy_s((char*)((bkdr_str*)ptr)->str, str_len, str);
+        char* p_str = (char*)ptr + sizeof(bkdr_str);
+        memcpy(p_str, str, str_len);
+        p_str[str_len] = 0;
+
+
 
         return (bkdr_str*)ptr;
     }
@@ -37,7 +41,9 @@ bkdr_wstr* alloc_bkdr_wstr(const wchar_t* str, bool is_copy)
         void* ptr = libsvr_memory_manager_alloc(sizeof(bkdr_wstr) + (str_len + 1)*sizeof(wchar_t));
         ((bkdr_wstr*)ptr)->hash_code = BKDRHashW(str);
         ((bkdr_wstr*)ptr)->str = (wchar_t*)((char*)ptr + sizeof(bkdr_wstr));
-        wcscpy_s((wchar_t*)((bkdr_wstr*)ptr)->str, str_len, str);
+        wchar_t* p_wstr = (wchar_t*)((char*)ptr + sizeof(bkdr_wstr));
+        memcpy(p_wstr, str, str_len * sizeof(wchar_t));
+        p_wstr[str_len] = 0;
 
         return (bkdr_wstr*)ptr;
     }

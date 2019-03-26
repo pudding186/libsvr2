@@ -3,6 +3,25 @@
 #include "../include/utility.hpp"
 #include "../include/rb_tree.h"
 
+extern thread_local HMEMORYUNIT def_avl_tree_unit;
+extern thread_local HMEMORYUNIT def_avl_node_unit;
+
+extern TLS_VAR HMEMORYUNIT def_rb_tree_unit;
+extern TLS_VAR HMEMORYUNIT def_rb_node_unit;
+
+extern TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr;
+
+extern TLS_VAR HMEMORYUNIT def_json_struct_unit;
+extern TLS_VAR HMEMORYUNIT def_json_node_unit;
+
+extern TLS_VAR HRBTREE trace_info_map;
+extern TLS_VAR HRBTREE trace_ptr_map;
+
+extern TLS_VAR HMEMORYUNIT trace_info_unit;
+extern TLS_VAR HMEMORYUNIT trace_ptr_unit;
+
+extern TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr;
+
 namespace SMemory
 {
     //////////////////////////////////////////////////////////////////////////
@@ -32,7 +51,7 @@ namespace SMemory
 
     }
 
-    __declspec(thread) HMEMORYMANAGER IClassMemory::def_mem_mgr = 0;
+    TLS_VAR HMEMORYMANAGER IClassMemory::def_mem_mgr = 0;
 
     bool IClassMemory::IsValidPtr(void* ptr)
     {
@@ -116,12 +135,14 @@ public:
 
         if (!trace_info_unit)
         {
-            trace_info_unit = create_memory_unit(sizeof(MemTraceInfo));
+            trace_info_unit = create_memory_unit(sizeof(mem_trace_info));
+            memory_unit_set_grow_bytes(trace_info_unit, 1024);
         }
 
         if (!trace_ptr_unit)
         {
-            trace_ptr_unit = create_memory_unit(sizeof(PtrInfo));
+            trace_ptr_unit = create_memory_unit(sizeof(ptr_info));
+            memory_unit_set_grow_bytes(trace_ptr_unit, 40960);
         }
 #endif
     }
@@ -202,4 +223,4 @@ protected:
 private:
 };
 
-__declspec(thread) static DefMemInit g_def_mem_init;
+static thread_local DefMemInit g_def_mem_init;

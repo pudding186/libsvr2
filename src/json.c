@@ -4,11 +4,12 @@
 #include "./lib_svr_common_def.h"
 #include "../include/memory_pool.h"
 #include "../include/json.h"
+#include "../include/utility.hpp"
 
 #define TRIM_SPACE(char_ptr) while (isspace(*char_ptr)) ++char_ptr;
 
-__declspec(thread) HMEMORYUNIT def_json_struct_unit = 0;
-__declspec(thread) HMEMORYUNIT def_json_node_unit = 0;
+TLS_VAR HMEMORYUNIT def_json_struct_unit = 0;
+TLS_VAR HMEMORYUNIT def_json_node_unit = 0;
 
 void _escape_to_json_append(const char* src, size_t n, json_string_append f, void* ud)
 {
@@ -212,7 +213,7 @@ size_t _escape_from(const char* src, size_t n, char* dst)
 
 struct st_json_struct* _json_create_object(void)
 {
-    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit, 4 * 1024);
+    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit);
     json_struct_ptr->head = 0;
     json_struct_ptr->tail = 0;
     json_struct_ptr->stack = 0;
@@ -224,7 +225,7 @@ struct st_json_struct* _json_create_object(void)
 
 struct st_json_struct* _json_create_array(void)
 {
-    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit, 4 * 1024);
+    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit);
     json_struct_ptr->head = 0;
     json_struct_ptr->tail = 0;
     json_struct_ptr->stack = 0;
@@ -447,7 +448,7 @@ size_t json_to_string(json_struct* json_struct_ptr, char* json_str_ptr, size_t j
         break;
         case json_integer:
         {
-            _i64toa_s(node_ptr->value.number, tmp_buf, sizeof(tmp_buf), 10);
+            lltostr(node_ptr->value.number, tmp_buf, sizeof(tmp_buf), 10);
             tmp_length = strlen(tmp_buf);
 
             if (end_pos - current_pos > (int)tmp_length)
@@ -463,7 +464,7 @@ size_t json_to_string(json_struct* json_struct_ptr, char* json_str_ptr, size_t j
         break;
         case json_float:
         {
-            sprintf_s(tmp_buf, sizeof(tmp_buf), "%f", node_ptr->value.number_ex);
+            snprintf(tmp_buf, sizeof(tmp_buf), "%f", node_ptr->value.number_ex);
             tmp_length = strlen(tmp_buf);
 
             if (end_pos - current_pos > (int)tmp_length)
@@ -710,7 +711,7 @@ void json_to_string_ex(json_struct* json_struct_ptr, json_string_append f, void*
         break;
         case json_integer:
         {
-            _i64toa_s(node_ptr->value.number, tmp_buf, sizeof(tmp_buf), 10);
+            lltostr(node_ptr->value.number, tmp_buf, sizeof(tmp_buf), 10);
             tmp_length = strlen(tmp_buf);
 
             (*f)(ud, tmp_buf, tmp_length);
@@ -720,7 +721,7 @@ void json_to_string_ex(json_struct* json_struct_ptr, json_string_append f, void*
         break;
         case json_float:
         {
-            sprintf_s(tmp_buf, sizeof(tmp_buf), "%f", node_ptr->value.number_ex);
+            snprintf(tmp_buf, sizeof(tmp_buf), "%f", node_ptr->value.number_ex);
             tmp_length = strlen(tmp_buf);
 
             (*f)(ud, tmp_buf, tmp_length);
@@ -999,7 +1000,7 @@ void destroy_json(json_struct* json_struct_ptr)
 
 json_node* json_add_float(json_struct* json_struct_ptr, double number, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1041,7 +1042,7 @@ json_node* json_add_float(json_struct* json_struct_ptr, double number, const cha
 
 json_node* json_add_integer(json_struct* json_struct_ptr, long long number, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1082,7 +1083,7 @@ json_node* json_add_integer(json_struct* json_struct_ptr, long long number, cons
 
 json_node* json_add_string(json_struct* json_struct_ptr, const char* string, size_t string_length, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1125,7 +1126,7 @@ json_node* json_add_string(json_struct* json_struct_ptr, const char* string, siz
 
 json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1164,7 +1165,7 @@ json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t k
 
 json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1204,7 +1205,7 @@ json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t 
 
 json_node* json_add_null(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1246,7 +1247,7 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
 {
     struct st_json_node* new_json_node = 0;
 
-    new_json_node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit, 4 * 1024);
+    new_json_node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
 
     new_json_node->next = 0;
     new_json_node->stack = 0;
@@ -1262,6 +1263,12 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
     {
         new_json_node->type = json_array;
         new_json_node->value.struct_ptr = _json_create_array();
+    }
+    break;
+    default:
+    {
+        memory_unit_free(def_json_node_unit, new_json_node);
+        return 0;
     }
     break;
     }
@@ -1293,6 +1300,7 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
         memory_unit_free(def_json_node_unit, new_json_node);
         return 0;
     }
+    break;
     }
 
     _json_struct_add_node(json_struct_ptr, new_json_node);
@@ -1396,7 +1404,7 @@ bool _step_key_value(const char** ptr, struct st_json_struct* json_struct_ptr, c
             }
             else
             {
-                json_add_integer(json_struct_ptr, _strtoi64(value_ptr, 0, 10), *key_ptr, *key_length);
+                json_add_integer(json_struct_ptr, strtoll(value_ptr, 0, 10), *key_ptr, *key_length);
             }
 
             TRIM_SPACE((*ptr));
@@ -1585,7 +1593,7 @@ bool _step_value(const char** ptr, struct st_json_struct* json_struct_ptr)
             }
             else
             {
-                json_add_integer(json_struct_ptr, _strtoi64(value_ptr, 0, 10), 0, 0);
+                json_add_integer(json_struct_ptr, strtoll(value_ptr, 0, 10), 0, 0);
             }
 
             TRIM_SPACE((*ptr));

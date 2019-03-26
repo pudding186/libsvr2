@@ -1366,7 +1366,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
 
 ws_socket* _ws_alloc_socket(ws_manager* mgr)
 {
-    return (ws_socket*)memory_unit_alloc(mgr->ws_socket_unit, 4096);
+    return (ws_socket*)memory_unit_alloc(mgr->ws_socket_unit);
 }
 
 void _ws_free_socket(ws_manager* mgr, ws_socket* sock)

@@ -1,4 +1,6 @@
 #pragma once
+#ifdef _MSC_VER
+
 #include <WinSock2.h>
 #include "./lib_svr_def.h"
 #ifdef  __cplusplus
@@ -77,4 +79,5 @@ extern void (iocp_tcp_set_send_control)(HSESSION socket, unsigned int pkg_size, 
 
 #ifdef  __cplusplus
 }
+#endif
 #endif

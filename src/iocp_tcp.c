@@ -1,3 +1,4 @@
+#ifdef _MSC_VER
 #include <WinSock2.h>
 #include <MSWSock.h>
 #include <WS2tcpip.h>
@@ -178,8 +179,8 @@ typedef struct st_iocp_tcp_socket
     HLOOPCACHE                  recv_loop_cache;
     HLOOPCACHE                  send_loop_cache;
 
-    unsigned char               recv_req;
-    unsigned char               recv_ack;
+    unsigned int                recv_req;
+    unsigned int                recv_ack;
     LONG                        send_req;
     LONG                        send_ack;
 
@@ -204,7 +205,7 @@ typedef struct st_iocp_tcp_socket
     pfn_on_error                on_error;
     pfn_on_recv                 on_recv;
     struct st_iocp_tcp_manager* mgr;
-    iocp_ssl_data*              ssl_data;
+    struct st_iocp_ssl_data*    ssl_data;
 }iocp_tcp_socket;
 
 typedef struct st_iocp_tcp_manager
@@ -263,7 +264,7 @@ void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_
         unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
     }
 
-    return memory_unit_alloc(unit, 4 * 1024);
+    return memory_unit_alloc(unit);
 }
 
 void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned int buffer_size)
@@ -512,7 +513,7 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
     }
 
     EnterCriticalSection(&mgr->socket_lock);
-    sock_ptr = memory_unit_alloc_ex(mgr->socket_pool, 0);
+    sock_ptr = memory_unit_alloc(mgr->socket_pool);
     LeaveCriticalSection(&mgr->socket_lock);
 
     if (sock_ptr)
@@ -1794,6 +1795,12 @@ bool _iocp_tcp_listener_listen(iocp_tcp_listener* listener, unsigned int max_acc
         }
     }
 
+    if (result)
+    {
+        freeaddrinfo(result);
+        result = 0;
+    }
+
     return true;
 
 ERROR_DEAL:
@@ -2367,12 +2374,16 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     {
         goto ERROR_DEAL;
     }
+    else
+    {
+        memory_unit_set_grow_count(mgr->socket_pool, mgr->max_socket_num);
+    }
 
     arry_socket_ptr = (iocp_tcp_socket**)malloc(sizeof(iocp_tcp_socket*)*max_socket_num);
 
     for (i = 0; i < max_socket_num; i++)
     {
-        arry_socket_ptr[i] = memory_unit_alloc_ex(mgr->socket_pool, mgr->max_socket_num);
+        arry_socket_ptr[i] = memory_unit_alloc(mgr->socket_pool);
 
         arry_socket_ptr[i]->mgr = mgr;
         arry_socket_ptr[i]->recv_loop_cache = 0;
@@ -2380,6 +2391,8 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
         arry_socket_ptr[i]->iocp_recv_data.pt.sock_ptr = arry_socket_ptr[i];
         arry_socket_ptr[i]->iocp_send_data.pt.sock_ptr = arry_socket_ptr[i];
     }
+
+    memory_unit_set_grow_count(mgr->socket_pool, 0);
 
     for (i = 0; i < max_socket_num; i++)
     {
@@ -2408,7 +2421,7 @@ iocp_tcp_manager* create_iocp_tcp(pfn_on_establish func_on_establish, pfn_on_ter
         goto ERROR_DEAL;
     }
 
-    mgr->max_pkg_buf_size = 1024;
+    mgr->max_pkg_buf_size = 64*1024;
     mgr->max_pkg_buf = (char*)malloc(mgr->max_pkg_buf_size);
 
     if (!_start_iocp_thread(mgr))
@@ -2525,11 +2538,6 @@ iocp_tcp_socket* iocp_tcp_connect(
     if (!socket_ptr)
     {
         return 0;
-    }
-
-    if (mgr != socket_ptr->mgr)
-    {
-        CRUSH_CODE();
     }
 
     if (func_on_establish)
@@ -3077,3 +3085,5 @@ void iocp_tcp_set_send_control(iocp_tcp_socket* sock_ptr, unsigned int pkg_size,
     sock_ptr->data_delay_send_size = pkg_size;
     _mod_timer_send(sock_ptr, delay_time);
 }
+
+#endif

@@ -1,18 +1,37 @@
 #pragma once
 #include <typeinfo>
+#include <type_traits>
+#include <utility>
+#include <stdint.h>
+#include <limits>
+#include <cstdio>
 #include "./lib_svr_def.h"
 #include "../include/memory_pool.h"
 #include "../include/memory_trace.hpp"
 #ifdef  __cplusplus
 
 #ifdef _DEBUG
+#ifdef _MSC_VER
 #define S_NEW(type, size, ...) SMemory::TraceNew<type>(size, __FILE__, __LINE__, __VA_ARGS__)
+#elif __GNUC__
+#define S_NEW(type, size, ...) SMemory::TraceNew<type>(size, __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#error "unknown compiler"
+#endif
+
 #define S_DELETE(ptr) SMemory::TraceDelete(ptr)
 #define S_MALLOC(size) SMemory::IClassMemory::TraceAlloc(size, __FILE__, __LINE__)
 #define S_REALLOC(mem, size) SMemory::IClassMemory::TraceRealloc(mem, size, __FILE__, __LINE__)
 #define S_FREE(mem) SMemory::IClassMemory::TraceFree(mem)
 #else
+#ifdef _MSC_VER
 #define S_NEW(type, size, ...) SMemory::New<type>(size, __VA_ARGS__)
+#elif __GNUC__
+#define S_NEW(type, size, ...) SMemory::New<type>(size, ##__VA_ARGS__)
+#else
+#error "unknown compiler"
+#endif
+
 #define S_DELETE(ptr) SMemory::Delete(ptr)
 #define S_MALLOC(size) SMemory::IClassMemory::Alloc(size)
 #define S_REALLOC(mem, size) SMemory::IClassMemory::Realloc(mem, size)
@@ -99,8 +118,8 @@ namespace SMemory
         }
 
     protected:
-        HMEMORYUNIT         unit;
-        __declspec(thread) static HMEMORYMANAGER def_mem_mgr;
+        HMEMORYUNIT                     unit;
+        static TLS_VAR HMEMORYMANAGER   def_mem_mgr;
     };
 
     template <typename T, bool is_pod = std::is_pod<T>::value>
@@ -133,7 +152,7 @@ namespace SMemory
         {
             if (size == 1)
             {
-                void* ptr = memory_unit_alloc(unit, 4 * 1024);
+                void* ptr = memory_unit_alloc(unit);
                 *(HMEMORYMANAGER*)ptr = def_mem_mgr;
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
 
@@ -218,7 +237,7 @@ namespace SMemory
         {
             if (size == 1)
             {
-                void* ptr = memory_unit_alloc(unit, 4 * 1024);
+                void* ptr = memory_unit_alloc(unit);
                 *(HMEMORYMANAGER*)ptr = def_mem_mgr;
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
                 return (T*)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
@@ -264,7 +283,7 @@ namespace SMemory
     template <typename T>
     inline CClassMemory<T>& get_class_memory(void)
     {
-        __declspec(thread) static CClassMemory<T> class_memory;
+        static thread_local CClassMemory<T> class_memory;
         return class_memory;
     }
 

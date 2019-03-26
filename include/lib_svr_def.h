@@ -153,19 +153,20 @@ typedef struct st_mem_trace_info
     const char* file;
     size_t      line;
     size_t      size;
-}MemTraceInfo;
+}mem_trace_info;
 
 typedef struct st_ptr_info
 {
-    MemTraceInfo*  info;
+    mem_trace_info*  info;
     size_t      size;
-}PtrInfo;
+}ptr_info;
 
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_file_log* HFILELOG;
 
 typedef enum st_file_log_level
 {
+    log_nul = 0x00000000,
     log_dbg = 0x00000001,
     log_inf = (0x00000001 << 1),
     log_wrn = (0x00000001 << 2),

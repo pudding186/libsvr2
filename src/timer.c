@@ -1,105 +1,134 @@
+//#include <windows.h>
+//#include <process.h>
+
+#ifdef _MSC_VER
 #include <windows.h>
-#include <process.h>
+#pragma comment(lib, "winmm.lib")
+#elif __GNUC__
+#include <sys/time.h>
+#else
+#error "unknown compiler"
+#endif
+
 #include <stdio.h>
 #include <time.h>
 #include "./lib_svr_common_def.h"
 #include "../include/memory_pool.h"
 #include "../include/timer.h"
 
-#pragma comment(lib, "winmm.lib")
 
-bool                    g_local_time_thread_run = false;
-bool                    g_local_time_run = false;
-volatile unsigned int   g_local_tick = 0;
-volatile time_t         g_local_time = 0;
-HANDLE                  g_local_time_thread = 0;
+
+//bool                    g_local_time_thread_run = false;
+//bool                    g_local_time_run = false;
+//volatile unsigned int   g_local_tick = 0;
+//volatile time_t         g_local_time = 0;
+//HANDLE                  g_local_time_thread = 0;
 long                    g_time_zone = 0;
 
-unsigned _stdcall local_time_proc(void* param)
-{
-    unsigned last_tick = 0;
-
-    bool* local_time_thread_run = (bool*)param;
-
-    while (g_local_time_run)
-    {
-        g_local_tick = timeGetTime();
-
-        if (g_local_tick - last_tick > 1000)
-        {
-            last_tick = g_local_tick;
-            g_local_time = time(0);
-        }
-
-        timeBeginPeriod(1);
-        Sleep(1);
-        *local_time_thread_run = true;
-        timeEndPeriod(1);
-    }
-
-    *local_time_thread_run = false;
-
-    return 0;
-}
+//unsigned _stdcall local_time_proc(void* param)
+//{
+//    unsigned last_tick = 0;
+//
+//    bool* local_time_thread_run = (bool*)param;
+//
+//    while (g_local_time_run)
+//    {
+//        g_local_tick = timeGetTime();
+//
+//        if (g_local_tick - last_tick > 1000)
+//        {
+//            last_tick = g_local_tick;
+//            g_local_time = time(0);
+//        }
+//
+//        timeBeginPeriod(1);
+//        Sleep(1);
+//        *local_time_thread_run = true;
+//        timeEndPeriod(1);
+//    }
+//
+//    *local_time_thread_run = false;
+//
+//    return 0;
+//}
 
 bool init_local_time(void)
 {
-    unsigned thread_id = 0;
+    //unsigned thread_id = 0;
 
-    if (g_local_time_thread)
-    {
-        return true;
-    }
+    //if (g_local_time_thread)
+    //{
+    //    return true;
+    //}
 
-    g_local_tick = timeGetTime();
-    g_local_time = time(0);
-    g_local_time_run = true;
+    //g_local_tick = timeGetTime();
+    //g_local_time = time(0);
+    //g_local_time_run = true;
+
+    //g_local_time_thread = (HANDLE)_beginthreadex(0, 0, local_time_proc, &g_local_time_thread_run, 0, &thread_id);
+
+    //if (!g_local_time_thread)
+    //{
+    //    return false;
+    //}
+
+    //Sleep(10);
+
+#ifdef _MSC_VER
     _tzset();
     _get_timezone(&g_time_zone);
-    g_local_time_thread = (HANDLE)_beginthreadex(0, 0, local_time_proc, &g_local_time_thread_run, 0, &thread_id);
-
-    if (!g_local_time_thread)
-    {
-        return false;
-    }
-
-    Sleep(10);
+#elif __GNUC__
+    tzset();
+    g_time_zone = timezone;
+#else
+#error "unknown compiler"
+#endif
 
     return true;
 }
 
 void uninit_local_time(void)
 {
-    if (g_local_time_thread)
-    {
-        g_local_time_run = false;
+    //if (g_local_time_thread)
+    //{
+    //    g_local_time_run = false;
 
-        WaitForSingleObject(g_local_time_thread, INFINITE);
+    //    WaitForSingleObject(g_local_time_thread, INFINITE);
 
-        if (g_local_time_thread)
-        {
-            CloseHandle(g_local_time_thread);
-            g_local_time_thread = 0;
-        }
-    }
+    //    if (g_local_time_thread)
+    //    {
+    //        CloseHandle(g_local_time_thread);
+    //        g_local_time_thread = 0;
+    //    }
+    //}
 }
 
 unsigned int get_tick(void)
 {
-    if (g_local_time_thread_run)
-    {
-        return g_local_tick;
-    }
+    //if (g_local_time_thread_run)
+    //{
+    //    return g_local_tick;
+    //}
 
+    //return timeGetTime();
+
+#ifdef _MSC_VER
     return timeGetTime();
+#elif __GNUC__
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    return now.tv_sec*1000 + now.tv_usec / 1000;
+#else
+#error "unknown compiler"
+#endif
 }
 
 time_t get_time(void)
 {
-    if (g_local_time_thread_run)
-    {
-        return g_local_time;
-    }
+    //if (g_local_time_thread_run)
+    //{
+    //    return g_local_time;
+    //}
 
     return time(0);
 }
@@ -190,7 +219,7 @@ void _add_timer(struct st_timer_info* info)
         i = (expires >> (TVR_BITS + 2 * TVN_BITS)) & TVN_MASK;
         vec = info->manager->tv4 + i;
     }
-    else if ((INT32)idx < 0)
+    else if ((int)idx < 0)
     {
         /*
          * Can happen if you add a timer with expires == jiffies,
@@ -279,7 +308,7 @@ void destroy_timer_manager(timer_manager* mgr)
 
 timer_info* timer_add(timer_manager* mgr, unsigned elapse, int count, void* data)
 {
-    struct st_timer_info* info = (struct st_timer_info*)memory_unit_alloc(mgr->timer_info_unit, 4 * 1024);
+    struct st_timer_info* info = (struct st_timer_info*)memory_unit_alloc(mgr->timer_info_unit);
 
     info->expires = mgr->last_tick + elapse;
     info->elapse = elapse;
@@ -431,11 +460,16 @@ int timer_remain_count(timer_info* timer)
 //////////////////////////////////////////////////////////////////////////
 char* time_to_string(time_t time, char* str, size_t str_len)
 {
-    struct tm Tm;
-
-    if (!localtime_s(&Tm, &time))
+    struct tm TM;
+#ifdef _MSC_VER
+    if (!localtime_s(&TM, &time))
+#elif __GNUC__
+    if (!localtime_r(&time, &TM))
+#else
+#error "unknown compiler"
+#endif
     {
-        strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &Tm);
+        strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &TM);
         return str;
     }
     return 0;
@@ -445,8 +479,16 @@ time_t string_to_time(const char* time_string)
 {
     struct tm t_time;
 
+#ifdef _MSC_VER
     if (6 == sscanf_s(time_string, "%4d-%2d-%2d %2d:%2d:%2d",
         &t_time.tm_year, &t_time.tm_mon, &t_time.tm_mday, &t_time.tm_hour, &t_time.tm_min, &t_time.tm_sec))
+#elif __GNUC__
+    if (6 == sscanf(time_string, "%4d-%2d-%2d %2d:%2d:%2d",
+        &t_time.tm_year, &t_time.tm_mon, &t_time.tm_mday, &t_time.tm_hour, &t_time.tm_min, &t_time.tm_sec))
+#else
+#error "unknown compiler"
+#endif
+
     {
         t_time.tm_year -= 1900;
         t_time.tm_mon -= 1;
@@ -460,12 +502,12 @@ time_t string_to_time(const char* time_string)
 //返回从1970年1月1日0时0分0到现在经过的小时数(UTC 时间)
 time_t now_hour(void)
 {
-    return g_local_time / 3600;
+    return get_time() / 3600;
 }
 //从1970年1月1日0时0分0到现在经过的天数(考虑本地时区)
 time_t now_day(void)
 {
-    return (g_local_time - g_time_zone) / 86400;
+    return (get_time() - g_time_zone) / 86400;
 }
 //从UTC 1970年1月1日0时0分0到现在经过的星期数(考虑本地时区)
 time_t now_week(void)
@@ -477,22 +519,34 @@ time_t now_week(void)
 //从UTC 1970年1月1日0时0分0到现在经过的月数
 unsigned now_month(void)
 {
-    time_t tt = g_local_time;
+    time_t tt = get_time();
     //struct tm* pTM = localtime(&tt);
     struct tm TM;
 
+#ifdef _MSC_VER
     localtime_s(&TM, &tt);
+#elif __GNUC__
+    localtime_r(&tt, &TM);
+#else
+#error "unknown compiler"
+#endif
 
     return (TM.tm_year - 70) * 12 + TM.tm_mon + 1;
 }
 //从UTC 1970年1月1日0时0分0到现在经过的年数
 unsigned now_year(void)
 {
-    time_t tt = g_local_time;
+    time_t tt = get_time();
     //struct tm* pTM = localtime(&tt);
     struct tm TM;
 
+#ifdef _MSC_VER
     localtime_s(&TM, &tt);
+#elif __GNUC__
+    localtime_r(&tt, &TM);
+#else
+#error "unknown compiler"
+#endif
 
     return TM.tm_year - 70;
 }
@@ -513,7 +567,13 @@ time_t week_day_to_time(time_t week_day)
 time_t time_to_week_day(time_t tt)
 {
     struct tm TM;
+#ifdef _MSC_VER
     localtime_s(&TM, &tt);
+#elif __GNUC__
+    localtime_r(&tt, &TM);
+#else
+#error "unknown compiler"
+#endif
 
     int week_day = TM.tm_wday;
 

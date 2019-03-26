@@ -1,8 +1,22 @@
+#ifdef _MSC_VER
 #include <windows.h>
 #include <process.h>
+#include <direct.h>
+#elif __GNUC__
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <unistd.h>
+#include <stdarg.h>
+#else
+#error "unknown compiler"
+#endif
+
 #include <stdio.h>
 #include <time.h>
-#include <direct.h>
 #include "./lib_svr_common_def.h"
 #include "../include/timer.h"
 #include "../include/loop_cache.h"
@@ -14,6 +28,7 @@
 #define MAX_LOG_FILE_PATH   1024
 #define MAX_LOG_FILE_SIZE   1024*1024*1024
 #define PRINT_THREAD_IDX    0
+#define LOG_OPT_LOG_TIME    0x0001
 
 typedef enum st_log_option
 {
@@ -32,8 +47,16 @@ typedef struct st_log_queue
 
 typedef struct st_file_log
 {
+#ifdef _MSC_VER
     wchar_t*        path;
     wchar_t*        name;
+#elif __GNUC__
+    char*           path;
+    char*           name;
+#else
+#error "unknown compiler"
+#endif
+
     FILE*           file;
     size_t          size;
     size_t          thread_idx;
@@ -67,7 +90,13 @@ typedef struct st_log_proc
 
 typedef struct st_log_thread_param
 {
+#ifdef _MSC_VER
     HANDLE  log_thread;
+#elif __GNUC__
+    pthread_t log_thread;
+#else
+#error "unknown compiler"
+#endif
     size_t  thread_idx;
 
     size_t  run_tick;
@@ -90,6 +119,9 @@ const char* log_lv_to_str(file_log_level lv)
 {
     switch (lv)
     {
+    case log_nul:
+        return "";
+        break;
     case log_dbg:
         return "[DBG]";
         break;
@@ -112,7 +144,7 @@ const char* log_lv_to_str(file_log_level lv)
 
 void _begin_console(file_log_level lv)
 {
-#ifdef _WIN32
+#ifdef _MSC_VER
     switch (lv)
     {
     case log_sys:
@@ -128,10 +160,11 @@ void _begin_console(file_log_level lv)
         SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_GREEN);
         break;
     case log_dbg:
+    case log_nul:
         break;
     }
-#else
-    switch (log_level)
+#elif __GNUC__
+    switch (lv)
     {
     case log_sys:
         printf("\033[32m");
@@ -146,20 +179,26 @@ void _begin_console(file_log_level lv)
         printf("\033[32m");
         break;
     case log_dbg:
+    case log_nul:
         break;
     }
+#else
+#error "unknown compiler"
 #endif
 }
 
 void _end_console(void)
 {
-#ifdef _WIN32
+#ifdef _MSC_VER
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-#else
+#elif __GNUC__
     printf("\033[0m");
+#else
+#error "unknown compiler"
 #endif
 }
 
+#ifdef _MSC_VER
 bool _mk_dir(const wchar_t* dir)
 {
     size_t i;
@@ -172,13 +211,13 @@ bool _mk_dir(const wchar_t* dir)
 
     for (i = 0; i < wcslen(path); i++)
     {
-        if (*(p+i) == L'\\')
+        if (*(p + i) == L'\\')
         {
             *(p + i) = L'/';
         }
     }
 
-    do 
+    do
     {
         p1 = wcschr(p1, L'/');
         if (p1 != 0)
@@ -286,7 +325,144 @@ bool _check_log(file_log* log, time_t cur_time)
     return true;
 }
 
-file_log_level g_last_print_level = log_dbg;
+#elif __GNUC__
+bool _mk_dir(const char* dir)
+{
+    char szPath[MAX_LOG_FILE_PATH] = { 0 };
+    strncpy(szPath, dir, MAX_LOG_FILE_PATH);
+    char* p1 = szPath + 1;
+
+    char* p = szPath;
+
+    for (size_t i = 0; i < strlen(szPath); i++)
+    {
+        if (*(p + i) == '\\')
+        {
+            *(p + i) = '/';
+        }
+    }
+
+    do
+    {
+        p1 = strchr(p1, '/');
+        if (p1 != 0)
+        {
+            *p1 = '\0';
+        }
+        
+        if (-1 == mkdir(szPath, 0755))
+        {
+            if ((0 == p1) && (errno != EEXIST))
+            {
+                return false;
+            }
+        }
+        if (p1 != 0)
+        {
+            *p1++ = '/';
+        }
+
+    } while (p1 != 0);
+
+    return true;
+}
+
+bool _check_log(file_log* log, time_t cur_time)
+{
+    char file_full_path[MAX_LOG_FILE_PATH];
+
+    struct tm tm_cmd;
+    struct tm tm_file;
+
+    localtime_r(&cur_time, &tm_cmd);
+
+    if (!log->file)
+    {
+        snprintf(file_full_path,
+            MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d.txt",
+            log->path,
+            log->name,
+            tm_cmd.tm_year + 1900,
+            tm_cmd.tm_mon + 1,
+            tm_cmd.tm_mday);
+
+        log->time = cur_time;
+        log->file_idx = 0;
+
+        log->file = fopen(file_full_path, "a");
+        if (!log->file)
+        {
+            return false;
+        }
+        fseek(log->file, 0, SEEK_END);
+        log->size = ftell(log->file);
+    }
+
+    localtime_r(&log->time, &tm_file);
+
+    if (tm_cmd.tm_year != tm_file.tm_year
+        || tm_cmd.tm_mon != tm_file.tm_mon
+        || tm_cmd.tm_mday != tm_file.tm_mday)
+    {
+        snprintf(file_full_path,
+            MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d.txt",
+            log->path,
+            log->name,
+            tm_cmd.tm_year + 1900,
+            tm_cmd.tm_mon + 1,
+            tm_cmd.tm_mday);
+
+        log->time = cur_time;
+        log->file_idx = 0;
+
+        if (log->file)
+        {
+            fclose(log->file);
+        }
+
+        log->file = fopen(file_full_path, "a");
+        if (!log->file)
+        {
+            return false;
+        }
+        fseek(log->file, 0, SEEK_END);
+        log->size = ftell(log->file);
+    }
+
+    while (log->size >= MAX_LOG_FILE_SIZE)
+    {
+        log->file_idx++;
+
+        snprintf(file_full_path, 
+            MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d_%zu.txt",
+            log->path, 
+            log->name,
+            tm_file.tm_year + 1900,
+            tm_file.tm_mon + 1,
+            tm_file.tm_mday,
+            log->file_idx);
+
+        fclose(log->file);
+        log->file = fopen(file_full_path, "a");
+        if (!log->file)
+        {
+            return false;
+        }
+        fseek(log->file, 0, SEEK_END);
+        log->size = ftell(log->file);
+    }
+
+    return true;
+}
+#else
+#error "unknown compiler"
+#endif
+
+
+file_log_level g_last_print_level = log_nul;
 
 void _proc_log_cmd(log_cmd* cmd)
 {
@@ -306,12 +482,40 @@ void _proc_log_cmd(log_cmd* cmd)
             data = cmd->data_ex;
         }
 
-        localtime_s(&st_cur_time, &cmd->time);
-        write_size = fprintf_s(cmd->log->file,
-            "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-            st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
-            st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
-            log_lv_to_str(cmd->level), data);
+        if (cmd->log->flag & LOG_OPT_LOG_TIME)
+        {
+#ifdef _MSC_VER
+            localtime_s(&st_cur_time, &cmd->time);
+            write_size = fprintf_s(cmd->log->file,
+                "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
+                st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
+                st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
+                log_lv_to_str(cmd->level), data);
+#elif __GNUC__
+            localtime_r(&cmd->time, &st_cur_time);
+            write_size = fprintf(cmd->log->file,
+                "%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
+                st_cur_time.tm_year + 1900, st_cur_time.tm_mon + 1, st_cur_time.tm_mday,
+                st_cur_time.tm_hour, st_cur_time.tm_min, st_cur_time.tm_sec,
+                log_lv_to_str(cmd->level), data);
+#else
+#error "unknown compiler"
+#endif
+
+        }
+        else
+        {
+#ifdef _MSC_VER
+            write_size = fprintf_s(cmd->log->file, "%s %s\r\n",
+                log_lv_to_str(cmd->level), data);
+#elif __GNUC__
+            write_size = fprintf(cmd->log->file, "%s %s\r\n",
+                log_lv_to_str(cmd->level), data);
+#else
+#error "unknown compiler"
+#endif
+        }
+
 
         if (write_size > 0)
         {
@@ -355,24 +559,39 @@ void _proc_print_cmd(log_cmd* cmd)
             data = cmd->data_ex;
         }
 
-        localtime_s(&st_cur_time, &cmd->time);
-
         if (g_last_print_level != cmd->level)
         {
             _begin_console(cmd->level);
             g_last_print_level = cmd->level;
         }
 
-        printf("%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
-            st_cur_time.tm_year + 1900,
-            st_cur_time.tm_mon + 1,
-            st_cur_time.tm_mday,
-            st_cur_time.tm_hour,
-            st_cur_time.tm_min,
-            st_cur_time.tm_sec,
-            log_lv_to_str(cmd->level),
-            data);
+        if (cmd->log->flag & LOG_OPT_LOG_TIME)
+        {
+#ifdef _MSC_VER
+            localtime_s(&st_cur_time, &cmd->time);
+#elif __GNUC__
+            localtime_r(&cmd->time, &st_cur_time);
+#else
+#error "unknown compiler"
+#endif
+
+            printf("%04d-%02d-%02d %02d:%02d:%02d %s %s\r\n",
+                st_cur_time.tm_year + 1900,
+                st_cur_time.tm_mon + 1,
+                st_cur_time.tm_mday,
+                st_cur_time.tm_hour,
+                st_cur_time.tm_min,
+                st_cur_time.tm_sec,
+                log_lv_to_str(cmd->level),
+                data);
+        }
+        else
+        {
+            printf("%s %s\r\n", log_lv_to_str(cmd->level), data);
+        }
     }
+    break;
+    default:
     break;
     }
 }
@@ -531,8 +750,30 @@ void _proc_log_end(log_thread_param* param)
     }
 }
 
+#ifdef _MSC_VER
 static unsigned int _stdcall _log_thread_func(void* arg)
-{
+#elif __GNUC__
+static void* _log_thread_func(void* arg)
+#else
+#error "unknown compiler"
+#endif
+{ 
+#ifdef __GNUC__
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
+    sigset_t new_set, old_set;
+    sigemptyset(&new_set);
+    sigemptyset(&old_set);
+    sigaddset(&new_set, SIGHUP);
+    sigaddset(&new_set, SIGINT);
+    sigaddset(&new_set, SIGQUIT);
+    sigaddset(&new_set, SIGTERM);
+    sigaddset(&new_set, SIGUSR1);
+    sigaddset(&new_set, SIGUSR2);
+    sigaddset(&new_set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &new_set, &old_set);
+#endif
     log_thread_param* param = (log_thread_param*)arg;
 
 
@@ -542,7 +783,13 @@ static unsigned int _stdcall _log_thread_func(void* arg)
         {
             if (_proc_print(param))
             {
+#ifdef _MSC_VER
                 Sleep(10);
+#elif __GNUC__
+                usleep(10000000);
+#else
+#error "unknown compiler"
+#endif
             }
         }
 
@@ -554,7 +801,13 @@ static unsigned int _stdcall _log_thread_func(void* arg)
         {
             if (_proc_log(param))
             {
+#ifdef _MSC_VER
                 Sleep(10);
+#elif __GNUC__
+                usleep(10000000);
+#else
+#error "unknown compiler"
+#endif
             }
         }
 
@@ -564,7 +817,7 @@ static unsigned int _stdcall _log_thread_func(void* arg)
     return 0;
 }
 
-__declspec(thread) static log_proc* _thread_log_proc = 0;
+static TLS_VAR log_proc* _thread_log_proc = 0;
 
 log_proc* _get_thread_log_proc(void)
 {
@@ -646,7 +899,7 @@ log_cmd* _fetch_log_cmd(file_log* log, log_proc* proc)
     }
     else
     {
-        cmd = memory_unit_alloc(proc->cmd_unit, 4096);
+        cmd = memory_unit_alloc(proc->cmd_unit);
         cmd->data_ex = 0;
     }
 
@@ -671,7 +924,13 @@ bool _push_log_cmd(file_log* log, log_cmd* cmd, log_proc* proc, bool need_print)
             }
             else
             {
+#ifdef _MSC_VER
                 Sleep(10);
+#elif __GNUC__
+                usleep(10000000);
+#else
+#error "unknown compiler"
+#endif
             }
         }
         else
@@ -705,8 +964,6 @@ size_t log_thread_busy_pct(size_t thread_idx)
 
 bool init_file_log_manager(size_t log_thread_num)
 {
-    unsigned thread_id = 0;
-
     if (g_file_log_mgr.log_thread_param_num)
     {
         return true;
@@ -733,7 +990,11 @@ bool init_file_log_manager(size_t log_thread_num)
     for (size_t i = 0; i < log_thread_num; i++)
     {
         g_file_log_mgr.log_thread_param_arry[i].thread_idx = i;
-        g_file_log_mgr.log_thread_param_arry[i].log_thread = (HANDLE)_beginthreadex(NULL, 
+
+#ifdef _MSC_VER
+        unsigned thread_id = 0;
+
+        g_file_log_mgr.log_thread_param_arry[i].log_thread = (HANDLE)_beginthreadex(NULL,
             0,
             _log_thread_func,
             &g_file_log_mgr.log_thread_param_arry[i],
@@ -746,6 +1007,20 @@ bool init_file_log_manager(size_t log_thread_num)
             g_file_log_mgr.m_is_run = false;
             return false;
         }
+#elif __GNUC__
+        if (0 != pthread_create(
+            &g_file_log_mgr.log_thread_param_arry[i].log_thread, 
+            0, 
+            _log_thread_func,
+            &g_file_log_mgr.log_thread_param_arry[i]))
+        {
+            free(g_file_log_mgr.log_thread_param_arry);
+            g_file_log_mgr.m_is_run = false;
+            return false;
+        }
+#else
+#error "unknown compiler"
+#endif
     }
 
     return true;
@@ -759,10 +1034,16 @@ void uninit_file_log_manager(void)
     {
         if (g_file_log_mgr.log_thread_param_arry[i].log_thread)
         {
+#ifdef _MSC_VER
             WaitForSingleObject(g_file_log_mgr.log_thread_param_arry[i].log_thread,
                 INFINITE);
             CloseHandle(g_file_log_mgr.log_thread_param_arry[i].log_thread);
             g_file_log_mgr.log_thread_param_arry[i].log_thread = 0;
+#elif __GNUC__
+            pthread_join(g_file_log_mgr.log_thread_param_arry[i].log_thread, 0);
+#else
+#error "unknown compiler"
+#endif
         }
     }
 
@@ -791,7 +1072,8 @@ void uninit_file_log_manager(void)
     g_file_log_mgr.log_thread_param_num = 0;
 }
 
-file_log* create_wfile_log(const wchar_t* path, const wchar_t* name, size_t log_thread_idx)
+#ifdef _MSC_VER
+file_log* create_wfile_log(const wchar_t* path, const wchar_t* name, bool log_time, size_t log_thread_idx)
 {
     size_t log_path_len = wcslen(path);
     size_t log_name_len = wcslen(name);
@@ -811,13 +1093,17 @@ file_log* create_wfile_log(const wchar_t* path, const wchar_t* name, size_t log_
     log->thread_idx = log_thread_idx;
     log->time = 0;
     log->flag = 0;
+    if (log_time)
+    {
+        log->flag = log->flag | LOG_OPT_LOG_TIME;
+    }
 
     log_proc* proc = _get_thread_log_proc();
 
     log_cmd* cmd = _fetch_log_cmd(log, proc);
 
     cmd->option = opt_open;
-    cmd->level = log_dbg;
+    cmd->level = log_nul;
     cmd->data_len = 0;
     cmd->log = log;
     cmd->time = get_time();
@@ -831,7 +1117,7 @@ file_log* create_wfile_log(const wchar_t* path, const wchar_t* name, size_t log_
     return log;
 }
 
-file_log* create_file_log(const char* path, const char* name, size_t log_thread_idx, unsigned int code_page)
+file_log* create_file_log(const char* path, const char* name, bool log_time, size_t log_thread_idx, unsigned int code_page)
 {
     wchar_t w_path[MAX_LOG_FILE_PATH];
     wchar_t w_name[MAX_LOG_FILE_PATH];
@@ -846,8 +1132,57 @@ file_log* create_file_log(const char* path, const char* name, size_t log_thread_
         return 0;
     }
 
-    return create_wfile_log(w_path, w_name, log_thread_idx);
+    return create_wfile_log(w_path, w_name, log_time, log_thread_idx);
 }
+#elif __GNUC__
+file_log* create_file_log(const char* path, const char* name, bool log_time, size_t log_thread_idx, unsigned int code_page)
+{
+    size_t log_path_len = strlen(path);
+    size_t log_name_len = strlen(name);
+    char* ptr = (char*)malloc(sizeof(file_log) + sizeof(char)*(log_path_len + log_name_len + 2));
+
+    file_log* log = (file_log*)ptr;
+    log->path = (char*)(ptr + sizeof(file_log));
+    log->name = (char*)(ptr + sizeof(file_log) + (log_path_len + 1) * sizeof(char));
+
+    strncpy(log->path, path, log_path_len);
+    strncpy(log->name, name, log_name_len);
+
+    log->path[log_path_len] = 0;
+    log->name[log_name_len] = 0;
+
+    log->file = 0;
+    log->size = 0;
+    log->file_idx = 0;
+    log->thread_idx = log_thread_idx;
+    log->time = 0;
+    log->flag = 0;
+    if (log_time)
+    {
+        log->flag = log->flag | LOG_OPT_LOG_TIME;
+    }
+
+    log_proc* proc = _get_thread_log_proc();
+
+    log_cmd* cmd = _fetch_log_cmd(log, proc);
+
+    cmd->option = opt_open;
+    cmd->level = log_nul;
+    cmd->data_len = 0;
+    cmd->log = log;
+    cmd->time = get_time();
+    cmd->begin_log = false;
+    cmd->begin_print = false;
+    cmd->end_log = false;
+    cmd->end_print = false;
+
+    _push_log_cmd(log, cmd, proc, false);
+
+    return log;
+}
+#else
+#error "unknown compiler"
+#endif
 
 void destroy_file_log(file_log* log)
 {
