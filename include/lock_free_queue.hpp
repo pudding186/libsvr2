@@ -5,6 +5,7 @@
 template <typename T, bool multi_productor = true, bool multi_consumer = true>
 class LockFreeLoopQueue
 {
+public:
 
 };
 
@@ -12,550 +13,395 @@ template <typename T>
 class LockFreeLoopQueue<T, true, true>
 {
 public:
-    LockFreeLoopQueue(size_t queue_size) :
-        max_size_(_roundup_poser_of_2(queue_size)),
-        buffer_(new cell_t[_roundup_poser_of_2(queue_size)]),
-        buffer_mask_(_roundup_poser_of_2(queue_size) - 1)
+    static inline size_t _roundup_power_of_2(size_t buffer_size)
     {
-        for (size_t i = 0; i != queue_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t result = buffer_size - 1;
+        for (size_t i = 1; i <= sizeof(void*) * 4; i <<= 1)
+        {
+            result |= result >> i;
+        }
+        return result + 1;
+    }
+
+    LockFreeLoopQueue(size_t queue_size) :
+        _capacity(_roundup_power_of_2(queue_size))
+    {
+        _capacityMask = _capacity - 1;
+        _queue = new Node[_capacity];
+        for (size_t i = 0; i < _capacity; ++i)
+        {
+            _queue[i].tail.store(i, std::memory_order_relaxed);
+            _queue[i].head.store(-1, std::memory_order_relaxed);
+        }
+
+        _tail.store(0, std::memory_order_relaxed);
+        _head.store(0, std::memory_order_relaxed);
     }
 
     ~LockFreeLoopQueue()
     {
-        delete[] buffer_;
+        delete[] _queue;
     }
 
-    void reinit(void)
+    size_t capacity() const { return _capacity; }
+
+    size_t size() const
     {
-        size_t buffer_size = buffer_mask_ + 1;
-        assert((buffer_size >= 2) &&
-            ((buffer_size & (buffer_size - 1)) == 0));
-        for (size_t i = 0; i != buffer_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t head = _head.load(std::memory_order_acquire);
+        return _tail.load(std::memory_order_relaxed) - head;
     }
 
     bool push(T&& data)
     {
-        cell_t* cell;
-        size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
+        Node* node;
+        size_t tail = _tail.load(std::memory_order_relaxed);
         for (;;)
         {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq = cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)pos;
-            if (dif == 0)
+            node = &_queue[tail & _capacityMask];
+            if (node->tail.load(std::memory_order_relaxed) != tail)
             {
-                if (enqueue_pos_.compare_exchange_weak
-                (pos, pos + 1, std::memory_order_relaxed))
-                    break;
-            }
-            else if (dif < 0)
                 return false;
-            else
-                pos = enqueue_pos_.load(std::memory_order_relaxed);
+            }
+
+            if ((_tail.compare_exchange_weak(tail, tail + 1, std::memory_order_relaxed)))
+            {
+                break;
+            }
         }
-        cell->data_ = std::move(data);
-        cell->sequence_.store(pos + 1, std::memory_order_release);
+        node->data = std::move(data);
+        node->head.store(tail, std::memory_order_release);
         return true;
     }
 
-    bool pop(T& data)
+    bool pop(T& result)
     {
-        cell_t* cell;
-        size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
+        Node* node;
+        size_t head = _head.load(std::memory_order_relaxed);
         for (;;)
         {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq =
-                cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-            if (dif == 0)
+            node = &_queue[head & _capacityMask];
+            if (node->head.load(std::memory_order_relaxed) != head)
             {
-                if (dequeue_pos_.compare_exchange_weak
-                (pos, pos + 1, std::memory_order_relaxed))
-                    break;
-            }
-            else if (dif < 0)
                 return false;
-            else
-                pos = dequeue_pos_.load(std::memory_order_relaxed);
+            }
+
+            if (_head.compare_exchange_weak(head, head + 1, std::memory_order_relaxed))
+            {
+                break;
+            }
         }
-        data = std::move(cell->data_);
-        cell->sequence_.store
-        (pos + buffer_mask_ + 1, std::memory_order_release);
+        result = std::move(node->data);
+        node->tail.store(head + _capacity, std::memory_order_release);
         return true;
     }
 
-    size_t approx_size() const
-    {
-        size_t first_pos = dequeue_pos_.load(std::memory_order_relaxed);
-        size_t last_pos = enqueue_pos_.load(std::memory_order_relaxed);
-        if (last_pos <= first_pos)
-            return 0;
-        auto size = last_pos - first_pos;
-        return size < max_size_ ? size : max_size_;
-    }
 
-    size_t capacity() const
-    {
-        return max_size_;
-    }
 private:
-
-    static inline size_t _roundup_poser_of_2(size_t queue_size)
+    struct Node
     {
-        if (queue_size == 0)
-        {
-            return 0;
-        }
-
-        size_t position = 0;
-        for (size_t i = queue_size; i != 0; i >>= 1)
-        {
-            position++;
-        }
-
-        return static_cast<size_t>((size_t)1 << position);
-    }
-
-    struct cell_t
-    {
-        std::atomic<size_t>   sequence_;
-        T                     data_;
+        T data;
+        std::atomic<size_t> tail;
+        std::atomic<size_t> head;
     };
 
-    size_t const            max_size_;
-    static size_t const     cacheline_size = 64;
-    typedef char            cacheline_pad_t[cacheline_size];
-    cacheline_pad_t         pad0_;
-    cell_t* const           buffer_;
-    size_t const            buffer_mask_;
-    cacheline_pad_t         pad1_;
-    std::atomic<size_t>     enqueue_pos_;
-    cacheline_pad_t         pad2_;
-    std::atomic<size_t>     dequeue_pos_;
-    cacheline_pad_t         pad3_;
-    LockFreeLoopQueue(LockFreeLoopQueue const&);
-    void operator = (LockFreeLoopQueue const&);
+private:
+    size_t _capacityMask;
+    Node* _queue;
+    size_t _capacity;
+    char cacheLinePad1[64];
+    std::atomic<size_t> _tail;
+    char cacheLinePad2[64];
+    std::atomic<size_t> _head;
+    char cacheLinePad3[64];
 };
 
 template <typename T>
 class LockFreeLoopQueue<T, true, false>
 {
 public:
-    LockFreeLoopQueue(size_t queue_size) :
-        max_size_(_roundup_poser_of_2(queue_size)),
-        buffer_(new cell_t[_roundup_poser_of_2(queue_size)]),
-        buffer_mask_(_roundup_poser_of_2(queue_size) - 1)
+    static inline size_t _roundup_power_of_2(size_t buffer_size)
     {
-        for (size_t i = 0; i != queue_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t result = buffer_size - 1;
+        for (size_t i = 1; i <= sizeof(void*) * 4; i <<= 1)
+        {
+            result |= result >> i;
+        }
+
+        return result + 1;
+    }
+
+    LockFreeLoopQueue(size_t queue_size) :
+        _capacity(_roundup_power_of_2(queue_size))
+    {
+        _capacityMask = _capacity - 1;
+        _queue = new Node[_capacity];
+        for (size_t i = 0; i < _capacity; ++i)
+        {
+            _queue[i].tail.store(i, std::memory_order_relaxed);
+            _queue[i].head.store(-1, std::memory_order_relaxed);
+        }
+
+        _tail.store(0, std::memory_order_relaxed);
+        _head.store(0, std::memory_order_relaxed);
     }
 
     ~LockFreeLoopQueue()
     {
-        delete[] buffer_;
+        delete[] _queue;
     }
 
-    void reinit(void)
+    size_t capacity() const { return _capacity; }
+
+    size_t size() const
     {
-        size_t buffer_size = buffer_mask_ + 1;
-        assert((buffer_size >= 2) &&
-            ((buffer_size & (buffer_size - 1)) == 0));
-        for (size_t i = 0; i != buffer_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t head = _head.load(std::memory_order_acquire);
+        return _tail.load(std::memory_order_relaxed) - head;
     }
 
     bool push(T&& data)
     {
-        cell_t* cell;
-        size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
+        Node* node;
+        size_t tail = _tail.load(std::memory_order_relaxed);
         for (;;)
         {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq = cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)pos;
-            if (dif == 0)
+            node = &_queue[tail & _capacityMask];
+            if (node->tail.load(std::memory_order_relaxed) != tail)
             {
-                if (enqueue_pos_.compare_exchange_weak
-                (pos, pos + 1, std::memory_order_relaxed))
-                    break;
-            }
-            else if (dif < 0)
                 return false;
-            else
-                pos = enqueue_pos_.load(std::memory_order_relaxed);
-        }
-        cell->data_ = std::move(data);
-        cell->sequence_.store(pos + 1, std::memory_order_release);
-        return true;
-    }
+            }
 
-    bool pop(T& data)
-    {
-        cell_t* cell;
-        size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
-        for (;;)
-        {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq =
-                cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-            if (dif == 0)
+            if ((_tail.compare_exchange_weak(tail, tail + 1, std::memory_order_relaxed)))
             {
-                //if (dequeue_pos_.compare_exchange_weak
-                //(pos, pos + 1, std::memory_order_relaxed))
-                //    break;
-                dequeue_pos_.store(pos + 1, std::memory_order_relaxed);
                 break;
             }
-            else if (dif < 0)
-                return false;
-            else
-                pos = dequeue_pos_.load(std::memory_order_relaxed);
         }
-        data = std::move(cell->data_);
-        cell->sequence_.store
-        (pos + buffer_mask_ + 1, std::memory_order_release);
+        node->data = std::move(data);
+        node->head.store(tail, std::memory_order_release);
         return true;
     }
 
-    size_t approx_size() const
+    bool pop(T& result)
     {
-        size_t first_pos = dequeue_pos_.load(std::memory_order_relaxed);
-        size_t last_pos = enqueue_pos_.load(std::memory_order_relaxed);
-        if (last_pos <= first_pos)
-            return 0;
-        auto size = last_pos - first_pos;
-        return size < max_size_ ? size : max_size_;
+        Node* node;
+        size_t head = _head.load(std::memory_order_relaxed);
+
+        node = &_queue[head & _capacityMask];
+
+        if (node->head.load(std::memory_order_relaxed) != head)
+        {
+            return false;
+        }
+
+        _head.store(head + 1, std::memory_order_relaxed);
+
+        if (node->head.load(std::memory_order_relaxed) != head)
+        {
+            return false;
+        }
+
+        result = std::move(node->data);
+        node->tail.store(head + _capacity, std::memory_order_release);
+        return true;
     }
 
-    size_t capacity() const
-    {
-        return max_size_;
-    }
+
 private:
-
-    static inline size_t _roundup_poser_of_2(size_t queue_size)
+    struct Node
     {
-        if (queue_size == 0)
-        {
-            return 0;
-        }
-
-        size_t position = 0;
-        for (size_t i = queue_size; i != 0; i >>= 1)
-        {
-            position++;
-        }
-
-        return static_cast<size_t>((size_t)1 << position);
-    }
-
-    struct cell_t
-    {
-        std::atomic<size_t>   sequence_;
-        T                     data_;
+        T data;
+        std::atomic<size_t> tail;
+        std::atomic<size_t> head;
     };
 
-    size_t const            max_size_;
-    static size_t const     cacheline_size = 64;
-    typedef char            cacheline_pad_t[cacheline_size];
-    cacheline_pad_t         pad0_;
-    cell_t* const           buffer_;
-    size_t const            buffer_mask_;
-    cacheline_pad_t         pad1_;
-    std::atomic<size_t>     enqueue_pos_;
-    cacheline_pad_t         pad2_;
-    std::atomic<size_t>     dequeue_pos_;
-    cacheline_pad_t         pad3_;
-    LockFreeLoopQueue(LockFreeLoopQueue const&);
-    void operator = (LockFreeLoopQueue const&);
+private:
+    size_t _capacityMask;
+    Node* _queue;
+    size_t _capacity;
+    char cacheLinePad1[64];
+    std::atomic<size_t> _tail;
+    char cacheLinePad2[64];
+    std::atomic<size_t> _head;
+    char cacheLinePad3[64];
 };
 
 template <typename T>
 class LockFreeLoopQueue<T, false, true>
 {
 public:
-    LockFreeLoopQueue(size_t queue_size) :
-        max_size_(_roundup_poser_of_2(queue_size)),
-        buffer_(new cell_t[_roundup_poser_of_2(queue_size)]),
-        buffer_mask_(_roundup_poser_of_2(queue_size) - 1)
+    static inline size_t _roundup_power_of_2(size_t buffer_size)
     {
-        for (size_t i = 0; i != queue_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t result = buffer_size - 1;
+        for (size_t i = 1; i <= sizeof(void*) * 4; i <<= 1)
+        {
+            result |= result >> i;
+        }
+        return result + 1;
+    }
+
+    LockFreeLoopQueue(size_t queue_size) :
+        _capacity(_roundup_power_of_2(queue_size))
+    {
+        _capacityMask = _capacity - 1;
+        _queue = new Node[_capacity];
+        for (size_t i = 0; i < _capacity; ++i)
+        {
+            _queue[i].tail.store(i, std::memory_order_relaxed);
+            _queue[i].head.store(-1, std::memory_order_relaxed);
+        }
+
+        _tail.store(0, std::memory_order_relaxed);
+        _head.store(0, std::memory_order_relaxed);
     }
 
     ~LockFreeLoopQueue()
     {
-        delete[] buffer_;
+        delete[] _queue;
     }
 
-    void reinit(void)
+    size_t capacity() const { return _capacity; }
+
+    size_t size() const
     {
-        size_t buffer_size = buffer_mask_ + 1;
-        assert((buffer_size >= 2) &&
-            ((buffer_size & (buffer_size - 1)) == 0));
-        for (size_t i = 0; i != buffer_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t head = _head.load(std::memory_order_acquire);
+        return _tail.load(std::memory_order_relaxed) - head;
     }
 
     bool push(T&& data)
     {
-        cell_t* cell;
-        size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
+        Node* node;
+        size_t tail = _tail.load(std::memory_order_relaxed);
+        node = &_queue[tail & _capacityMask];
+        if (node->tail.load(std::memory_order_relaxed) != tail)
+        {
+            return false;
+        }
+        _tail.store(tail + 1, std::memory_order_relaxed);
+
+        node->data = std::move(data);
+        node->head.store(tail, std::memory_order_release);
+        return true;
+    }
+
+    bool pop(T& result)
+    {
+        Node* node;
+        size_t head = _head.load(std::memory_order_relaxed);
         for (;;)
         {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq = cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)pos;
-            if (dif == 0)
+            node = &_queue[head & _capacityMask];
+            if (node->head.load(std::memory_order_relaxed) != head)
             {
-                //if (enqueue_pos_.compare_exchange_weak
-                //(pos, pos + 1, std::memory_order_relaxed))
-                //    break;
-                enqueue_pos_.store(pos + 1, std::memory_order_relaxed);
+                return false;
+            }
+
+            if (_head.compare_exchange_weak(head, head + 1, std::memory_order_relaxed))
+            {
                 break;
             }
-            else if (dif < 0)
-                return false;
-            else
-                pos = enqueue_pos_.load(std::memory_order_relaxed);
         }
-        cell->data_ = std::move(data);
-        cell->sequence_.store(pos + 1, std::memory_order_release);
+        result = std::move(node->data);
+        node->tail.store(head + _capacity, std::memory_order_release);
         return true;
     }
 
-    bool pop(T& data)
-    {
-        cell_t* cell;
-        size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
-        for (;;)
-        {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq =
-                cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-            if (dif == 0)
-            {
-                if (dequeue_pos_.compare_exchange_weak
-                (pos, pos + 1, std::memory_order_relaxed))
-                    break;
-            }
-            else if (dif < 0)
-                return false;
-            else
-                pos = dequeue_pos_.load(std::memory_order_relaxed);
-        }
-        data = std::move(cell->data_);
-        cell->sequence_.store
-        (pos + buffer_mask_ + 1, std::memory_order_release);
-        return true;
-    }
 
-    size_t approx_size() const
-    {
-        size_t first_pos = dequeue_pos_.load(std::memory_order_relaxed);
-        size_t last_pos = enqueue_pos_.load(std::memory_order_relaxed);
-        if (last_pos <= first_pos)
-            return 0;
-        auto size = last_pos - first_pos;
-        return size < max_size_ ? size : max_size_;
-    }
-
-    size_t capacity() const
-    {
-        return max_size_;
-    }
 private:
-
-    static inline size_t _roundup_poser_of_2(size_t queue_size)
+    struct Node
     {
-        if (queue_size == 0)
-        {
-            return 0;
-        }
-
-        size_t position = 0;
-        for (size_t i = queue_size; i != 0; i >>= 1)
-        {
-            position++;
-        }
-
-        return static_cast<size_t>((size_t)1 << position);
-    }
-
-    struct cell_t
-    {
-        std::atomic<size_t>   sequence_;
-        T                     data_;
+        T data;
+        std::atomic<size_t> tail;
+        std::atomic<size_t> head;
     };
 
-    size_t const            max_size_;
-    static size_t const     cacheline_size = 64;
-    typedef char            cacheline_pad_t[cacheline_size];
-    cacheline_pad_t         pad0_;
-    cell_t* const           buffer_;
-    size_t const            buffer_mask_;
-    cacheline_pad_t         pad1_;
-    std::atomic<size_t>     enqueue_pos_;
-    cacheline_pad_t         pad2_;
-    std::atomic<size_t>     dequeue_pos_;
-    cacheline_pad_t         pad3_;
-    LockFreeLoopQueue(LockFreeLoopQueue const&);
-    void operator = (LockFreeLoopQueue const&);
+private:
+    size_t _capacityMask;
+    Node* _queue;
+    size_t _capacity;
+    char cacheLinePad1[64];
+    std::atomic<size_t> _tail;
+    char cacheLinePad2[64];
+    std::atomic<size_t> _head;
+    char cacheLinePad3[64];
 };
 
 template <typename T>
 class LockFreeLoopQueue<T, false, false>
 {
 public:
-    LockFreeLoopQueue(size_t queue_size) :
-        max_size_(_roundup_poser_of_2(queue_size)),
-        buffer_(new cell_t[_roundup_poser_of_2(queue_size)]),
-        buffer_mask_(_roundup_poser_of_2(queue_size) - 1)
+    static inline size_t _roundup_power_of_2(size_t buffer_size)
     {
-        for (size_t i = 0; i != queue_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t result = buffer_size - 1;
+        for (size_t i = 1; i <= sizeof(void*) * 4; i <<= 1)
+        {
+            result |= result >> i;
+        }
+        return result + 1;
+    }
+
+    size_t _increment(size_t idx)const { return ((idx + 1)&_capacityMask); }
+
+    LockFreeLoopQueue(size_t queue_size) :
+        _capacity(_roundup_power_of_2(queue_size))
+    {
+        _capacityMask = _capacity - 1;
+        _queue = new Node[_capacity];
+
+        _tail.store(0, std::memory_order_relaxed);
+        _head.store(0, std::memory_order_relaxed);
     }
 
     ~LockFreeLoopQueue()
     {
-        delete[] buffer_;
+        delete[] _queue;
     }
 
-    void reinit(void)
+    size_t capacity() const { return _capacity; }
+
+    size_t size() const
     {
-        size_t buffer_size = buffer_mask_ + 1;
-        assert((buffer_size >= 2) &&
-            ((buffer_size & (buffer_size - 1)) == 0));
-        for (size_t i = 0; i != buffer_size; i += 1)
-            buffer_[i].sequence_.store(i, std::memory_order_relaxed);
-        enqueue_pos_.store(0, std::memory_order_relaxed);
-        dequeue_pos_.store(0, std::memory_order_relaxed);
+        size_t head = _head.load(std::memory_order_acquire);
+        return _tail.load(std::memory_order_relaxed) - head;
     }
 
     bool push(T&& data)
     {
-        cell_t* cell;
-        size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
-        for (;;)
+        const auto current_tail = _tail.load(std::memory_order_relaxed);
+        const auto next_tail = _increment(current_tail);
+        if (next_tail != _head.load(std::memory_order_acquire))
         {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq = cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)pos;
-            if (dif == 0)
-            {
-                //if (enqueue_pos_.compare_exchange_weak
-                //(pos, pos + 1, std::memory_order_relaxed))
-                //    break;
-                enqueue_pos_.store(pos + 1, std::memory_order_relaxed);
-                break;
-            }
-            else if (dif < 0)
-                return false;
-            else
-                pos = enqueue_pos_.load(std::memory_order_relaxed);
+            _queue[current_tail].data = std::move(data);
+            _tail.store(next_tail, std::memory_order_release);
+            return true;
         }
-        cell->data_ = std::move(data);
-        cell->sequence_.store(pos + 1, std::memory_order_release);
+
+        return false; // full queue
+    }
+
+    bool pop(T& result)
+    {
+        const auto current_head = _head.load(std::memory_order_relaxed);
+        if (current_head == _tail.load(std::memory_order_acquire))
+            return false; // empty queue
+        result = std::move(_queue[current_head].data);
+        _head.store(_increment(current_head), std::memory_order_release);
         return true;
     }
 
-    bool pop(T& data)
-    {
-        cell_t* cell;
-        size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
-        for (;;)
-        {
-            cell = &buffer_[pos & buffer_mask_];
-            size_t seq =
-                cell->sequence_.load(std::memory_order_acquire);
-            intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-            if (dif == 0)
-            {
-                //if (dequeue_pos_.compare_exchange_weak
-                //(pos, pos + 1, std::memory_order_relaxed))
-                //    break;
-                dequeue_pos_.store(pos + 1, std::memory_order_relaxed);
-                break;
-            }
-            else if (dif < 0)
-                return false;
-            else
-                pos = dequeue_pos_.load(std::memory_order_relaxed);
-        }
-        data = std::move(cell->data_);
-        cell->sequence_.store
-        (pos + buffer_mask_ + 1, std::memory_order_release);
-        return true;
-    }
 
-    size_t approx_size() const
-    {
-        size_t first_pos = dequeue_pos_.load(std::memory_order_relaxed);
-        size_t last_pos = enqueue_pos_.load(std::memory_order_relaxed);
-        if (last_pos <= first_pos)
-            return 0;
-        auto size = last_pos - first_pos;
-        return size < max_size_ ? size : max_size_;
-    }
-
-    size_t capacity() const
-    {
-        return max_size_;
-    }
 private:
-
-    static inline size_t _roundup_poser_of_2(size_t queue_size)
+    struct Node
     {
-        if (queue_size == 0)
-        {
-            return 0;
-        }
-
-        size_t position = 0;
-        for (size_t i = queue_size; i != 0; i >>= 1)
-        {
-            position++;
-        }
-
-        return static_cast<size_t>((size_t)1 << position);
-    }
-
-    struct cell_t
-    {
-        std::atomic<size_t>   sequence_;
-        T                     data_;
+        T data;
     };
 
-    size_t const            max_size_;
-    static size_t const     cacheline_size = 64;
-    typedef char            cacheline_pad_t[cacheline_size];
-    cacheline_pad_t         pad0_;
-    cell_t* const           buffer_;
-    size_t const            buffer_mask_;
-    cacheline_pad_t         pad1_;
-    std::atomic<size_t>     enqueue_pos_;
-    cacheline_pad_t         pad2_;
-    std::atomic<size_t>     dequeue_pos_;
-    cacheline_pad_t         pad3_;
-    LockFreeLoopQueue(LockFreeLoopQueue const&);
-    void operator = (LockFreeLoopQueue const&);
+private:
+    size_t _capacityMask;
+    Node* _queue;
+    size_t _capacity;
+    char cacheLinePad1[64];
+    std::atomic<size_t> _tail;
+    char cacheLinePad2[64];
+    std::atomic<size_t> _head;
+    char cacheLinePad3[64];
 };
+
