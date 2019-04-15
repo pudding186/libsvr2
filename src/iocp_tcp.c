@@ -1324,7 +1324,7 @@ void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr, BOOL reuse_addr)
         {
             struct sockaddr_in* addr = (struct sockaddr_in*)&socket_ptr->local_sockaddr;
             addr->sin_family = AF_INET;
-            addr->sin_addr.S_un.S_addr = htonl(ADDR_ANY);
+            addr->sin_addr.S_un.S_addr = htonl(INADDR_ANY);
             addr->sin_port = htons(0);
         }
         else
