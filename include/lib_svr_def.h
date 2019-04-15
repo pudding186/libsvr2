@@ -36,7 +36,7 @@ typedef struct st_iocp_tcp_socket*      HSESSION;
 typedef struct st_iocp_tcp_listener*    HLISTENER;
 typedef struct st_iocp_tcp_manager*     HNETMANAGER;
 
-typedef enum e_iocp_tcp_error
+typedef enum e_net_tcp_error
 {
     error_ssl           = -6,
     error_connect_fail  = -5,
@@ -45,7 +45,7 @@ typedef enum e_iocp_tcp_error
     error_recv_overflow = -2,
     error_packet        = -1,
     error_ok            = 0,
-}iocp_tcp_error;
+}net_tcp_error;
 
 typedef struct st_ip_info
 {
@@ -78,7 +78,7 @@ typedef struct st_addr_info
 typedef unsigned int(*pfn_parse_packet)(HSESSION session, const char* data, const unsigned int len);
 typedef void (*pfn_on_establish)(HLISTENER net_handle, HSESSION session);
 typedef void (*pfn_on_terminate)(HSESSION session);
-typedef void (*pfn_on_error)(HSESSION session, iocp_tcp_error module_error, int system_error);
+typedef void (*pfn_on_error)(HSESSION session, net_tcp_error module_error, int system_error);
 typedef void (*pfn_on_recv)(HSESSION session, const char* data, const unsigned int len);
 
 //////////////////////////////////////////////////////////////////////////

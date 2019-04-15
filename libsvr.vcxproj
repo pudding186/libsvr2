@@ -24,6 +24,7 @@
     <ClInclude Include="include\iocp_tcp.h" />
     <ClInclude Include="include\json.h" />
     <ClInclude Include="include\lib_svr_def.h" />
+    <ClInclude Include="include\lock_free_queue.hpp" />
     <ClInclude Include="include\loop_cache.h" />
     <ClInclude Include="include\memory_pool.h" />
     <ClInclude Include="include\memory_trace.hpp" />

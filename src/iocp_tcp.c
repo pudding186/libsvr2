@@ -747,13 +747,12 @@ void _push_recv_active_event(iocp_tcp_socket* sock_ptr)
     }
 }
 
-void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, iocp_tcp_error error)
+void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
 {
     if (SOCKET_STATE_ESTABLISH == InterlockedCompareExchange(&sock_ptr->state, SOCKET_STATE_TERMINATE, SOCKET_STATE_ESTABLISH))
     {
         switch (error)
         {
-        //case ERROR_SYSTEM:
         case error_system:
         {
             sock_ptr->data_has_send = sock_ptr->data_need_send;
