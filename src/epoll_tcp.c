@@ -1,0 +1,2396 @@
+//#ifdef __GNUC__
+#include <sys/epoll.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <netdb.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdlib.h>
+#include "./lib_svr_common_def.h"
+#include "../include/utility.hpp"
+#include "../include/loop_cache.h"
+#include "../include/timer.h"
+#include "../include/memory_pool.h"
+#include "../include/rb_tree.h"
+#include "../include/epoll_tcp.h"
+
+//socket state
+#define SOCKET_STATE_NONE       0
+#define SOCKET_STATE_CONNECT    1
+#define SOCKET_STATE_LISTEN     2
+#define SOCKET_STATE_ESTABLISH  3
+#define SOCKET_STATE_ERROR      4
+#define SOCKET_STATE_TERMINATE  5
+#define SOCKET_STATE_DELETE     6
+#define SOCKET_STATE_ACCEPT     7
+#define SOCKET_STATE_CLOSE      8
+
+#define NET_EVENT_ESTABLISH     1
+#define NET_EVENT_TERMINATE     2
+#define NET_EVENT_DATA          3
+#define NET_EVENT_SYSTEM_ERROR  4
+#define NET_EVENT_MODULE_ERROR  5
+#define NET_EVENT_RECV_ACTIVATE 6
+#define NET_EVENT_CONNECT_FAIL  7
+#define NET_EVENT_SSL_ERROR     8
+#define NET_EVENT_ACCEPT        9
+#define NET_EVENT_CLOSE         10
+#define NET_EVENT_ACCEPT_FAIL   11
+
+
+#define NET_REQUEST_CONNECT         11
+#define NET_REQUEST_SEND            12
+#define NET_REQUEST_RECV            13
+#define NET_REQUEST_RECV_ACTIVATE   14
+#define NET_REQUEST_ACCEPT          15
+#define NET_REQUEST_ACCEPT_FAIL     16
+#define NET_REQUEST_CLOSE_LISTENER  17
+#define NET_REQUEST_TERMINATE       18
+#define NET_REQUEST_CLOSE_SOCKET    19
+
+
+#define PROC_NONE               0
+#define PROC_LISTENER           1
+#define PROC_SOCKET             2
+
+#define MAX_IP_LEN              1024
+
+#define DELAY_CLOSE_SOCKET      15
+#define DELAY_SEND_CHECK        5
+
+
+typedef struct st_event_establish
+{
+    struct st_epoll_tcp_listener* listener;
+}event_establish;
+
+typedef struct st_event_data
+{
+    unsigned int data_len;
+}event_data;
+
+typedef struct st_event_system_error
+{
+    unsigned int err_code;
+}event_system_error;
+
+typedef struct st_event_ssl_error
+{
+    unsigned int err_code;
+}event_ssl_error;
+
+typedef struct st_event_module_error
+{
+    //unsigned int err_code;
+    net_tcp_error err_code;
+}event_module_error;
+
+typedef struct st_event_connect_fail
+{
+    unsigned int err_code;
+}event_connect_fail;
+
+typedef struct st_event_accept_fail
+{
+    unsigned int err_code;
+}event_accept_fail;
+
+typedef struct st_event_terminate
+{
+
+}event_terminate;
+
+typedef struct st_event_accept
+{
+    struct st_epoll_tcp_listener*   listener;
+    int                             accept_socket_fd;
+}event_accept;
+
+typedef struct st_event_close
+{
+    struct st_epoll_tcp_listener*   listener;
+}event_close;
+
+typedef struct st_event_recv_activate
+{
+
+}event_recv_activate;
+
+typedef struct st_net_event
+{
+    struct st_epoll_tcp_socket* sock_ptr;
+    int                         type;
+    union
+    {
+        event_establish         evt_establish;
+        event_data              evt_data;
+        event_system_error      evt_system_error;
+        event_ssl_error         evt_ssl_error;
+        event_module_error      evt_module_error;
+        event_terminate         evt_terminate;
+        event_connect_fail      evt_connect_fail;
+        event_accept            evt_accept;
+        event_close             evt_close;
+        event_accept_fail       evt_accept_fail;
+        event_recv_activate     evt_recv_activate;
+    }evt;
+}net_event;
+
+typedef struct st_request_accept
+{
+
+}request_accept;
+
+typedef struct st_request_accept_fail
+{
+    int accept_fd;
+}request_accept_fail;
+
+typedef struct st_request_connect
+{
+
+}request_connect;
+
+typedef struct st_request_send
+{
+
+}request_send;
+
+typedef struct st_request_close_listener
+{
+    struct st_epoll_tcp_listener* listener;
+}request_close_listener;
+
+typedef struct st_request_terminate
+{
+    net_tcp_error module_error;
+    int system_error;
+}request_terminate;
+
+typedef struct st_request_recv_activate
+{
+
+}request_recv_activate;
+
+typedef struct st_net_request
+{
+    struct st_epoll_tcp_socket* sock_ptr;
+    int                         type;
+    union
+    {
+        request_accept          req_accept;
+        request_accept_fail     req_accept_fail;
+        request_connect         req_connect;
+        request_send            req_send;
+        request_close_listener  req_close_listener;
+        request_terminate       req_terminate;
+        request_recv_activate   req_recv_activate;
+    }req;
+}net_request;
+
+typedef struct st_epoll_tcp_listener
+{
+    /* data */
+    pfn_parse_packet                pkg_parser;
+    pfn_on_establish                on_establish;
+    pfn_on_terminate                on_terminate;
+    pfn_on_error                    on_error;
+    pfn_on_recv                     on_recv;
+
+    struct st_epoll_tcp_manager*    mgr;
+    struct st_epoll_tcp_proc*       proc;
+
+    void*                           user_data;
+
+    int                             sock_fd;
+    long                            state;
+    unsigned int                    recv_buf_size;
+    unsigned int                    send_buf_size;
+
+    unsigned int                    accept_push;
+    unsigned int                    accept_pop;
+}epoll_tcp_listener;
+
+typedef struct st_epoll_tcp_socket
+{
+    /* data */
+    pfn_parse_packet                pkg_parser;
+    pfn_on_establish                on_establish;
+    pfn_on_terminate                on_terminate;
+    pfn_on_error                    on_error;
+    pfn_on_recv                     on_recv;
+
+    struct st_epoll_tcp_manager*    mgr;
+    struct st_epoll_tcp_proc*       proc;
+    struct st_epoll_tcp_listener*   listener;
+
+    HLOOPCACHE                      recv_loop_cache;
+    HLOOPCACHE                      send_loop_cache;
+
+    HTIMERINFO                      timer_send;
+    HTIMERINFO                      timer_close;
+
+    //struct sockaddr_in6             local_sockaddr;
+    //struct sockaddr_in6             peer_sockaddr;
+    
+    int                             sock_fd;
+    long                            state;
+
+    unsigned int                    data_has_recv;
+
+    unsigned int                    send_req;
+    unsigned int                    send_ack;
+
+    unsigned int                    data_need_send;
+    unsigned int                    data_has_send;
+    unsigned int                    data_delay_send_size;
+    bool                            need_send_active;
+    bool                            need_req_close;
+
+}epoll_tcp_socket;
+
+typedef bool (*pfn_do_net_evt)(struct st_epoll_tcp_proc* proc);
+
+typedef struct st_epoll_tcp_proc
+{
+    int                             epoll_fd;
+    struct epoll_event*             arry_epoll_events;
+    int                             max_epoll_events;
+
+    pthread_t                       proc_thread;
+
+    HLOOPCACHE                      list_net_req;
+    HLOOPCACHE                      list_net_evt;
+
+    HTIMERMANAGER                   timer_mgr;
+    pfn_do_net_evt                  do_net_evt;
+
+    struct st_epoll_tcp_manager*    mgr;
+
+    bool                            is_running;
+    
+
+}epoll_tcp_proc;
+
+
+typedef struct st_epoll_tcp_manager
+{
+    pfn_on_establish            def_on_establish;
+    pfn_on_terminate            def_on_terminate;
+    pfn_on_error                def_on_error;
+    pfn_on_recv                 def_on_recv;
+    pfn_parse_packet            def_parse_packet;
+
+    HMEMORYUNIT                 socket_pool;
+    HRBTREE                     memory_mgr;
+
+    //epoll_tcp_proc**            listener_proc_arry;
+    unsigned int                listener_proc_num;
+    //epoll_tcp_proc**            socket_proc_arry;
+    unsigned int                socket_proc_num;
+    unsigned int                cur_proc_idx;
+
+    epoll_tcp_proc**            tcp_proc_array;
+
+    char*                       max_pkg_buf;
+    unsigned int                max_pkg_buf_size;
+}epoll_tcp_manager;
+
+typedef void* (*pfn_proc_func)(void* arg);
+
+epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
+{
+    return 0;
+}
+
+epoll_tcp_proc* _get_idle_epoll_socket_proc(epoll_tcp_manager* mgr)
+{
+    return 0;
+}
+
+bool _set_nonblock(int sock_fd)
+{
+    if (sock_fd == -1)
+    {
+        return false;
+    }
+
+    int flags = fcntl(sock_fd, F_GETFL, 0);
+
+    if (flags < 0)
+    {
+        return false;
+    }
+
+    flags |= O_NONBLOCK;
+
+    if (fcntl(sock_fd, F_SETFL, flags) < 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
+{
+    sock_ptr->pkg_parser = 0;
+    sock_ptr->on_establish = 0;
+    sock_ptr->on_terminate = 0;
+    sock_ptr->on_error = 0;
+    sock_ptr->on_recv = 0;
+
+    sock_ptr->proc = 0;
+    sock_ptr->listener = 0;
+
+    sock_ptr->timer_send = 0;
+    sock_ptr->timer_close = 0;
+
+    sock_ptr->sock_fd = -1;
+    sock_ptr->state = SOCKET_STATE_NONE;
+
+    sock_ptr->data_has_recv = 0;
+
+    sock_ptr->send_req = 0;
+    sock_ptr->send_ack = 0;
+
+    sock_ptr->data_need_send = 0;
+    sock_ptr->data_has_send = 0;
+    sock_ptr->data_delay_send_size = 0;
+    sock_ptr->need_send_active = true;
+    sock_ptr->need_req_close = true;
+}
+
+bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+{
+    if (!_set_nonblock(listener->sock_fd))
+    {
+        return false;
+    }
+
+    struct epoll_event evt;
+    evt.events = EPOLLIN | EPOLLET;
+    evt.data.ptr = listener;
+
+    if (epoll_ctl(proc->epoll_fd, EPOLL_CTL_ADD, listener->sock_fd, &evt) < 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void _epoll_tcp_listener_proc_del(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+{
+    if (listener->sock_fd == -1)
+    {
+        return;
+    }
+
+    epoll_ctl(proc->epoll_fd, EPOLL_CTL_DEL, listener->sock_fd, 0);
+}
+
+bool _epoll_tcp_socket_proc_add(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (!_set_nonblock(sock_ptr->sock_fd))
+    {
+        return false;
+    }
+
+    struct epoll_event evt;
+    evt.events = EPOLLOUT | EPOLLIN | EPOLLET;
+    evt.data.ptr = sock_ptr;
+
+    if (epoll_ctl(proc->epoll_fd, EPOLL_CTL_ADD, sock_ptr->sock_fd, &evt) < 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void _epoll_tcp_socket_proc_del(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->sock_fd == -1)
+    {
+        return;
+    }
+
+    epoll_ctl(proc->epoll_fd, EPOLL_CTL_DEL, sock_ptr->sock_fd, 0);
+}
+
+void* _epoll_tcp_manager_alloc_memory(epoll_tcp_manager* mgr, unsigned int buffer_size)
+{
+    HMEMORYUNIT unit;
+    HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+
+    if (!memory_node)
+    {
+        unit = create_memory_unit(buffer_size);
+
+        if (!unit)
+        {
+            return 0;
+        }
+
+        rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit);
+    }
+    else
+    {
+        unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
+    }
+
+    return memory_unit_alloc(unit);
+}
+
+void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned int buffer_size)
+{
+    HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+
+    HMEMORYUNIT check_unit = rb_node_value_user(memory_node);
+
+    if (!memory_unit_check(check_unit, mem))
+    {
+        CRUSH_CODE();
+    }
+
+    memory_unit_free(check_unit, mem);
+}
+
+
+epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
+{
+    epoll_tcp_socket* sock_ptr = 0;
+
+    if (recv_buf_size < 1024)
+    {
+        recv_buf_size = 1024;
+    }
+
+    if (send_buf_size < 1024)
+    {
+        send_buf_size = 1024;
+    }
+
+    sock_ptr = memory_unit_alloc(mgr->socket_pool);
+
+    if (sock_ptr)
+    {
+        if (sock_ptr->mgr != mgr)
+        {
+            CRUSH_CODE();
+        }
+
+        _epoll_tcp_socket_reset(sock_ptr);
+
+        if (!sock_ptr->recv_loop_cache)
+        {
+            if (sock_ptr->send_loop_cache)
+            {
+                CRUSH_CODE();
+            }
+
+            sock_ptr->recv_loop_cache = create_loop_cache(_epoll_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
+            sock_ptr->send_loop_cache = create_loop_cache(_epoll_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
+        }
+        else
+        {
+            if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
+            {
+                _epoll_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
+                loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_epoll_tcp_manager_alloc_memory(mgr, recv_buf_size));
+            }
+
+            if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
+            {
+                _epoll_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
+                loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_epoll_tcp_manager_alloc_memory(mgr, send_buf_size));
+            }
+        }
+
+        loop_cache_reinit(sock_ptr->recv_loop_cache);
+        loop_cache_reinit(sock_ptr->send_loop_cache);
+
+        return sock_ptr;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+void _epoll_tcp_manager_free_socket(epoll_tcp_manager* mgr, epoll_tcp_socket* sock_ptr)
+{
+    memory_unit_free(mgr->socket_pool, sock_ptr);
+}
+
+void _epoll_tcp_proc_push_evt_establish(epoll_tcp_proc* proc, epoll_tcp_listener* listener, epoll_tcp_socket* sock_ptr)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_ESTABLISH;
+    evt->evt.evt_establish.listener = listener;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_data(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, unsigned int data_len)
+{
+    if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
+    {
+        net_event* evt;
+        size_t evt_len = sizeof(net_event);
+
+        loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+        if (evt_len != sizeof(net_event))
+        {
+            CRUSH_CODE();
+        }
+
+        evt->sock_ptr = sock_ptr;
+        evt->type = NET_EVENT_DATA;
+        evt->evt.evt_data.data_len = data_len;
+
+        loop_cache_push(proc->list_net_evt, evt_len);
+    }
+}
+
+void _epoll_tcp_proc_push_evt_system_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_SYSTEM_ERROR;
+    evt->evt.evt_system_error.err_code = err_code;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_module_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error err_code)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_MODULE_ERROR;
+    evt->evt.evt_module_error.err_code = err_code;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_TERMINATE;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_connect_fail(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_CONNECT_FAIL;
+    evt->evt.evt_connect_fail.err_code = err_code;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener, int accetp_socket_fd)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = 0;
+    evt->type = NET_EVENT_ACCEPT;
+    evt->evt.evt_accept.accept_socket_fd = accetp_socket_fd;
+    evt->evt.evt_accept.listener = listener;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_accept_fail(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_ACCEPT_FAIL;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_recv_activate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_RECV_ACTIVATE;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+//void _epoll_tcp_proc_push_evt_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+//{
+//    net_event* evt;
+//    size_t evt_len = sizeof(net_event);
+//
+//    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+//
+//    if (evt_len != sizeof(net_event))
+//    {
+//        CRUSH_CODE();
+//    }
+//
+//    evt->sock_ptr = 0;
+//    evt->type = NET_EVENT_CLOSE;
+//    evt->evt.evt_close.listener = listener;
+//
+//    loop_cache_push(proc->list_net_evt, evt_len);
+//}
+
+void _epoll_tcp_proc_push_req_close_listener(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = 0;
+    req->type = NET_REQUEST_CLOSE_LISTENER;
+    req->req.req_close_listener.listener = listener;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error module_error, int system_error)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_TERMINATE;
+    req->req.req_terminate.module_error = module_error;
+    req->req.req_terminate.system_error = system_error;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_CONNECT;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_SEND;
+
+    sock_ptr->send_req++;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_ACCEPT;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_accept_fail(epoll_tcp_proc* proc, int accept_fd)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = 0;
+    req->type = NET_REQUEST_ACCEPT_FAIL;
+    req->req.req_accept_fail.accept_fd = accept_fd;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_recv_activate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_RECV_ACTIVATE;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_proc_push_req_close_socket(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_CLOSE_SOCKET;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
+void _epoll_tcp_socket_on_timer_send(epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
+    {
+        if (sock_ptr->data_has_send != sock_ptr->data_need_send)
+        {
+            if (sock_ptr->send_req == sock_ptr->send_ack)
+            {
+                if (sock_ptr->need_send_active)
+                {
+                    _epoll_tcp_proc_push_req_send(sock_ptr->proc, sock_ptr);
+                }
+            }
+        }
+    }
+}
+
+void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
+{
+    switch (sock_ptr->state)
+    {
+    case SOCKET_STATE_TERMINATE:
+    {
+        if (sock_ptr->data_has_send != sock_ptr->data_need_send)
+        {
+            if (sock_ptr->send_req == sock_ptr->send_ack)
+            {
+                if (sock_ptr->need_send_active)
+                {
+                    _epoll_tcp_proc_push_req_send(sock_ptr->proc, sock_ptr);
+                }
+            }
+
+            return;
+        }
+
+        //shutdown(sock_ptr->sock_fd, SD_RECEIVE)
+        sock_ptr->state = SOCKET_STATE_DELETE;
+    }
+    break;
+    case SOCKET_STATE_DELETE:
+    {
+        if (sock_ptr->need_req_close)
+        {
+            _epoll_tcp_proc_push_req_close_socket(sock_ptr->proc, sock_ptr);
+            sock_ptr->need_req_close = false;
+        }
+
+        if (sock_ptr->send_req == sock_ptr->send_ack)
+        {
+            if (sock_ptr->sock_fd == -1)
+            {
+                timer_del(sock_ptr->timer_close);
+                sock_ptr->timer_close = 0;
+                _epoll_tcp_manager_free_socket(sock_ptr->mgr, sock_ptr);
+            }
+        }
+    }
+    break;
+    default:
+    {
+        CRUSH_CODE();
+    }
+    }
+}
+
+void _epoll_tcp_socket_on_timer(HTIMERINFO timer)
+{
+    epoll_tcp_socket* sock_ptr = (epoll_tcp_socket*)timer_get_data(timer);
+
+    if (!sock_ptr)
+    {
+        CRUSH_CODE();
+    }
+
+    if (sock_ptr->timer_send == timer)
+    {
+        _epoll_tcp_socket_on_timer_send(sock_ptr);
+    }
+    else if (sock_ptr->timer_close == timer)
+    {
+        _epoll_tcp_socket_on_timer_close(sock_ptr);
+    }
+    else
+    {
+        CRUSH_CODE();
+    }
+}
+
+void _epoll_tcp_socket_mod_timer_send(epoll_tcp_socket* sock_ptr, unsigned int elapse)
+{
+    if (sock_ptr->timer_send)
+    {
+        timer_mod(sock_ptr->timer_send, elapse, -1, sock_ptr);
+        return;
+    }
+
+    sock_ptr->timer_send = timer_add(sock_ptr->proc->timer_mgr, elapse, -1, sock_ptr);
+
+    if (!sock_ptr->timer_send)
+    {
+        CRUSH_CODE();
+    }
+}
+
+void _epoll_tcp_socket_mod_timer_close(epoll_tcp_socket* sock_ptr, unsigned int elapse)
+{
+    if (sock_ptr->timer_send)
+    {
+        timer_del(sock_ptr->timer_send);
+        sock_ptr->timer_send = 0;
+    }
+
+    if (sock_ptr->timer_close)
+    {
+        timer_mod(sock_ptr->timer_close, elapse, -1, sock_ptr);
+        return;
+    }
+
+    sock_ptr->timer_close = timer_add(sock_ptr->proc->timer_mgr, elapse, -1, sock_ptr);
+
+    if (!sock_ptr->timer_close)
+    {
+        CRUSH_CODE();
+    }
+}
+
+void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (proc != sock_ptr->proc)
+    {
+        CRUSH_CODE();
+    }
+
+    if (!_epoll_tcp_socket_proc_add(proc, sock_ptr))
+    {
+        close(sock_ptr->sock_fd);
+        sock_ptr->sock_fd = -1;
+        sock_ptr->state = SOCKET_STATE_DELETE;
+        _epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
+    }
+    else
+    {
+        sock_ptr->state = SOCKET_STATE_ESTABLISH;
+        _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+    }
+}
+
+void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    int local_sockaddr_len = sizeof(struct sockaddr_in);
+    int peer_sockaddr_len = sizeof(struct sockaddr_in);
+
+    struct sockaddr_in6 local_sockaddr = { 0 };
+    struct sockaddr_in6 peer_sockaddr = { 0 };
+
+    bool reuse_addr;
+    char ip_data[MAX_IP_LEN];
+    char bind_ip_data[MAX_IP_LEN];
+    size_t ip_len = 0;
+    size_t bind_ip_len = 0;
+    unsigned short port = 0;
+    unsigned short bind_port = 0;
+
+    struct addrinfo hints;
+    struct addrinfo* result = 0;
+    char sz_port[64];
+
+    if (proc != sock_ptr->proc)
+    {
+        CRUSH_CODE();
+    }
+
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = 0;
+
+    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &port, sizeof(port)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (ip_len)
+    {
+        if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, ip_data, MAX_IP_LEN))
+        {
+            CRUSH_CODE();
+        }
+    }
+
+    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (bind_ip_len)
+    {
+        if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, bind_ip_data, MAX_IP_LEN))
+        {
+            CRUSH_CODE();
+        }
+    }
+
+    if (bind_ip_len)
+    {
+        hints.ai_flags = AI_PASSIVE;
+
+        ulltostr(bind_port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            goto ERROR_DEAL;
+        }
+        else
+        {
+            if (result->ai_addrlen >= sizeof(local_sockaddr))
+            {
+                freeaddrinfo(result);
+                goto ERROR_DEAL;
+            }
+
+            memcpy(&local_sockaddr, result->ai_addr, result->ai_addrlen);
+
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    if (ip_len <= 0)
+    {
+        CRUSH_CODE();
+    }
+
+    {
+        hints.ai_flags = 0;
+        ulltostr(port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(ip_data, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            goto ERROR_DEAL;
+        }
+        else
+        {
+            if (result->ai_addrlen >= sizeof(peer_sockaddr))
+            {
+                freeaddrinfo(result);
+                goto ERROR_DEAL;
+            }
+
+            memcpy(&peer_sockaddr, result->ai_addr, result->ai_addrlen);
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    if (bind_ip_len)
+    {
+        if (local_sockaddr.sin6_family != peer_sockaddr.sin6_family)
+        {
+            goto ERROR_DEAL;
+        }
+    }
+
+    sock_ptr->sock_fd = socket(peer_sockaddr.sin6_family, SOCK_STREAM, IPPROTO_TCP);
+    if (-1 == sock_ptr->sock_fd)
+    {
+        goto ERROR_DEAL;
+    }
+
+    if (reuse_addr)
+    {
+        int reuse = 1;
+        if (setsockopt(sock_ptr->sock_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)))
+        {
+            goto ERROR_DEAL;
+        }
+    }
+
+    if (peer_sockaddr.sin6_family == AF_INET6)
+    {
+        peer_sockaddr_len = sizeof(struct sockaddr_in6);
+        local_sockaddr_len = sizeof(struct sockaddr_in6);
+    }
+
+    if (!bind_ip_len)
+    {
+        if (local_sockaddr.sin6_family == AF_INET)
+        {
+            struct sockaddr_in* addr = (struct sockaddr_in*)&local_sockaddr;
+            addr->sin_family = AF_INET;
+            addr->sin_addr.s_addr = htonl(INADDR_ANY);
+            addr->sin_port = htons(0);
+        }
+        else
+        {
+            local_sockaddr.sin6_family = AF_INET6;
+            local_sockaddr.sin6_addr = in6addr_any;
+            local_sockaddr.sin6_port = htons(0);
+        }
+    }
+
+    if (-1 == bind(sock_ptr->sock_fd, (struct sockaddr*)&local_sockaddr, local_sockaddr_len))
+    {
+        goto ERROR_DEAL;
+    }
+
+    if (!_epoll_tcp_socket_proc_add(proc, sock_ptr))
+    {
+        goto ERROR_DEAL;
+    }
+
+    if (-1 == connect(sock_ptr->sock_fd, (struct sockaddr*)&peer_sockaddr, peer_sockaddr_len))
+    {
+        if (errno != EINPROGRESS)
+        {
+            _epoll_tcp_socket_proc_del(proc, sock_ptr);
+            goto ERROR_DEAL;
+        }
+    }
+
+    return;
+
+ERROR_DEAL:
+    if (sock_ptr->sock_fd != -1)
+    {
+        close(sock_ptr->sock_fd);
+        sock_ptr->sock_fd = -1;
+    }
+    sock_ptr->state = SOCKET_STATE_DELETE;
+
+    _epoll_tcp_proc_push_evt_connect_fail(proc, sock_ptr, errno);
+}
+
+void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->sock_fd != -1)
+    {
+        _epoll_tcp_socket_proc_del(proc, sock_ptr);
+        close(sock_ptr->sock_fd);
+        sock_ptr->sock_fd = -1;
+    }
+}
+
+void _epoll_tcp_socket_on_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error module_error, int system_error)
+{
+    switch (module_error)
+    {
+    case error_system:
+    {
+        sock_ptr->state = SOCKET_STATE_DELETE;
+
+        _epoll_tcp_proc_push_evt_system_error(proc, sock_ptr, system_error);
+    }
+    break;
+    case error_send_overflow:
+    case error_recv_overflow:
+    case error_packet:
+    {
+        _epoll_tcp_proc_push_evt_module_error(proc, sock_ptr, module_error);
+    }
+    break;
+    case error_ssl:
+        break;
+    case error_ok:
+    {
+        _epoll_tcp_proc_push_evt_terminate(proc, sock_ptr);
+    }
+    break;
+    default:
+    {
+        CRUSH_CODE();
+    }
+    }
+}
+
+void _epoll_tcp_listener_close(epoll_tcp_listener* listener)
+{
+    if (__sync_bool_compare_and_swap(&listener->state, SOCKET_STATE_LISTEN, SOCKET_STATE_CLOSE))
+    {
+        _epoll_tcp_proc_push_req_close_listener(listener->proc, listener);
+    }
+}
+
+void _epoll_tcp_socket_close(epoll_tcp_socket* sock_ptr, net_tcp_error error, int sys_error, bool epoll_proc)
+{
+    if (__sync_bool_compare_and_swap(&sock_ptr->state, SOCKET_STATE_ESTABLISH, SOCKET_STATE_TERMINATE))
+    {
+        if (epoll_proc)
+        {
+            _epoll_tcp_socket_on_terminate(sock_ptr->proc, sock_ptr, error, sys_error);
+        }
+        else
+        {
+            _epoll_tcp_proc_push_req_terminate(sock_ptr->proc, sock_ptr, error, sys_error);
+        }
+    }
+}
+
+void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
+    {
+        return;
+    }
+
+    char* recv_ptr = 0;
+    size_t recv_len = 0;
+    unsigned data_push_len = 0;
+
+    loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&recv_ptr, &recv_len);
+
+    while (recv_len)
+    {
+        int data_recv = recv(sock_ptr->sock_fd, recv_ptr, recv_len, 0);
+
+        if (data_recv > 0)
+        {
+            data_push_len += data_recv;
+            loop_cache_push(sock_ptr->recv_loop_cache, data_recv);
+        }
+        else if (data_recv < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            else if (errno == EAGAIN ||
+                errno == EWOULDBLOCK)
+            {
+                if (data_push_len)
+                {
+                    _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
+                }
+                return;
+            }
+            else
+            {
+                if (data_push_len)
+                {
+                    _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
+                }
+                _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
+                return;
+            }
+        }
+        else
+        {
+            if (data_push_len)
+            {
+                _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
+            }
+            _epoll_tcp_socket_close(sock_ptr, error_ok, 0, true);
+            return;
+        }
+
+        recv_len = 0;
+        recv_ptr = 0;
+
+        loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&recv_ptr, &recv_len);
+    }
+
+    _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
+}
+
+void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
+        sock_ptr->state != SOCKET_STATE_TERMINATE)
+    {
+        return;
+    }
+
+    size_t send_len = 0;
+    char* send_ptr = 0;
+
+    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+
+    while (send_len)
+    {
+        int data_send = send(sock_ptr->sock_fd, sock_ptr, send_len, 0);
+
+        if (data_send > 0)
+        {
+            sock_ptr->data_has_send += data_send;
+            loop_cache_pop(sock_ptr->send_loop_cache, data_send);
+        }
+        else if (data_send < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            else if (errno == EAGAIN ||
+                errno == EWOULDBLOCK)
+            {
+                sock_ptr->need_send_active = false;
+                return;
+            }
+            else
+            {
+                _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
+                return;
+            }
+        }
+        else
+        {
+            CRUSH_CODE();
+        }
+
+        send_len = 0;
+        send_ptr = 0;
+
+        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+    }
+
+    sock_ptr->need_send_active = true;
+}
+
+void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
+{
+    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->max_epoll_events, time_out);
+
+    if (fd_num < 0)
+    {
+        return;
+    }
+
+    for (int i = 0; i < fd_num; i++)
+    {
+        struct epoll_event* evt = &proc->arry_epoll_events[i];
+        epoll_tcp_socket* sock_ptr = (epoll_tcp_socket*)evt->data.ptr;
+
+        if (evt->events & EPOLLIN)
+        {
+            _epoll_tcp_socket_on_recv(proc, sock_ptr);
+        }
+
+        if (evt->events & EPOLLOUT)
+        {
+            if (sock_ptr->state == SOCKET_STATE_CONNECT)
+            {
+                sock_ptr->state = SOCKET_STATE_ESTABLISH;
+                _epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
+            }
+            else
+            {
+                _epoll_tcp_socket_on_send(proc, sock_ptr);
+            }
+        }
+
+        if (evt->events & EPOLLERR)
+        {
+            if (sock_ptr->state == SOCKET_STATE_CONNECT)
+            {
+                sock_ptr->state = SOCKET_STATE_DELETE;
+                _epoll_tcp_proc_push_evt_connect_fail(proc, sock_ptr, errno);
+            }
+            else
+            {
+                _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
+            }
+        }
+    }
+}
+
+void _do_socket_net_req(epoll_tcp_proc* proc)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+
+    while (req_len == sizeof(net_request))
+    {
+        switch (req->type)
+        {
+        case NET_REQUEST_SEND:
+        {
+            req->sock_ptr->send_ack++;
+            _epoll_tcp_socket_on_send(proc, req->sock_ptr);
+        }
+        break;
+        case NET_REQUEST_ACCEPT:
+        {
+            _epoll_tcp_socket_on_accept(proc, req->sock_ptr);
+        }
+        break;
+        case NET_REQUEST_TERMINATE:
+        {
+            _epoll_tcp_socket_on_terminate(proc, req->sock_ptr, 
+                req->req.req_terminate.module_error, 
+                req->req.req_terminate.system_error);
+        }
+        break;
+        case NET_REQUEST_CLOSE_SOCKET:
+        {
+            _epoll_tcp_socket_on_close(proc, req->sock_ptr);
+        }
+        break;
+        case NET_REQUEST_CONNECT:
+        {
+            _epoll_tcp_socket_on_connect(proc, req->sock_ptr);
+        }
+        break;
+        case NET_REQUEST_RECV_ACTIVATE:
+        {
+            _epoll_tcp_socket_on_recv(proc, req->sock_ptr);
+        }
+        break;
+        default:
+        {
+            CRUSH_CODE();
+        }
+        }
+
+        loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+    }
+}
+
+bool _do_socket_net_evt(epoll_tcp_proc* proc)
+{
+    timer_update(proc->timer_mgr, 0);
+
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_data(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len < sizeof(net_event))
+    {
+        return false;
+    }
+
+    epoll_tcp_socket* sock_ptr = evt->sock_ptr;
+
+    switch (evt->type)
+    {
+    case NET_EVENT_DATA:
+    {
+        char* data_ptr = 0;
+        size_t data_len;
+        unsigned int parser_len = 0;
+
+        sock_ptr->data_has_recv += evt->evt.evt_data.data_len;
+
+        data_len = sock_ptr->data_has_recv;
+
+        loop_cache_get_data(sock_ptr->recv_loop_cache, (void**)&data_ptr, &data_len);
+
+        if ((unsigned int)data_len < sock_ptr->data_has_recv)
+        {
+            if (sock_ptr->data_has_recv > proc->mgr->max_pkg_buf_size)
+            {
+                for (;;)
+                {
+                    proc->mgr->max_pkg_buf_size += 1024;
+
+                    if (proc->mgr->max_pkg_buf_size > sock_ptr->data_has_recv)
+                    {
+                        free(proc->mgr->max_pkg_buf);
+                        proc->mgr->max_pkg_buf = (char*)malloc(proc->mgr->max_pkg_buf_size);
+                        break;
+                    }
+                }
+            }
+
+            if (!loop_cache_copy_data(sock_ptr->recv_loop_cache, proc->mgr->max_pkg_buf, sock_ptr->data_has_recv))
+            {
+                CRUSH_CODE();
+            }
+
+            data_ptr = proc->mgr->max_pkg_buf;
+        }
+
+        while (sock_ptr->data_has_recv)
+        {
+            unsigned int pkg_len = 0;
+            if (sock_ptr->pkg_parser)
+            {
+                pkg_len = sock_ptr->pkg_parser(sock_ptr, data_ptr, sock_ptr->data_has_recv);
+            }
+            else
+            {
+                pkg_len = sock_ptr->data_has_recv;
+            }
+
+
+            if (pkg_len > 0)
+            {
+                if (pkg_len > sock_ptr->data_has_recv)
+                {
+                    _epoll_tcp_socket_close(sock_ptr, error_packet, 0, false);
+                    break;
+                }
+
+                sock_ptr->on_recv(sock_ptr, data_ptr, pkg_len);
+
+                data_ptr += pkg_len;
+                sock_ptr->data_has_recv -= pkg_len;
+                parser_len += pkg_len;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (parser_len)
+        {
+            if (!loop_cache_pop(sock_ptr->recv_loop_cache, parser_len))
+            {
+                CRUSH_CODE();
+            }
+        }
+    }
+    break;
+    case NET_EVENT_ESTABLISH:
+    {
+        _epoll_tcp_socket_mod_timer_send(sock_ptr, DELAY_SEND_CHECK);
+        sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
+    }
+    break;
+    case NET_EVENT_MODULE_ERROR:
+    {
+        sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
+        sock_ptr->on_terminate(sock_ptr);
+
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    case NET_EVENT_SYSTEM_ERROR:
+    {
+        sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
+        sock_ptr->on_terminate(sock_ptr);
+
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    case NET_EVENT_TERMINATE:
+    {
+        sock_ptr->on_terminate(sock_ptr);
+
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    case NET_EVENT_CONNECT_FAIL:
+    {
+        sock_ptr->on_error(sock_ptr, error_connect_fail, evt->evt.evt_connect_fail.err_code);
+
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    case NET_EVENT_RECV_ACTIVATE:
+    {
+        if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
+        {
+            if (loop_cache_free_size(sock_ptr->recv_loop_cache))
+            {
+                _epoll_tcp_proc_push_req_recv_activate(proc, sock_ptr);
+            }
+            else
+            {
+                _epoll_tcp_socket_close(sock_ptr, error_recv_overflow, 0, false);
+            }
+        }
+    }
+    break;
+    case NET_EVENT_ACCEPT_FAIL:
+    {
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
+    default:
+    {
+        CRUSH_CODE();
+    }
+    break;
+    }
+
+    if (!loop_cache_pop(proc->list_net_evt, sizeof(net_event)))
+    {
+        CRUSH_CODE();
+    }
+
+    return true;
+}
+
+void* _epoll_tcp_socket_proc_func(void* arg)
+{
+    epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
+
+    while (proc->is_running)
+    {
+        _do_socket_net_req(proc);
+        _do_socket_epoll_evt(proc, 1);
+    }
+
+    return 0;
+}
+
+void _epoll_tcp_listener_on_timer(HTIMERINFO timer)
+{
+
+}
+
+void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+{
+    int accept_sock_fd = accept(listener->sock_fd, 0, 0);
+
+    if (-1 == accept_sock_fd)
+    {
+        return;
+    }
+    listener->accept_push++;
+    _epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+}
+
+void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+{
+    _epoll_tcp_listener_proc_del(proc, listener);
+    close(listener->sock_fd);
+    listener->sock_fd = -1;
+    listener->state = SOCKET_STATE_DELETE;
+}
+
+void _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
+{
+    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->max_epoll_events, time_out);
+
+    if (fd_num < 0)
+    {
+        return;
+    }
+
+    for (int i = 0; i < fd_num; i++)
+    {
+        struct epoll_event* evt = &proc->arry_epoll_events[i];
+
+        if (evt->events & EPOLLIN)
+        {
+            _epoll_tcp_listener_on_accept(proc, (epoll_tcp_listener*)evt->data.ptr);
+        }
+    }
+}
+
+void _do_listener_net_req(epoll_tcp_proc* proc)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+
+    while (req_len == sizeof(net_request))
+    {
+        switch (req->type)
+        {
+        case NET_REQUEST_CLOSE_LISTENER:
+            _epoll_tcp_listener_on_close(proc, req->req.req_close_listener.listener);
+        	break;
+        case NET_REQUEST_ACCEPT_FAIL:
+            close(req->req.req_accept_fail.accept_fd);
+            break;
+        default:
+        {
+            CRUSH_CODE();
+        }
+        }
+
+        if (!loop_cache_pop(proc->list_net_req, sizeof(net_request)))
+        {
+            CRUSH_CODE();
+        }
+
+        loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+    }
+}
+
+bool _do_listener_net_evt(epoll_tcp_proc* proc)
+{
+    timer_update(proc->timer_mgr, 0);
+
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_data(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len < sizeof(net_event))
+    {
+        return false;
+    }
+
+    switch (evt->type)
+    {
+    case NET_EVENT_ACCEPT:
+    {
+        epoll_tcp_listener* listener = evt->evt.evt_accept.listener;
+
+        epoll_tcp_socket* sock_ptr = _epoll_tcp_manager_alloc_socket(
+            proc->mgr,
+            listener->recv_buf_size,
+            listener->send_buf_size);
+        if (sock_ptr)
+        {
+            sock_ptr->sock_fd = evt->evt.evt_accept.accept_socket_fd;
+
+            sock_ptr->on_establish = listener->on_establish;
+
+            sock_ptr->on_terminate = listener->on_terminate;
+
+            sock_ptr->on_error = listener->on_error;
+
+            sock_ptr->on_recv = listener->on_recv;
+
+            sock_ptr->pkg_parser = listener->pkg_parser;
+
+            sock_ptr->proc = _get_idle_epoll_socket_proc(proc->mgr);
+
+            sock_ptr->listener = listener;
+
+            _epoll_tcp_proc_push_req_accept(sock_ptr->proc, sock_ptr);
+        }
+        else
+        {
+            _epoll_tcp_proc_push_req_accept_fail(listener->proc, evt->evt.evt_accept.accept_socket_fd);
+        }
+        listener->accept_pop++;
+    }
+    break;
+    default:
+    {
+        CRUSH_CODE();
+    }
+    break;
+    }
+
+    if (!loop_cache_pop(proc->list_net_evt, sizeof(net_event)))
+    {
+        CRUSH_CODE();
+    }
+
+    return true;
+}
+
+void* _epoll_tcp_listener_proc_func(void* arg)
+{
+    epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
+
+    while (proc->is_running)
+    {
+        _do_listener_net_req(proc);
+        _do_listener_epoll_evt(proc, 1);
+    }
+
+    return 0;
+}
+
+void _uninit_epoll_tcp_proc(epoll_tcp_proc* proc)
+{
+    if (proc->proc_thread)
+    {
+        proc->is_running = false;
+        pthread_join(proc->proc_thread, 0);
+    }
+
+    if (proc->timer_mgr)
+    {
+        destroy_timer_manager(proc->timer_mgr);
+    }
+
+    if (proc->list_net_evt)
+    {
+        destroy_loop_cache(proc->list_net_evt);
+    }
+
+    if (proc->list_net_req)
+    {
+        destroy_loop_cache(proc->list_net_req);
+    }
+
+    if (proc->arry_epoll_events)
+    {
+        free(proc->arry_epoll_events);
+    }
+
+    if (proc->epoll_fd != -1)
+    {
+        close(proc->epoll_fd);
+    }
+
+    free(proc);
+}
+
+
+
+epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_manager* mgr, pfn_proc_func proc_func, pfn_on_timer on_timer, pfn_do_net_evt do_net_evt)
+{
+    epoll_tcp_proc* proc = (epoll_tcp_proc*)malloc(sizeof(epoll_tcp_proc));
+
+    proc->mgr = mgr;
+
+    proc->epoll_fd = epoll_create(max_socket_num);
+    proc->arry_epoll_events = (struct epoll_event*)malloc(sizeof(struct epoll_event)*max_socket_num);
+
+    proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 4);
+    proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 4);
+
+    proc->timer_mgr = create_timer_manager(on_timer);
+    proc->do_net_evt = do_net_evt;
+
+    if (pthread_create(&proc->proc_thread, 0, proc_func, proc))
+    {
+        proc->proc_thread = 0;
+        proc->is_running = false;
+    }
+    else
+    {
+        proc->is_running = true;
+    }
+
+    if (proc->epoll_fd < 0 ||
+        !proc->arry_epoll_events ||
+        !proc->list_net_evt ||
+        !proc->list_net_req ||
+        !proc->timer_mgr ||
+        !proc->proc_thread)
+    {
+        _uninit_epoll_tcp_proc(proc);
+        return 0;
+    }
+
+    return proc;
+}
+
+bool _epoll_tcp_listener_listen(epoll_tcp_listener* listener, const char* ip, unsigned short port, int reuse_addr)
+{
+    char sz_port[64];
+    struct addrinfo hints;
+    struct addrinfo* result = 0;
+
+    listener->state = SOCKET_STATE_NONE;
+
+    if (!ulltostr(port, sz_port, sizeof(sz_port), 10))
+    {
+        return false;
+    }
+
+    memset(&hints, 0, sizeof(struct addrinfo));
+
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    if (getaddrinfo(ip, sz_port, &hints, &result))
+    {
+        return false;
+    }
+
+    listener->sock_fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+
+    if (-1 == listener->sock_fd)
+    {
+        freeaddrinfo(result);
+        return false;
+    }
+
+    if (reuse_addr)
+    {
+        reuse_addr = 1;
+        setsockopt(listener->sock_fd, SOL_SOCKET, SO_REUSEADDR, &reuse_addr, sizeof(reuse_addr));
+    }
+    
+    if (-1 == bind(listener->sock_fd, result->ai_addr, result->ai_addrlen))
+    {
+        freeaddrinfo(result);
+        close(listener->sock_fd);
+        listener->sock_fd = -1;
+        return false;
+    }
+
+    listener->proc = _get_idle_epoll_listener_proc(listener->mgr);
+
+    if (!_epoll_tcp_listener_proc_add(listener->proc, listener))
+    {
+        freeaddrinfo(result);
+        close(listener->sock_fd);
+        listener->sock_fd = -1;
+        return false;
+    }
+
+    if (-1 == listen(listener->sock_fd, 256))
+    {
+        freeaddrinfo(result);
+        close(listener->sock_fd);
+        listener->sock_fd = -1;
+        return false;
+    }
+
+    listener->state = SOCKET_STATE_LISTEN;
+
+    freeaddrinfo(result);
+    return true;
+}
+
+void destroy_epoll_tcp(epoll_tcp_manager* mgr)
+{
+    for (unsigned int i = 0; i < mgr->listener_proc_num+mgr->socket_proc_num; i++)
+    {
+        if (mgr->tcp_proc_array[i])
+        {
+            _uninit_epoll_tcp_proc(mgr->tcp_proc_array[i]);
+        }
+    }
+
+    if (mgr->max_pkg_buf)
+    {
+        free(mgr->max_pkg_buf);
+    }
+
+    if (mgr->memory_mgr)
+    {
+        HRBNODE memory_node = rb_first(mgr->memory_mgr);
+        while (memory_node)
+        {
+            destroy_memory_unit((HMEMORYUNIT)rb_node_value_user(memory_node));
+            memory_node = rb_next(memory_node);
+        }
+
+        destroy_memory_unit(rb_node_unit(mgr->memory_mgr));
+        destroy_memory_unit(rb_tree_unit(mgr->memory_mgr));
+    }
+
+    if (mgr->socket_pool)
+    {
+        destroy_memory_unit(mgr->socket_pool);
+    }
+
+    free(mgr);
+}
+
+epoll_tcp_manager* create_epoll_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet,
+    unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num)
+{
+    epoll_tcp_socket** arry_socket_ptr = 0;
+
+    epoll_tcp_manager* mgr = (epoll_tcp_manager*)malloc(sizeof(epoll_tcp_manager));
+
+    mgr->def_on_establish = func_on_establish;
+    mgr->def_on_terminate = func_on_terminate;
+    mgr->def_on_error = func_on_error;
+    mgr->def_on_recv = func_on_recv;
+
+    mgr->socket_pool = create_memory_unit(sizeof(epoll_tcp_socket));
+    memory_unit_set_grow_count(mgr->socket_pool, max_socket_num);
+
+    arry_socket_ptr = (epoll_tcp_socket**)malloc(sizeof(epoll_tcp_socket*)*max_socket_num);
+
+    for (unsigned int i = 0; i < max_socket_num; i++)
+    {
+        arry_socket_ptr[i] = memory_unit_alloc(mgr->socket_pool);
+        arry_socket_ptr[i]->mgr = mgr;
+        arry_socket_ptr[i]->recv_loop_cache = 0;
+        arry_socket_ptr[i]->send_loop_cache = 0;
+    }
+    memory_unit_set_grow_count(mgr->socket_pool, 0);
+
+    for (unsigned int i = 0; i < max_socket_num; i++)
+    {
+        memory_unit_free(mgr->socket_pool, arry_socket_ptr[i]);
+    }
+
+    free(arry_socket_ptr);
+    arry_socket_ptr = 0;
+
+    mgr->memory_mgr = create_rb_tree_ex(0,
+        create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
+
+    mgr->socket_proc_num = max_io_thread_num;
+    if (!max_io_thread_num)
+    {
+        mgr->socket_proc_num = sysconf(_SC_NPROCESSORS_ONLN);
+    }
+
+    mgr->listener_proc_num = 1;
+
+    mgr->cur_proc_idx = 0;
+
+    //mgr->socket_proc_arry = (epoll_tcp_proc**)malloc(sizeof(epoll_tcp_proc*)*mgr->socket_proc_num);
+    //mgr->listener_proc_arry = (epoll_tcp_proc**)malloc(sizeof(epoll_tcp_proc*)*mgr->listener_proc_num);
+
+    mgr->tcp_proc_array = (epoll_tcp_proc**)malloc(sizeof(epoll_tcp_proc*)*(mgr->socket_proc_num + mgr->listener_proc_num));
+
+    mgr->max_pkg_buf_size = 64 * 1024;
+    mgr->max_pkg_buf = (char*)malloc(mgr->max_pkg_buf_size);
+
+    for (unsigned int i = 0; i < mgr->listener_proc_num; i++)
+    {
+        mgr->tcp_proc_array[i] = _init_epoll_tcp_proc(max_accept_ex_num, mgr,
+            _epoll_tcp_listener_proc_func, 
+            _epoll_tcp_listener_on_timer,
+            _do_listener_net_evt);
+    }
+
+    for (unsigned int i = mgr->listener_proc_num; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
+    {
+        mgr->tcp_proc_array[i] = _init_epoll_tcp_proc(max_socket_num, mgr,
+            _epoll_tcp_socket_proc_func, 
+            _epoll_tcp_socket_on_timer,
+            _do_socket_net_evt);
+    }
+
+    if (!mgr->socket_pool ||
+        !mgr->memory_mgr ||
+        !mgr->max_pkg_buf)
+    {
+        destroy_epoll_tcp(mgr);
+        return 0;
+    }
+
+    for (unsigned int i = 0; i < mgr->listener_proc_num + mgr->socket_proc_num; i++)
+    {
+        if (!mgr->tcp_proc_array[i])
+        {
+            destroy_epoll_tcp(mgr);
+            return 0;
+        }
+    }
+
+    return mgr;
+}
+
+epoll_tcp_socket* epoll_tcp_connect(
+    epoll_tcp_manager* mgr,
+    const char* ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    const char* bind_ip,
+    unsigned short bind_port,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
+    epoll_tcp_socket* sock_ptr = _epoll_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
+
+    if (!sock_ptr)
+    {
+        return 0;
+    }
+
+    if (func_on_establish)
+    {
+        sock_ptr->on_establish = func_on_establish;
+    }
+    else
+    {
+        sock_ptr->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        sock_ptr->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        sock_ptr->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        sock_ptr->on_error = func_on_error;
+    }
+    else
+    {
+        sock_ptr->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        sock_ptr->on_recv = func_on_recv;
+    }
+    else
+    {
+        sock_ptr->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        sock_ptr->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        sock_ptr->pkg_parser = mgr->def_parse_packet;
+    }
+
+    sock_ptr->proc = _get_idle_epoll_socket_proc(mgr);
+    sock_ptr->listener = 0;
+    sock_ptr->state = SOCKET_STATE_CONNECT;
+
+    size_t ip_len = strlen(ip);
+    size_t bind_ip_len = strlen(bind_ip);
+
+    if (ip_len >= MAX_IP_LEN ||
+        bind_ip_len >= MAX_IP_LEN)
+    {
+        _epoll_tcp_manager_free_socket(mgr, sock_ptr);
+        return 0;
+    }
+
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &port, sizeof(port));
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
+    if (ip_len)
+    {
+        loop_cache_push_data(sock_ptr->recv_loop_cache, ip, ip_len);
+    }
+
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
+    if (bind_ip_len)
+    {
+        loop_cache_push_data(sock_ptr->recv_loop_cache, bind_ip, bind_ip_len);
+    }
+
+    _epoll_tcp_proc_push_req_connect(sock_ptr->proc, sock_ptr);
+
+    return sock_ptr;
+}
+
+epoll_tcp_listener* epoll_tcp_listen(
+    epoll_tcp_manager* mgr,
+    const char * ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
+    epoll_tcp_listener* listener = (epoll_tcp_listener*)malloc(sizeof(epoll_tcp_listener));
+
+    listener->recv_buf_size = recv_buf_size;
+    listener->send_buf_size = send_buf_size;
+
+    listener->accept_pop = 0;
+    listener->accept_push = 0;
+
+    listener->mgr = mgr;
+
+    if (func_on_establish)
+    {
+        listener->on_establish = func_on_establish;
+    }
+    else
+    {
+        listener->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        listener->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        listener->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        listener->on_error = func_on_error;
+    }
+    else
+    {
+        listener->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        listener->on_recv = func_on_recv;
+    }
+    else
+    {
+        listener->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        listener->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        listener->pkg_parser = mgr->def_parse_packet;
+    }
+
+    if (!_epoll_tcp_listener_listen(listener, ip, port, reuse_addr))
+    {
+        free(listener);
+        return 0;
+    }
+
+    return listener;
+}
+
+bool epoll_tcp_send(epoll_tcp_socket* sock_ptr, const void* data, unsigned int len)
+{
+    if (!len)
+    {
+        return true;
+    }
+
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
+    {
+        return false;
+    }
+
+    if (!loop_cache_push_data(sock_ptr->send_loop_cache, data, len))
+    {
+        _epoll_tcp_socket_close(sock_ptr, error_send_overflow, 0, false);
+        return false;
+    }
+
+    sock_ptr->data_need_send += len;
+
+    if ((sock_ptr->data_need_send - sock_ptr->data_has_send) < sock_ptr->data_delay_send_size)
+    {
+        return true;
+    }
+
+    if (sock_ptr->send_req == sock_ptr->send_ack)
+    {
+        if (sock_ptr->need_send_active)
+        {
+            _epoll_tcp_proc_push_req_send(sock_ptr->proc, sock_ptr);
+        }
+    }
+
+    return true;
+}
+
+bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
+{
+    unsigned int tick = get_tick();
+
+    bool is_busy = false;
+
+    for (;;)
+    {
+        if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
+        {
+            is_busy = true;
+        }
+        mgr->cur_proc_idx++;
+
+        if (mgr->cur_proc_idx >= mgr->listener_proc_num + mgr->socket_proc_num)
+        {
+            mgr->cur_proc_idx = 0;
+        }
+
+        if (run_time)
+        {
+            if (get_tick() - tick >= run_time)
+            {
+                return is_busy;
+            }
+        }
+    }
+
+    return is_busy;
+}
+
+void epoll_tcp_close_listener(epoll_tcp_listener* listener)
+{
+    if (listener)
+    {
+        _epoll_tcp_listener_close(listener);
+
+        while (listener->accept_pop != listener->accept_push)
+        {
+            usleep(10000);
+        }
+
+        while (listener->state != SOCKET_STATE_DELETE)
+        {
+            usleep(10000);
+        }
+
+        free(listener);
+    }
+}
+
+void epoll_tcp_close_session(epoll_tcp_socket* sock_ptr)
+{
+    _epoll_tcp_socket_close(sock_ptr, error_ok, 0, false);
+}
+//#endif
