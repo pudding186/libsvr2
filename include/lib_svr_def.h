@@ -32,9 +32,18 @@ typedef struct st_loop_cache* HLOOPCACHE;
 typedef struct st_loop_ptr_queue* HLOOPPTRQUEUE;
 
 //////////////////////////////////////////////////////////////////////////
+
+#ifdef _MSC_VER
 typedef struct st_iocp_tcp_socket*      HSESSION;
 typedef struct st_iocp_tcp_listener*    HLISTENER;
 typedef struct st_iocp_tcp_manager*     HNETMANAGER;
+#elif __GNUC__
+typedef struct st_epoll_tcp_socket*      HSESSION;
+typedef struct st_epoll_tcp_listener*    HLISTENER;
+typedef struct st_epoll_tcp_manager*     HNETMANAGER;
+#else
+#error "unknown compiler"
+#endif
 
 typedef enum e_net_tcp_error
 {

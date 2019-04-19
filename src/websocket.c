@@ -1434,7 +1434,7 @@ void _ws_on_terminate(HSESSION session)
     _ws_free_socket(ws_session->mgr, ws_session);
 }
 
-void _ws_on_error(HSESSION session, iocp_tcp_error module_error, int system_error)
+void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error)
 {
     ws_socket* ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
 

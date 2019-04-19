@@ -755,7 +755,12 @@ void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
         {
         case error_system:
         {
-            sock_ptr->data_has_send = sock_ptr->data_need_send;
+            sock_ptr->state = SOCKET_STATE_DELETE;
+            if (sock_ptr->tcp_socket != INVALID_SOCKET)
+            {
+                closesocket(sock_ptr->tcp_socket);
+                sock_ptr->tcp_socket = INVALID_SOCKET;
+            }
 
             if (sock_ptr->ssl_data && (!sock_ptr->ssl_data->ssl_pt.ssl_listener) && (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE))
             {
@@ -771,8 +776,6 @@ void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
         case error_recv_overflow:
         case error_packet:
         {
-            sock_ptr->data_has_send = sock_ptr->data_need_send;
-
             if (sock_ptr->ssl_data && (!sock_ptr->ssl_data->ssl_pt.ssl_listener) && (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE))
             {
                 _push_connect_fail_event(sock_ptr, error);
@@ -785,7 +788,7 @@ void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
         break;
         case error_ssl:
         {
-            sock_ptr->data_has_send = sock_ptr->data_need_send;
+            sock_ptr->state = SOCKET_STATE_DELETE;
             if (sock_ptr->ssl_data && (!sock_ptr->ssl_data->ssl_pt.ssl_listener) && (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE))
             {
                 _push_connect_fail_event(sock_ptr, ERR_get_error());
@@ -797,11 +800,15 @@ void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
             
         }
         break;
-        default:
+        case error_ok:
         {
             _push_terminate_event(sock_ptr);
         }
         break;
+        default:
+        {
+            CRUSH_CODE();
+        }
         }
     }
 }
@@ -1368,14 +1375,15 @@ void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr, BOOL reuse_addr)
     return;
 
 ERROR_DEAL:
-
-    _push_connect_fail_event(socket_ptr, WSAGetLastError());
+    socket_ptr->state = SOCKET_STATE_DELETE;
 
     if (socket_ptr->tcp_socket != INVALID_SOCKET)
     {
         closesocket(socket_ptr->tcp_socket);
         socket_ptr->tcp_socket = INVALID_SOCKET;
     }
+
+    _push_connect_fail_event(socket_ptr, WSAGetLastError());
 }
 
 void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
@@ -1441,10 +1449,11 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
 
 ERROR_DEAL:
 
-    _push_connect_fail_event(sock_ptr, WSAGetLastError());
-
+    sock_ptr->state = SOCKET_STATE_DELETE;
     closesocket(sock_ptr->tcp_socket);
     sock_ptr->tcp_socket = INVALID_SOCKET;
+
+    _push_connect_fail_event(sock_ptr, WSAGetLastError());
 }
 
 void _mod_timer_close(iocp_tcp_socket* sock_ptr, unsigned int elapse)
@@ -1917,70 +1926,72 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     break;
     case NET_EVENT_ESTABLISH:
     {
-        _mod_timer_send(evt->socket_ptr, DELAY_SEND_CHECK);
-        sock_ptr->on_establish(evt->evt.evt_establish.listener, evt->socket_ptr);
+        _mod_timer_send(sock_ptr, DELAY_SEND_CHECK);
+        sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
     }
     break;
     case NET_EVENT_MODULE_ERROR:
     {
         if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
         {
-            sock_ptr->on_error(evt->socket_ptr, evt->evt.evt_module_error.err_code, 0);
-            sock_ptr->on_terminate(evt->socket_ptr);
+            sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
+            sock_ptr->on_terminate(sock_ptr);
         }
 
-        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SSL_ERROR:
     {
         if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
         {
-            sock_ptr->on_error(evt->socket_ptr, error_ssl, evt->evt.evt_ssl_error.err_code);
-            sock_ptr->on_terminate(evt->socket_ptr);
+            sock_ptr->on_error(sock_ptr, error_ssl, evt->evt.evt_ssl_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
         }
 
-        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SYSTEM_ERROR:
     {
         if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
         {
-            sock_ptr->on_error(evt->socket_ptr, error_system, evt->evt.evt_system_error.err_code);
-            sock_ptr->on_terminate(evt->socket_ptr);
+            sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
         }
 
-        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_TERMINATE:
     {
         if ((!sock_ptr->ssl_data) || (sock_ptr->ssl_data && sock_ptr->ssl_data->ssl_state == SSL_HAND_SHAKE))
         {
-            sock_ptr->on_terminate(evt->socket_ptr);
+            sock_ptr->on_terminate(sock_ptr);
         }
 
-        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_CONNECT_FAIL:
     {
-        sock_ptr->on_error(evt->socket_ptr, error_connect_fail, evt->evt.evt_connect_fail.err_code);
-        evt->socket_ptr->state = SOCKET_STATE_TERMINATE;
+        sock_ptr->on_error(sock_ptr, error_connect_fail, evt->evt.evt_connect_fail.err_code);
 
-        _mod_timer_close(evt->socket_ptr, DELAY_CLOSE_SOCKET);
+        _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_RECV_ACTIVE:
     {
-        if (loop_cache_free_size(evt->socket_ptr->recv_loop_cache))
+        if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
         {
-            _iocp_tcp_socket_post_recv_req(evt->socket_ptr);
-        }
-        else
-        {
-            _iocp_tcp_socket_close(evt->socket_ptr, error_recv_overflow);
+            if (loop_cache_free_size(sock_ptr->recv_loop_cache))
+            {
+                _iocp_tcp_socket_post_recv_req(sock_ptr);
+            }
+            else
+            {
+                _iocp_tcp_socket_close(sock_ptr, error_recv_overflow);
+            }
         }
     }
     break;
@@ -2159,7 +2170,7 @@ void _iocp_tcp_socket_on_timer_close(iocp_tcp_socket* sock_ptr)
             {
                 if (!_iocp_tcp_socket_post_send_req(sock_ptr))
                 {
-                    _iocp_tcp_socket_close(sock_ptr, error_system);
+                    sock_ptr->state = SOCKET_STATE_DELETE;
                 }
             }
 

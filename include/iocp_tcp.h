@@ -53,9 +53,9 @@ extern void (iocp_tcp_close_listener)(HLISTENER listener);
 
 extern bool (iocp_tcp_run)(HNETMANAGER mgr, unsigned int run_time);
 
-extern SOCKET(iocp_tcp_session_socket)(HSESSION socket);
+extern SOCKET (iocp_tcp_session_socket)(HSESSION socket);
 
-extern SOCKET(iocp_tcp_listener_socket)(HLISTENER listener);
+extern SOCKET (iocp_tcp_listener_socket)(HLISTENER listener);
 
 extern void (iocp_tcp_set_listener_data)(HLISTENER listener, void* user_data);
 
