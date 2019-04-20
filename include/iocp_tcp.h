@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-extern HNETMANAGER(create_iocp_tcp)(
+extern HNETMANAGER (create_iocp_tcp)(
     pfn_on_establish func_on_establish,
     pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error,
@@ -19,7 +19,8 @@ extern HNETMANAGER(create_iocp_tcp)(
 
 extern void (destroy_iocp_tcp)(HNETMANAGER mgr);
 
-extern HSESSION(iocp_tcp_connect)(HNETMANAGER mgr,
+extern HSESSION (iocp_tcp_connect)(
+    HNETMANAGER mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,
@@ -33,7 +34,8 @@ extern HSESSION(iocp_tcp_connect)(HNETMANAGER mgr,
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet);
 
-extern HLISTENER(iocp_tcp_listen)(HNETMANAGER mgr,
+extern HLISTENER (iocp_tcp_listen)(
+    HNETMANAGER mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,
@@ -45,37 +47,37 @@ extern HLISTENER(iocp_tcp_listen)(HNETMANAGER mgr,
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet);
 
-extern bool (iocp_tcp_send)(HSESSION socket, const void* data, unsigned int len);
+extern bool (iocp_tcp_send)(HSESSION session, const void* data, unsigned int len);
 
-extern void (iocp_tcp_close_session)(HSESSION socket);
+extern void (iocp_tcp_close_session)(HSESSION session);
 
 extern void (iocp_tcp_close_listener)(HLISTENER listener);
 
 extern bool (iocp_tcp_run)(HNETMANAGER mgr, unsigned int run_time);
 
-extern SOCKET (iocp_tcp_session_socket)(HSESSION socket);
+extern SOCKET (iocp_tcp_session_socket)(HSESSION session);
 
 extern SOCKET (iocp_tcp_listener_socket)(HLISTENER listener);
 
 extern void (iocp_tcp_set_listener_data)(HLISTENER listener, void* user_data);
 
-extern void (iocp_tcp_set_session_data)(HSESSION socket, void* user_data);
+extern void (iocp_tcp_set_session_data)(HSESSION session, void* user_data);
 
 extern void* (iocp_tcp_get_listener_data)(HLISTENER listener);
 
-extern void* (iocp_tcp_get_session_data)(HSESSION socket);
+extern void* (iocp_tcp_get_session_data)(HSESSION session);
 
-extern bool (iocp_tcp_get_peer_ip_port)(HSESSION socket, ip_info* info);
+extern bool (iocp_tcp_get_peer_ip_port)(HSESSION session, ip_info* info);
 
-extern bool (iocp_tcp_get_local_ip_port)(HSESSION socket, ip_info* info);
+extern bool (iocp_tcp_get_local_ip_port)(HSESSION session, ip_info* info);
 
-extern bool (iocp_tcp_get_peer_sock_addr)(HSESSION socket, addr_info* info);
+extern bool (iocp_tcp_get_peer_sock_addr)(HSESSION session, addr_info* info);
 
-extern bool (iocp_tcp_get_local_sock_addr)(HSESSION socket, addr_info* info);
+extern bool (iocp_tcp_get_local_sock_addr)(HSESSION session, addr_info* info);
 
-extern unsigned int (iocp_tcp_get_send_free_size)(HSESSION socket);
+extern unsigned int (iocp_tcp_get_send_free_size)(HSESSION session);
 
-extern void (iocp_tcp_set_send_control)(HSESSION socket, unsigned int pkg_size, unsigned int delay_time);
+extern void (iocp_tcp_set_send_control)(HSESSION session, unsigned int pkg_size, unsigned int delay_time);
 
 #ifdef  __cplusplus
 }

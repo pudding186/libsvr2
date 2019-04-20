@@ -56,7 +56,7 @@
 #define PROC_LISTENER           1
 #define PROC_SOCKET             2
 
-#define MAX_IP_LEN              1024
+#define MAX_IP_LEN              2048
 
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
@@ -194,6 +194,7 @@ typedef struct st_net_request
 typedef struct st_epoll_tcp_listener
 {
     /* data */
+    void*                           user_data;
     pfn_parse_packet                pkg_parser;
     pfn_on_establish                on_establish;
     pfn_on_terminate                on_terminate;
@@ -202,8 +203,6 @@ typedef struct st_epoll_tcp_listener
 
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
-
-    void*                           user_data;
 
     int                             sock_fd;
     long                            state;
@@ -217,6 +216,7 @@ typedef struct st_epoll_tcp_listener
 typedef struct st_epoll_tcp_socket
 {
     /* data */
+    void*                           user_data;
     pfn_parse_packet                pkg_parser;
     pfn_on_establish                on_establish;
     pfn_on_terminate                on_terminate;
@@ -362,6 +362,8 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->data_delay_send_size = 0;
     sock_ptr->need_send_active = true;
     sock_ptr->need_req_close = true;
+
+    sock_ptr->user_data = 0;
 }
 
 bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
@@ -1896,8 +1898,8 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
     proc->epoll_fd = epoll_create(max_socket_num);
     proc->arry_epoll_events = (struct epoll_event*)malloc(sizeof(struct epoll_event)*max_socket_num);
 
-    proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 4);
-    proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 4);
+    proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 16);
+    proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 16);
 
     proc->timer_mgr = create_timer_manager(on_timer);
     proc->do_net_evt = do_net_evt;
@@ -2246,6 +2248,7 @@ epoll_tcp_listener* epoll_tcp_listen(
     listener->accept_pop = 0;
     listener->accept_push = 0;
 
+    listener->user_data = 0;
     listener->mgr = mgr;
 
     if (func_on_establish)
@@ -2393,4 +2396,46 @@ void epoll_tcp_close_session(epoll_tcp_socket* sock_ptr)
 {
     _epoll_tcp_socket_close(sock_ptr, error_ok, 0, false);
 }
+
+int epoll_tcp_session_socket(epoll_tcp_socket* sock_ptr)
+{
+    return sock_ptr->sock_fd;
+}
+
+int epoll_tcp_listener_socket(epoll_tcp_listener* listener)
+{
+    return listener->sock_fd;
+}
+
+void epoll_tcp_set_listener_data(epoll_tcp_listener* listener, void* user_data)
+{
+    listener->user_data = user_data;
+}
+
+void epoll_tcp_set_session_data(epoll_tcp_socket* sock_ptr, void* user_data)
+{
+    sock_ptr->user_data = user_data;
+}
+
+void* epoll_tcp_get_listener_data(epoll_tcp_listener* listener)
+{
+    return listener->user_data;
+}
+
+void* epoll_tcp_get_session_data(epoll_tcp_socket* sock_ptr)
+{
+    return sock_ptr->user_data;
+}
+
+unsigned int epoll_tcp_get_send_free_size(epoll_tcp_socket* sock_ptr)
+{
+    return (unsigned int)loop_cache_free_size(sock_ptr->send_loop_cache);
+}
+
+void epoll_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size, unsigned int delay_time)
+{
+    sock_ptr->data_delay_send_size = pkg_size;
+    _epoll_tcp_socket_mod_timer_send(sock_ptr, delay_time);
+}
+
 //#endif

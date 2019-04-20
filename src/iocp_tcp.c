@@ -13,6 +13,7 @@
 
 #define MAX_BACKLOG     256
 #define MAX_ADDR_SIZE   ((sizeof(struct sockaddr_in6)+16)*2)
+#define MAX_IP_LEN      2048
 
 //socket state
 #define SOCKET_STATE_NONE       0
@@ -310,8 +311,8 @@ iocp_ssl_data* _iocp_ssl_data_alloc(iocp_tcp_manager* mgr, unsigned int ssl_recv
 
 void _iocp_ssl_data_free(iocp_tcp_manager* mgr, iocp_ssl_data* data)
 {
-    EnterCriticalSection(&mgr->socket_lock);
     DeleteCriticalSection(&data->ssl_lock);
+    EnterCriticalSection(&mgr->socket_lock);
     _iocp_tcp_manager_free_memory(mgr, data, sizeof(iocp_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
     LeaveCriticalSection(&mgr->socket_lock);
 }
@@ -514,7 +515,6 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
 
     EnterCriticalSection(&mgr->socket_lock);
     sock_ptr = memory_unit_alloc(mgr->socket_pool);
-    LeaveCriticalSection(&mgr->socket_lock);
 
     if (sock_ptr)
     {
@@ -532,29 +532,25 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
                 CRUSH_CODE();
             }
 
-            EnterCriticalSection(&mgr->socket_lock);
             sock_ptr->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
             sock_ptr->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
-            LeaveCriticalSection(&mgr->socket_lock);
         }
         else
         {
             if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
             {
-                EnterCriticalSection(&mgr->socket_lock);
                 _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
                 loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
-                LeaveCriticalSection(&mgr->socket_lock);
             }
 
             if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
             {
-                EnterCriticalSection(&mgr->socket_lock);
                 _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
                 loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
-                LeaveCriticalSection(&mgr->socket_lock);
             }
         }
+
+        LeaveCriticalSection(&mgr->socket_lock);
 
         loop_cache_reinit(sock_ptr->recv_loop_cache);
         loop_cache_reinit(sock_ptr->send_loop_cache);
@@ -563,6 +559,7 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
     }
     else
     {
+        LeaveCriticalSection(&mgr->socket_lock);
         return 0;
     }
 }
@@ -1278,7 +1275,7 @@ void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     InterlockedIncrement(&sock_ptr->send_ack);
 }
 
-bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr, BOOL reuse_addr)
+bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr)
 {
     ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
 
@@ -1286,7 +1283,7 @@ bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr, BOOL reuse_add
 
     sock_ptr->iocp_recv_data.operation = IOCP_OPT_CONNECT_REQ;
 
-    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, reuse_addr, (ULONG_PTR)sock_ptr, &sock_ptr->iocp_recv_data.over_lapped))
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0, (ULONG_PTR)sock_ptr, &sock_ptr->iocp_recv_data.over_lapped))
     {
         return true;
     }
@@ -1295,9 +1292,219 @@ bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr, BOOL reuse_add
     return false;
 }
 
-void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr, BOOL reuse_addr)
+//bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr, 
+//    const char * ip,
+//    unsigned short port,
+//    bool reuse_addr,
+//    const char * bind_ip,
+//    unsigned short bind_port)
+//{
+//    struct addrinfo hints;
+//    struct addrinfo* result = 0;
+//    char sz_port[64];
+//
+//    ZeroMemory(&hints, sizeof(struct addrinfo));
+//    hints.ai_family = AF_UNSPEC;
+//    hints.ai_socktype = SOCK_STREAM;
+//    hints.ai_protocol = 0;
+//
+//    if (bind_ip)
+//    {
+//        hints.ai_flags = AI_PASSIVE;
+//
+//        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
+//
+//        if (getaddrinfo(bind_ip, sz_port, &hints, &result))
+//        {
+//            if (result)
+//            {
+//                freeaddrinfo(result);
+//            }
+//
+//            return false;
+//        }
+//        else
+//        {
+//            memcpy(&socket_ptr->local_sockaddr,
+//                result->ai_addr,
+//                min(sizeof(socket_ptr->local_sockaddr), result->ai_addrlen));
+//            freeaddrinfo(result);
+//            result = 0;
+//        }
+//    }
+//
+//    {
+//        hints.ai_flags = 0;
+//        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+//
+//        if (getaddrinfo(ip, sz_port, &hints, &result))
+//        {
+//            if (result)
+//            {
+//                freeaddrinfo(result);
+//            }
+//
+//            return false;
+//        }
+//        else
+//        {
+//            memcpy(&socket_ptr->peer_sockaddr,
+//                result->ai_addr,
+//                min(sizeof(socket_ptr->peer_sockaddr), result->ai_addrlen));
+//            freeaddrinfo(result);
+//            result = 0;
+//        }
+//    }
+//
+//    if (socket_ptr->local_sockaddr.sin6_family)
+//    {
+//        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
+//        {
+//            return false;
+//        }
+//    }
+//
+//    socket_ptr->state = SOCKET_STATE_CONNECT;
+//
+//    if (!_iocp_tcp_socket_post_connect_req(socket_ptr, reuse_addr))
+//    {
+//        return false;
+//    }
+//
+//    return true;
+//}
+
+void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr)
 {
     ++socket_ptr->recv_ack;
+
+    bool reuse_addr;
+    char ip_data[MAX_IP_LEN];
+    char bind_ip_data[MAX_IP_LEN];
+    size_t ip_len = 0;
+    size_t bind_ip_len = 0;
+    unsigned short port = 0;
+    unsigned short bind_port = 0;
+
+    struct addrinfo hints;
+    struct addrinfo* result = 0;
+    char sz_port[64];
+
+    ZeroMemory(&hints, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = 0;
+
+    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &port, sizeof(port)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (ip_len)
+    {
+        if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, ip_data, MAX_IP_LEN))
+        {
+            CRUSH_CODE();
+        }
+    }
+
+    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
+    {
+        CRUSH_CODE();
+    }
+
+    if (bind_ip_len)
+    {
+        if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, bind_ip_data, MAX_IP_LEN))
+        {
+            CRUSH_CODE();
+        }
+    }
+
+    if (bind_ip_len)
+    {
+        hints.ai_flags = AI_PASSIVE;
+
+        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            goto ERROR_DEAL;
+        }
+        else
+        {
+            if (result->ai_addrlen >= sizeof(socket_ptr->local_sockaddr))
+            {
+                freeaddrinfo(result);
+                goto ERROR_DEAL;
+            }
+
+            memcpy(&socket_ptr->local_sockaddr, result->ai_addr, result->ai_addrlen);
+
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    if (ip_len <= 0)
+    {
+        CRUSH_CODE();
+    }
+
+    {
+        hints.ai_flags = 0;
+        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+
+        if (getaddrinfo(ip_data, sz_port, &hints, &result))
+        {
+            if (result)
+            {
+                freeaddrinfo(result);
+            }
+
+            goto ERROR_DEAL;
+        }
+        else
+        {
+            if (result->ai_addrlen >= sizeof(socket_ptr->peer_sockaddr))
+            {
+                freeaddrinfo(result);
+                goto ERROR_DEAL;
+            }
+
+            memcpy(&socket_ptr->peer_sockaddr, result->ai_addr, result->ai_addrlen);
+            freeaddrinfo(result);
+            result = 0;
+        }
+    }
+
+    if (bind_ip_len)
+    {
+        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
+        {
+            goto ERROR_DEAL;
+        }
+    }
 
     socket_ptr->tcp_socket = socket(socket_ptr->peer_sockaddr.sin6_family, SOCK_STREAM, IPPROTO_TCP);
 
@@ -2065,7 +2272,7 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         }
         break;
         case IOCP_OPT_CONNECT_REQ:
-            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.sock_ptr, (BOOL)byte_transferred);
+            _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.sock_ptr);
             break;
         case IOCP_OPT_CONNECT:
             _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.sock_ptr, ret);
@@ -2446,81 +2653,41 @@ ERROR_DEAL:
     return 0;
 }
 
-bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr, 
+bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr,
     const char * ip,
     unsigned short port,
     bool reuse_addr,
     const char * bind_ip,
     unsigned short bind_port)
 {
-    struct addrinfo hints;
-    struct addrinfo* result = 0;
-    char sz_port[64];
 
-    ZeroMemory(&hints, sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = 0;
+    size_t ip_len = strlen(ip);
+    size_t bind_ip_len = strlen(bind_ip);
 
-    if (bind_ip)
+    if (ip_len >= MAX_IP_LEN ||
+        bind_ip_len >= MAX_IP_LEN)
     {
-        hints.ai_flags = AI_PASSIVE;
-
-        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
-
-        if (getaddrinfo(bind_ip, sz_port, &hints, &result))
-        {
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
-
-            return false;
-        }
-        else
-        {
-            memcpy(&socket_ptr->local_sockaddr,
-                result->ai_addr,
-                min(sizeof(socket_ptr->local_sockaddr), result->ai_addrlen));
-            freeaddrinfo(result);
-            result = 0;
-        }
+        return false;
     }
 
+    loop_cache_push_data(socket_ptr->recv_loop_cache, &port, sizeof(port));
+    loop_cache_push_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
+    if (ip_len)
     {
-        hints.ai_flags = 0;
-        _itoa_s(port, sz_port, sizeof(sz_port), 10);
-
-        if (getaddrinfo(ip, sz_port, &hints, &result))
-        {
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
-
-            return false;
-        }
-        else
-        {
-            memcpy(&socket_ptr->peer_sockaddr,
-                result->ai_addr,
-                min(sizeof(socket_ptr->peer_sockaddr), result->ai_addrlen));
-            freeaddrinfo(result);
-            result = 0;
-        }
+        loop_cache_push_data(socket_ptr->recv_loop_cache, ip, ip_len);
     }
 
-    if (socket_ptr->local_sockaddr.sin6_family)
+    loop_cache_push_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
+    loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
+    loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
+    if (bind_ip_len)
     {
-        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
-        {
-            return false;
-        }
+        loop_cache_push_data(socket_ptr->recv_loop_cache, bind_ip, bind_ip_len);
     }
 
     socket_ptr->state = SOCKET_STATE_CONNECT;
 
-    if (!_iocp_tcp_socket_post_connect_req(socket_ptr, reuse_addr))
+    if (!_iocp_tcp_socket_post_connect_req(socket_ptr))
     {
         return false;
     }
