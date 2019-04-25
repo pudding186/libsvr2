@@ -74,7 +74,7 @@ typedef struct st_event_data
 
 typedef struct st_event_system_error
 {
-    unsigned int err_code;
+    int err_code;
 }event_system_error;
 
 typedef struct st_event_ssl_error
@@ -270,6 +270,10 @@ typedef struct st_epoll_tcp_proc
 
     struct st_epoll_tcp_manager*    mgr;
 
+    //unsigned int                    do_net_req_count;
+    //unsigned int                    do_epoll_evt_count;
+    unsigned int                    do_proc_count;
+
     bool                            is_running;
     
 
@@ -303,12 +307,38 @@ typedef void* (*pfn_proc_func)(void* arg);
 
 epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
 {
-    return 0;
+    epoll_tcp_proc* listener_proc = 0;
+
+    unsigned int do_proc_count = 0;
+
+    for (unsigned int i = 0; i < mgr->listener_proc_num; i++)
+    {
+        if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
+        {
+            do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
+            listener_proc = mgr->tcp_proc_array[i];
+        }
+    }
+
+    return listener_proc;
 }
 
 epoll_tcp_proc* _get_idle_epoll_socket_proc(epoll_tcp_manager* mgr)
 {
-    return 0;
+    epoll_tcp_proc* socket_proc = 0;
+
+    unsigned int do_proc_count = 0;
+
+    for (unsigned int i = mgr->listener_proc_num; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
+    {
+        if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
+        {
+            do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
+            socket_proc = mgr->tcp_proc_array[i];
+        }
+    }
+
+    return socket_proc;
 }
 
 bool _set_nonblock(int sock_fd)
@@ -1424,6 +1454,8 @@ void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
 
     for (int i = 0; i < fd_num; i++)
     {
+        proc->do_proc_count++;
+
         struct epoll_event* evt = &proc->arry_epoll_events[i];
         epoll_tcp_socket* sock_ptr = (epoll_tcp_socket*)evt->data.ptr;
 
@@ -1469,6 +1501,8 @@ void _do_socket_net_req(epoll_tcp_proc* proc)
 
     while (req_len == sizeof(net_request))
     {
+        proc->do_proc_count++;
+
         switch (req->type)
         {
         case NET_REQUEST_SEND:
@@ -1686,10 +1720,20 @@ void* _epoll_tcp_socket_proc_func(void* arg)
 {
     epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
 
+    unsigned int last_check_tick = get_tick();
+    unsigned int cur_check_tick = get_tick();
+
     while (proc->is_running)
     {
         _do_socket_net_req(proc);
         _do_socket_epoll_evt(proc, 1);
+
+        cur_check_tick = get_tick();
+        if (cur_check_tick - last_check_tick > 1000)
+        {
+            last_check_tick = cur_check_tick;
+            proc->do_proc_count = 0;
+        }
     }
 
     return 0;
@@ -1731,6 +1775,8 @@ void _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
 
     for (int i = 0; i < fd_num; i++)
     {
+        proc->do_proc_count++;
+
         struct epoll_event* evt = &proc->arry_epoll_events[i];
 
         if (evt->events & EPOLLIN)
@@ -1749,6 +1795,8 @@ void _do_listener_net_req(epoll_tcp_proc* proc)
 
     while (req_len == sizeof(net_request))
     {
+        proc->do_proc_count++;
+
         switch (req->type)
         {
         case NET_REQUEST_CLOSE_LISTENER:
@@ -1842,10 +1890,20 @@ void* _epoll_tcp_listener_proc_func(void* arg)
 {
     epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
 
+    unsigned int last_check_tick = get_tick();
+    unsigned int cur_check_tick = get_tick();
+
     while (proc->is_running)
     {
         _do_listener_net_req(proc);
         _do_listener_epoll_evt(proc, 1);
+
+        cur_check_tick = get_tick();
+        if (cur_check_tick - last_check_tick > 1000)
+        {
+            last_check_tick = cur_check_tick;
+            proc->do_proc_count = 0;
+        }
     }
 
     return 0;
@@ -1903,6 +1961,8 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
 
     proc->timer_mgr = create_timer_manager(on_timer);
     proc->do_net_evt = do_net_evt;
+
+    proc->do_proc_count = 0;
 
     if (pthread_create(&proc->proc_thread, 0, proc_func, proc))
     {
