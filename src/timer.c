@@ -136,13 +136,13 @@ time_t get_time(void)
 //////////////////////////////////////////////////////////////////////////
 #define INDEX(N) ((mgr->last_tick >> (TVR_BITS + (N) * TVN_BITS)) & TVN_MASK)
 
-__inline void INIT_LIST_HEAD(struct list_head *list)
+static inline void INIT_LIST_HEAD(struct list_head *list)
 {
     list->next = list;
     list->prev = list;
 }
 
-__inline void LIST_ADD_TAIL(struct list_head *newone, struct list_head *head)
+static inline void LIST_ADD_TAIL(struct list_head *newone, struct list_head *head)
 {
     newone->prev = head->prev;
     head->prev->next = newone;
@@ -151,13 +151,13 @@ __inline void LIST_ADD_TAIL(struct list_head *newone, struct list_head *head)
 
 }
 
-__inline void LIST_DEL(struct list_head* prev, struct list_head* next)
+static inline void LIST_DEL(struct list_head* prev, struct list_head* next)
 {
     next->prev = prev;
     prev->next = next;
 }
 
-__inline void LIST_REPLACE_INIT(struct list_head* old, struct list_head* newone)
+static inline void LIST_REPLACE_INIT(struct list_head* old, struct list_head* newone)
 {
     newone->next = old->next;
     newone->next->prev = newone;
@@ -168,22 +168,22 @@ __inline void LIST_REPLACE_INIT(struct list_head* old, struct list_head* newone)
     old->next = old;
 }
 
-__inline int LIST_EMPTY(const struct list_head* head)
+static inline int LIST_EMPTY(const struct list_head* head)
 {
     return head->next == head;
 }
 
-__inline struct st_timer_info* _get_info_by_entry(struct list_head* entry_ptr)
+static inline struct st_timer_info* _get_info_by_entry(struct list_head* entry_ptr)
 {
     return (struct st_timer_info*)((char*)entry_ptr - offsetof(struct st_timer_info, entry));
 }
 
-__inline int _is_timer_pend(struct st_timer_info* info)
+static inline int _is_timer_pend(struct st_timer_info* info)
 {
     return info->entry.next != 0;
 }
 
-__inline void _detach_timer(struct st_timer_info* info)
+static inline void _detach_timer(struct st_timer_info* info)
 {
     LIST_DEL(info->entry.prev, info->entry.next);
     info->entry.next = 0;

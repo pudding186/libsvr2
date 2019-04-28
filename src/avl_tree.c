@@ -8,12 +8,12 @@ TLS_VAR HMEMORYUNIT def_avl_tree_unit = 0;
 TLS_VAR HMEMORYUNIT def_avl_node_unit = 0;
 
 
-__inline int _avl_node_height(avl_node* node)
+static inline int _avl_node_height(avl_node* node)
 {
     return node ? node->avl_height : 0;
 }
 
-__inline void _avl_link_node(avl_tree* tree, avl_node* node, avl_node* parent, avl_node** link)
+static inline void _avl_link_node(avl_tree* tree, avl_node* node, avl_node* parent, avl_node** link)
 {
     node->avl_child[0] = node->avl_child[1] = 0;
     node->avl_parent = parent;

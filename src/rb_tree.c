@@ -13,7 +13,7 @@
 TLS_VAR HMEMORYUNIT def_rb_tree_unit = 0;
 TLS_VAR HMEMORYUNIT def_rb_node_unit = 0;
 
-__inline void _rb_link_node(rb_tree* root, rb_node* node, rb_node* parent, rb_node** rb_link)
+static inline void _rb_link_node(rb_tree* root, rb_node* node, rb_node* parent, rb_node** rb_link)
 {
     node->rb_color = RB_RED;
     node->rb_parent = parent;
@@ -73,7 +73,7 @@ __inline void _rb_link_node(rb_tree* root, rb_node* node, rb_node* parent, rb_no
     ++root->size;
 }
 
-__inline void _rb_erase_list(rb_tree* root, rb_node* node)
+static inline void _rb_erase_list(rb_tree* root, rb_node* node)
 {
     if (node->prev)
     {

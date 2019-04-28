@@ -139,7 +139,7 @@ extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_siz
 
 template <size_t N>
 inline void StrSafeCopy(char(&Destination)[N], const char* Source) throw() {
-    static_assert(N > 0, "StrSafeCopy dst size == 0");
+    //static_assert(N > 0, "StrSafeCopy dst size == 0");
     // initialize for check below
     if (NULL == Source) {
         Destination[0] = '\0';

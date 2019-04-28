@@ -258,7 +258,7 @@ typedef struct st_epoll_tcp_proc
 {
     int                             epoll_fd;
     struct epoll_event*             arry_epoll_events;
-    int                             max_epoll_events;
+    int                             size_epoll_events;
 
     pthread_t                       proc_thread;
 
@@ -307,11 +307,11 @@ typedef void* (*pfn_proc_func)(void* arg);
 
 epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
 {
-    epoll_tcp_proc* listener_proc = 0;
+    epoll_tcp_proc* listener_proc = mgr->tcp_proc_array[0];
 
-    unsigned int do_proc_count = 0;
+    unsigned int do_proc_count = mgr->tcp_proc_array[0]->do_proc_count;
 
-    for (unsigned int i = 0; i < mgr->listener_proc_num; i++)
+    for (unsigned int i = 1; i < mgr->listener_proc_num; i++)
     {
         if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
         {
@@ -325,11 +325,11 @@ epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
 
 epoll_tcp_proc* _get_idle_epoll_socket_proc(epoll_tcp_manager* mgr)
 {
-    epoll_tcp_proc* socket_proc = 0;
+    epoll_tcp_proc* socket_proc = mgr->tcp_proc_array[mgr->listener_proc_num];
 
-    unsigned int do_proc_count = 0;
+    unsigned int do_proc_count = mgr->tcp_proc_array[mgr->listener_proc_num]->do_proc_count;
 
-    for (unsigned int i = mgr->listener_proc_num; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
+    for (unsigned int i = mgr->listener_proc_num + 1; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
     {
         if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
         {
@@ -1445,7 +1445,7 @@ void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 
 void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
 {
-    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->max_epoll_events, time_out);
+    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->size_epoll_events, time_out);
 
     if (fd_num < 0)
     {
@@ -1542,6 +1542,11 @@ void _do_socket_net_req(epoll_tcp_proc* proc)
         {
             CRUSH_CODE();
         }
+        }
+
+        if (!loop_cache_pop(proc->list_net_req, sizeof(net_request)))
+        {
+            CRUSH_CODE();
         }
 
         loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
@@ -1746,14 +1751,22 @@ void _epoll_tcp_listener_on_timer(HTIMERINFO timer)
 
 void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
-    int accept_sock_fd = accept(listener->sock_fd, 0, 0);
+    int accept_sock_fd = -1;
 
-    if (-1 == accept_sock_fd)
+    for (;;)
     {
-        return;
+        accept_sock_fd = accept(listener->sock_fd, 0, 0);
+
+        if (accept_sock_fd == -1)
+        {
+            return;
+        }
+        else
+        {
+            listener->accept_push++;
+            _epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+        }
     }
-    listener->accept_push++;
-    _epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
 }
 
 void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
@@ -1766,7 +1779,7 @@ void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* list
 
 void _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
 {
-    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->max_epoll_events, time_out);
+    int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->size_epoll_events, time_out);
 
     if (fd_num < 0)
     {
@@ -1955,6 +1968,7 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
 
     proc->epoll_fd = epoll_create(max_socket_num);
     proc->arry_epoll_events = (struct epoll_event*)malloc(sizeof(struct epoll_event)*max_socket_num);
+    proc->size_epoll_events = max_socket_num;
 
     proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 16);
     proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 16);
