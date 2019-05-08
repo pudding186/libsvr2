@@ -272,7 +272,8 @@ typedef struct st_epoll_tcp_proc
 
     //unsigned int                    do_net_req_count;
     //unsigned int                    do_epoll_evt_count;
-    unsigned int                    do_proc_count;
+    //unsigned int                    do_proc_count;
+	unsigned int					last_do_proc_count;
 
     bool                            is_running;
     
@@ -309,13 +310,13 @@ epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
 {
     epoll_tcp_proc* listener_proc = mgr->tcp_proc_array[0];
 
-    unsigned int do_proc_count = mgr->tcp_proc_array[0]->do_proc_count;
+    unsigned int last_do_proc_count = mgr->tcp_proc_array[0]->last_do_proc_count;
 
     for (unsigned int i = 1; i < mgr->listener_proc_num; i++)
     {
-        if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
+        if (last_do_proc_count > mgr->tcp_proc_array[i]->last_do_proc_count)
         {
-            do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
+			last_do_proc_count = mgr->tcp_proc_array[i]->last_do_proc_count;
             listener_proc = mgr->tcp_proc_array[i];
         }
     }
@@ -327,13 +328,13 @@ epoll_tcp_proc* _get_idle_epoll_socket_proc(epoll_tcp_manager* mgr)
 {
     epoll_tcp_proc* socket_proc = mgr->tcp_proc_array[mgr->listener_proc_num];
 
-    unsigned int do_proc_count = mgr->tcp_proc_array[mgr->listener_proc_num]->do_proc_count;
+    unsigned int last_do_proc_count = mgr->tcp_proc_array[mgr->listener_proc_num]->last_do_proc_count;
 
     for (unsigned int i = mgr->listener_proc_num + 1; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
     {
-        if (do_proc_count < mgr->tcp_proc_array[i]->do_proc_count)
+        if (last_do_proc_count > mgr->tcp_proc_array[i]->last_do_proc_count)
         {
-            do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
+			last_do_proc_count = mgr->tcp_proc_array[i]->last_do_proc_count;
             socket_proc = mgr->tcp_proc_array[i];
         }
     }
@@ -1404,7 +1405,7 @@ void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 
     while (send_len)
     {
-        int data_send = send(sock_ptr->sock_fd, sock_ptr, send_len, 0);
+        int data_send = send(sock_ptr->sock_fd, send_ptr, send_len, 0);
 
         if (data_send > 0)
         {
@@ -1443,29 +1444,33 @@ void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
     sock_ptr->need_send_active = true;
 }
 
-void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
+unsigned int _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
 {
+	unsigned int do_epoll_evt_count = 0;
+
     int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->size_epoll_events, time_out);
 
     if (fd_num < 0)
     {
-        return;
+        return do_epoll_evt_count;
     }
 
     for (int i = 0; i < fd_num; i++)
     {
-        proc->do_proc_count++;
+        //proc->do_proc_count++;
 
         struct epoll_event* evt = &proc->arry_epoll_events[i];
         epoll_tcp_socket* sock_ptr = (epoll_tcp_socket*)evt->data.ptr;
 
         if (evt->events & EPOLLIN)
         {
+			do_epoll_evt_count++;
             _epoll_tcp_socket_on_recv(proc, sock_ptr);
         }
 
         if (evt->events & EPOLLOUT)
         {
+			do_epoll_evt_count++;
             if (sock_ptr->state == SOCKET_STATE_CONNECT)
             {
                 sock_ptr->state = SOCKET_STATE_ESTABLISH;
@@ -1479,6 +1484,7 @@ void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
 
         if (evt->events & EPOLLERR)
         {
+			do_epoll_evt_count++;
             if (sock_ptr->state == SOCKET_STATE_CONNECT)
             {
                 sock_ptr->state = SOCKET_STATE_DELETE;
@@ -1490,10 +1496,13 @@ void _do_socket_epoll_evt(epoll_tcp_proc* proc, int time_out)
             }
         }
     }
+
+	return do_epoll_evt_count;
 }
 
-void _do_socket_net_req(epoll_tcp_proc* proc)
+unsigned int _do_socket_net_req(epoll_tcp_proc* proc)
 {
+	unsigned int do_req_count = 0;
     net_request* req;
     size_t req_len = sizeof(net_request);
 
@@ -1501,7 +1510,8 @@ void _do_socket_net_req(epoll_tcp_proc* proc)
 
     while (req_len == sizeof(net_request))
     {
-        proc->do_proc_count++;
+        //proc->do_proc_count++;
+		do_req_count++;
 
         switch (req->type)
         {
@@ -1551,6 +1561,8 @@ void _do_socket_net_req(epoll_tcp_proc* proc)
 
         loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
     }
+
+	return do_req_count;
 }
 
 bool _do_socket_net_evt(epoll_tcp_proc* proc)
@@ -1727,17 +1739,19 @@ void* _epoll_tcp_socket_proc_func(void* arg)
 
     unsigned int last_check_tick = get_tick();
     unsigned int cur_check_tick = get_tick();
+	unsigned int cur_do_proc_count = 0;
 
     while (proc->is_running)
     {
-        _do_socket_net_req(proc);
-        _do_socket_epoll_evt(proc, 1);
+        cur_do_proc_count += _do_socket_net_req(proc);
+		cur_do_proc_count += _do_socket_epoll_evt(proc, 3);
 
         cur_check_tick = get_tick();
         if (cur_check_tick - last_check_tick > 1000)
         {
+			proc->last_do_proc_count = cur_do_proc_count;
+			cur_do_proc_count = 0;
             last_check_tick = cur_check_tick;
-            proc->do_proc_count = 0;
         }
     }
 
@@ -1777,18 +1791,20 @@ void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* list
     listener->state = SOCKET_STATE_DELETE;
 }
 
-void _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
+unsigned int _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
 {
+	unsigned int do_epoll_evt_count = 0;
     int fd_num = epoll_wait(proc->epoll_fd, proc->arry_epoll_events, proc->size_epoll_events, time_out);
 
     if (fd_num < 0)
     {
-        return;
+        return do_epoll_evt_count;
     }
 
     for (int i = 0; i < fd_num; i++)
     {
-        proc->do_proc_count++;
+        //proc->do_proc_count++;
+		do_epoll_evt_count++;
 
         struct epoll_event* evt = &proc->arry_epoll_events[i];
 
@@ -1797,10 +1813,13 @@ void _do_listener_epoll_evt(epoll_tcp_proc* proc , int time_out)
             _epoll_tcp_listener_on_accept(proc, (epoll_tcp_listener*)evt->data.ptr);
         }
     }
+
+	return do_epoll_evt_count;
 }
 
-void _do_listener_net_req(epoll_tcp_proc* proc)
+unsigned int _do_listener_net_req(epoll_tcp_proc* proc)
 {
+	unsigned int do_net_req_count = 0;
     net_request* req;
     size_t req_len = sizeof(net_request);
 
@@ -1808,7 +1827,8 @@ void _do_listener_net_req(epoll_tcp_proc* proc)
 
     while (req_len == sizeof(net_request))
     {
-        proc->do_proc_count++;
+        //proc->do_proc_count++;
+		do_net_req_count++;
 
         switch (req->type)
         {
@@ -1831,6 +1851,8 @@ void _do_listener_net_req(epoll_tcp_proc* proc)
 
         loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
     }
+
+	return do_net_req_count;
 }
 
 bool _do_listener_net_evt(epoll_tcp_proc* proc)
@@ -1905,17 +1927,19 @@ void* _epoll_tcp_listener_proc_func(void* arg)
 
     unsigned int last_check_tick = get_tick();
     unsigned int cur_check_tick = get_tick();
+	unsigned int cur_do_proc_count = 0;
 
     while (proc->is_running)
     {
-        _do_listener_net_req(proc);
-        _do_listener_epoll_evt(proc, 1);
+		cur_do_proc_count += _do_listener_net_req(proc);
+		cur_do_proc_count += _do_listener_epoll_evt(proc, 3);
 
         cur_check_tick = get_tick();
         if (cur_check_tick - last_check_tick > 1000)
         {
-            last_check_tick = cur_check_tick;
-            proc->do_proc_count = 0;
+			proc->last_do_proc_count = cur_do_proc_count;
+			cur_do_proc_count = 0;
+			last_check_tick = cur_check_tick;
         }
     }
 
@@ -1976,7 +2000,7 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
     proc->timer_mgr = create_timer_manager(on_timer);
     proc->do_net_evt = do_net_evt;
 
-    proc->do_proc_count = 0;
+    proc->last_do_proc_count = 0;
 
     if (pthread_create(&proc->proc_thread, 0, proc_func, proc))
     {
@@ -2417,33 +2441,67 @@ bool epoll_tcp_send(epoll_tcp_socket* sock_ptr, const void* data, unsigned int l
 
 bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
 {
-    unsigned int tick = get_tick();
+	unsigned int unbusy_proc_count = 0;
 
-    bool is_busy = false;
+	if (run_time)
+	{
+		unsigned int tick = get_tick();
 
-    for (;;)
-    {
-        if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
-        {
-            is_busy = true;
-        }
-        mgr->cur_proc_idx++;
+		for (;;)
+		{
+			if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
+			{
+				unbusy_proc_count = 0;
+			}
+			else
+			{
+				unbusy_proc_count++;
+			}
 
-        if (mgr->cur_proc_idx >= mgr->listener_proc_num + mgr->socket_proc_num)
-        {
-            mgr->cur_proc_idx = 0;
-        }
+			mgr->cur_proc_idx++;
 
-        if (run_time)
-        {
-            if (get_tick() - tick >= run_time)
-            {
-                return is_busy;
-            }
-        }
-    }
+			if (mgr->cur_proc_idx >= mgr->listener_proc_num + mgr->socket_proc_num)
+			{
+				mgr->cur_proc_idx = 0;
+			}
 
-    return is_busy;
+			if (unbusy_proc_count >= mgr->listener_proc_num + mgr->socket_proc_num)
+			{
+				return false;
+			}
+
+			if (get_tick() - tick >= run_time)
+			{
+				return true;
+			}
+		}
+	}
+	else
+	{
+		for (;;)
+		{
+			if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
+			{
+				unbusy_proc_count = 0;
+			}
+			else
+			{
+				unbusy_proc_count++;
+			}
+
+			mgr->cur_proc_idx++;
+
+			if (mgr->cur_proc_idx >= mgr->listener_proc_num + mgr->socket_proc_num)
+			{
+				mgr->cur_proc_idx = 0;
+			}
+
+			if (unbusy_proc_count >= mgr->listener_proc_num + mgr->socket_proc_num)
+			{
+				return false;
+			}
+		}
+	}
 }
 
 void epoll_tcp_close_listener(epoll_tcp_listener* listener)

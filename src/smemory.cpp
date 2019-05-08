@@ -3,16 +3,20 @@
 #include "../include/utility.hpp"
 #include "../include/rb_tree.h"
 
-extern thread_local HMEMORYUNIT def_avl_tree_unit;
-extern thread_local HMEMORYUNIT def_avl_node_unit;
 
-extern TLS_VAR HMEMORYUNIT def_rb_tree_unit;
-extern TLS_VAR HMEMORYUNIT def_rb_node_unit;
+extern "C"
+{
+	extern TLS_VAR HMEMORYUNIT def_avl_tree_unit;
+	extern TLS_VAR HMEMORYUNIT def_avl_node_unit;
 
-extern TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr;
+	extern TLS_VAR HMEMORYUNIT def_rb_tree_unit;
+	extern TLS_VAR HMEMORYUNIT def_rb_node_unit;
 
-extern TLS_VAR HMEMORYUNIT def_json_struct_unit;
-extern TLS_VAR HMEMORYUNIT def_json_node_unit;
+	extern TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr;
+
+	extern TLS_VAR HMEMORYUNIT def_json_struct_unit;
+	extern TLS_VAR HMEMORYUNIT def_json_node_unit;
+}
 
 extern TLS_VAR HRBTREE trace_info_map;
 extern TLS_VAR HRBTREE trace_ptr_map;

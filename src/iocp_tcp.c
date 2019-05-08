@@ -1395,76 +1395,71 @@ void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = 0;
 
+	if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
+	{
+		CRUSH_CODE();
+	}
+
     if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &port, sizeof(port)))
     {
         CRUSH_CODE();
     }
 
-    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
-    {
-        CRUSH_CODE();
-    }
+	if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, ip_data, ip_len))
+	{
+		CRUSH_CODE();
+	}
 
-    if (ip_len)
-    {
-        if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, ip_data, MAX_IP_LEN))
-        {
-            CRUSH_CODE();
-        }
-    }
 
-    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
-    {
-        CRUSH_CODE();
-    }
+	if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
+	{
+		CRUSH_CODE();
+	}
 
-    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
-    {
-        CRUSH_CODE();
-    }
+	if (bind_ip_len)
+	{
+		if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
+		{
+			CRUSH_CODE();
+		}
 
-    if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
-    {
-        CRUSH_CODE();
-    }
+		if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
+		{
+			CRUSH_CODE();
+		}
 
-    if (bind_ip_len)
-    {
-        if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, bind_ip_data, MAX_IP_LEN))
-        {
-            CRUSH_CODE();
-        }
-    }
+		if (!loop_cache_pop_data(socket_ptr->recv_loop_cache, bind_ip_data, bind_ip_len))
+		{
+			CRUSH_CODE();
+		}
 
-    if (bind_ip_len)
-    {
-        hints.ai_flags = AI_PASSIVE;
+		hints.ai_flags = AI_PASSIVE;
 
-        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
+		_itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
 
-        if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
-        {
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
+		if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
+		{
+			if (result)
+			{
+				freeaddrinfo(result);
+			}
 
-            goto ERROR_DEAL;
-        }
-        else
-        {
-            if (result->ai_addrlen >= sizeof(socket_ptr->local_sockaddr))
-            {
-                freeaddrinfo(result);
-                goto ERROR_DEAL;
-            }
+			goto ERROR_DEAL;
+		}
+		else
+		{
+			if (result->ai_addrlen >= sizeof(socket_ptr->local_sockaddr))
+			{
+				freeaddrinfo(result);
+				goto ERROR_DEAL;
+			}
 
-            memcpy(&socket_ptr->local_sockaddr, result->ai_addr, result->ai_addrlen);
+			memcpy(&socket_ptr->local_sockaddr, result->ai_addr, result->ai_addrlen);
 
-            freeaddrinfo(result);
-            result = 0;
-        }
-    }
+			freeaddrinfo(result);
+			result = 0;
+		}
+	}
 
     if (ip_len <= 0)
     {
@@ -1615,8 +1610,6 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
         goto ERROR_DEAL;
     }
 
-    //sock_ptr->local_ip = addr.sin_addr.s_addr;
-    //sock_ptr->local_port = addr.sin_port;
     memcpy(&sock_ptr->local_sockaddr, &addr, addr_len);
 
     sock_ptr->state = SOCKET_STATE_ESTABLISH;
@@ -2661,27 +2654,35 @@ bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr,
     unsigned short bind_port)
 {
 
-    size_t ip_len = strlen(ip);
-    size_t bind_ip_len = strlen(bind_ip);
+	size_t ip_len = 0;
+	size_t bind_ip_len = 0;
+
+	if (ip)
+	{
+		ip_len = strlen(ip) + 1;
+	}
+
+	if (bind_ip)
+	{
+		bind_ip_len = strlen(bind_ip) + 1;
+	}
 
     if (ip_len >= MAX_IP_LEN ||
-        bind_ip_len >= MAX_IP_LEN)
+		ip_len == 0 ||
+        bind_ip_len + 1 >= MAX_IP_LEN)
     {
         return false;
     }
 
+	loop_cache_push_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
     loop_cache_push_data(socket_ptr->recv_loop_cache, &port, sizeof(port));
-    loop_cache_push_data(socket_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
-    if (ip_len)
-    {
-        loop_cache_push_data(socket_ptr->recv_loop_cache, ip, ip_len);
-    }
+	loop_cache_push_data(socket_ptr->recv_loop_cache, ip, ip_len);
 
-    loop_cache_push_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
-    loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
-    loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
+	loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
     if (bind_ip_len)
     {
+		loop_cache_push_data(socket_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
+		loop_cache_push_data(socket_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
         loop_cache_push_data(socket_ptr->recv_loop_cache, bind_ip, bind_ip_len);
     }
 
