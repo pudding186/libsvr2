@@ -61,6 +61,8 @@
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
 
+#define MAX_RUN_LOOP_CHECK		100
+
 
 typedef struct st_event_establish
 {
@@ -270,10 +272,7 @@ typedef struct st_epoll_tcp_proc
 
     struct st_epoll_tcp_manager*    mgr;
 
-    //unsigned int                    do_net_req_count;
-    //unsigned int                    do_epoll_evt_count;
-    //unsigned int                    do_proc_count;
-	unsigned int					last_do_proc_count;
+	unsigned int					do_proc_count;
 
     bool                            is_running;
     
@@ -310,13 +309,13 @@ epoll_tcp_proc* _get_idle_epoll_listener_proc(epoll_tcp_manager* mgr)
 {
     epoll_tcp_proc* listener_proc = mgr->tcp_proc_array[0];
 
-    unsigned int last_do_proc_count = mgr->tcp_proc_array[0]->last_do_proc_count;
+    unsigned int do_proc_count = mgr->tcp_proc_array[0]->do_proc_count;
 
     for (unsigned int i = 1; i < mgr->listener_proc_num; i++)
     {
-        if (last_do_proc_count > mgr->tcp_proc_array[i]->last_do_proc_count)
+        if (do_proc_count > mgr->tcp_proc_array[i]->do_proc_count)
         {
-			last_do_proc_count = mgr->tcp_proc_array[i]->last_do_proc_count;
+			do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
             listener_proc = mgr->tcp_proc_array[i];
         }
     }
@@ -328,13 +327,13 @@ epoll_tcp_proc* _get_idle_epoll_socket_proc(epoll_tcp_manager* mgr)
 {
     epoll_tcp_proc* socket_proc = mgr->tcp_proc_array[mgr->listener_proc_num];
 
-    unsigned int last_do_proc_count = mgr->tcp_proc_array[mgr->listener_proc_num]->last_do_proc_count;
+    unsigned int do_proc_count = mgr->tcp_proc_array[mgr->listener_proc_num]->do_proc_count;
 
     for (unsigned int i = mgr->listener_proc_num + 1; i < mgr->socket_proc_num + mgr->listener_proc_num; i++)
     {
-        if (last_do_proc_count > mgr->tcp_proc_array[i]->last_do_proc_count)
+        if (do_proc_count > mgr->tcp_proc_array[i]->do_proc_count)
         {
-			last_do_proc_count = mgr->tcp_proc_array[i]->last_do_proc_count;
+			do_proc_count = mgr->tcp_proc_array[i]->do_proc_count;
             socket_proc = mgr->tcp_proc_array[i];
         }
     }
@@ -731,24 +730,6 @@ void _epoll_tcp_proc_push_evt_recv_activate(epoll_tcp_proc* proc, epoll_tcp_sock
 
     loop_cache_push(proc->list_net_evt, evt_len);
 }
-//void _epoll_tcp_proc_push_evt_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
-//{
-//    net_event* evt;
-//    size_t evt_len = sizeof(net_event);
-//
-//    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
-//
-//    if (evt_len != sizeof(net_event))
-//    {
-//        CRUSH_CODE();
-//    }
-//
-//    evt->sock_ptr = 0;
-//    evt->type = NET_EVENT_CLOSE;
-//    evt->evt.evt_close.listener = listener;
-//
-//    loop_cache_push(proc->list_net_evt, evt_len);
-//}
 
 void _epoll_tcp_proc_push_req_close_listener(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
@@ -1737,22 +1718,35 @@ void* _epoll_tcp_socket_proc_func(void* arg)
 {
     epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
 
-    unsigned int last_check_tick = get_tick();
-    unsigned int cur_check_tick = get_tick();
 	unsigned int cur_do_proc_count = 0;
+	unsigned int run_loop_check = 0;
+	//bool is_initial_proc_count = true;
 
     while (proc->is_running)
     {
         cur_do_proc_count += _do_socket_net_req(proc);
 		cur_do_proc_count += _do_socket_epoll_evt(proc, 3);
 
-        cur_check_tick = get_tick();
-        if (cur_check_tick - last_check_tick > 1000)
-        {
-			proc->last_do_proc_count = cur_do_proc_count;
+		++run_loop_check;
+
+		if (run_loop_check >= MAX_RUN_LOOP_CHECK)
+		{
+			proc->do_proc_count = cur_do_proc_count;
+			run_loop_check = 0;
 			cur_do_proc_count = 0;
-            last_check_tick = cur_check_tick;
-        }
+
+			//if (is_initial_proc_count)
+			//{
+			//	is_initial_proc_count = false;
+			//}
+		}
+		//else
+		//{
+		//	if (is_initial_proc_count)
+		//	{
+		//		proc->do_proc_count = cur_do_proc_count;
+		//	}
+		//}
     }
 
     return 0;
@@ -1925,22 +1919,35 @@ void* _epoll_tcp_listener_proc_func(void* arg)
 {
     epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
 
-    unsigned int last_check_tick = get_tick();
-    unsigned int cur_check_tick = get_tick();
 	unsigned int cur_do_proc_count = 0;
+	unsigned int run_loop_check = 0;
+	//bool is_initial_proc_count = true;
 
     while (proc->is_running)
     {
 		cur_do_proc_count += _do_listener_net_req(proc);
 		cur_do_proc_count += _do_listener_epoll_evt(proc, 3);
 
-        cur_check_tick = get_tick();
-        if (cur_check_tick - last_check_tick > 1000)
-        {
-			proc->last_do_proc_count = cur_do_proc_count;
+		++run_loop_check;
+
+		if (run_loop_check >= MAX_RUN_LOOP_CHECK)
+		{
+			proc->do_proc_count = cur_do_proc_count;
+			run_loop_check = 0;
 			cur_do_proc_count = 0;
-			last_check_tick = cur_check_tick;
-        }
+
+			//if (is_initial_proc_count)
+			//{
+			//	is_initial_proc_count = false;
+			//}
+		}
+		//else
+		//{
+		//	if (is_initial_proc_count)
+		//	{
+		//		proc->do_proc_count = cur_do_proc_count;
+		//	}
+		//}
     }
 
     return 0;
@@ -2000,7 +2007,7 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
     proc->timer_mgr = create_timer_manager(on_timer);
     proc->do_net_evt = do_net_evt;
 
-    proc->last_do_proc_count = 0;
+    proc->do_proc_count = 0;
 
     if (pthread_create(&proc->proc_thread, 0, proc_func, proc))
     {

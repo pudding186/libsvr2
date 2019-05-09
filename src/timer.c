@@ -398,17 +398,6 @@ void timer_update(timer_manager* mgr, unsigned run_time)
 
             if (info->count)
             {
-                if (run_time)
-                {
-                    unsigned int cur_tick = get_tick();
-                    if (cur_tick - tick > run_time)
-                    {
-                        info->expires = cur_tick;
-                        _add_timer(info);
-                        continue;
-                    }
-                }
-
                 if (info->count > 0)
                 {
                     --info->count;
@@ -427,6 +416,14 @@ void timer_update(timer_manager* mgr, unsigned run_time)
 
                     _add_timer(info);
                 }
+
+				if (run_time)
+				{
+					if (get_tick() - tick > run_time)
+					{
+						return;
+					}
+				}
             }
             else
             {
@@ -436,14 +433,6 @@ void timer_update(timer_manager* mgr, unsigned run_time)
         }
 
         ++mgr->last_tick;
-
-        if (run_time)
-        {
-            if (get_tick() - tick > run_time)
-            {
-                return;
-            }
-        }
     }
 }
 
