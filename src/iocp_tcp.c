@@ -1378,7 +1378,7 @@ void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr)
 {
     ++socket_ptr->recv_ack;
 
-    bool reuse_addr;
+    bool reuse_addr = false;
     char ip_data[MAX_IP_LEN];
     char bind_ip_data[MAX_IP_LEN];
     size_t ip_len = 0;
