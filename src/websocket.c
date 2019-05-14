@@ -280,7 +280,7 @@ bool _ws_server_ping(ws_socket* ws_session, const char* message, unsigned int le
 
     memcpy(web_socket_frame + 2, message, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 2);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 2);
 }
 
 bool _ws_client_ping(ws_socket* ws_session, const char* message, unsigned int length)
@@ -304,7 +304,7 @@ bool _ws_client_ping(ws_socket* ws_session, const char* message, unsigned int le
 
     _unmask_data_overflow(web_socket_frame + 6, message, (char*)&mask, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 6);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 6);
 }
 
 bool _ws_server_pong(ws_socket* ws_session, const char* message, unsigned int length)
@@ -324,7 +324,7 @@ bool _ws_server_pong(ws_socket* ws_session, const char* message, unsigned int le
 
     memcpy(web_socket_frame + 2, message, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 2);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 2);
 }
 
 bool _ws_client_pong(ws_socket* ws_session, const char* message, unsigned int length)
@@ -348,7 +348,7 @@ bool _ws_client_pong(ws_socket* ws_session, const char* message, unsigned int le
 
     _unmask_data_overflow(web_socket_frame + 6, message, (char*)&mask, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 6);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 6);
 }
 
 bool _ws_server_data(ws_socket* ws_session, ws_op_code code, const char* data, unsigned int length, bool compress)
@@ -390,9 +390,9 @@ bool _ws_server_data(ws_socket* ws_session, ws_op_code code, const char* data, u
         ws_proto_header_length = 10;
     }
 
-    if (iocp_tcp_send(ws_session->session, ws_proto_header, ws_proto_header_length))
+    if (net_tcp_send(ws_session->session, ws_proto_header, ws_proto_header_length))
     {
-        return iocp_tcp_send(ws_session->session, data, length);
+        return net_tcp_send(ws_session->session, data, length);
     }
 
     return false;
@@ -450,9 +450,9 @@ bool _ws_client_data(ws_socket* ws_session, ws_op_code code, const char* data, u
 
     _unmask_data_overflow(ws_session->mgr->mask_buffer, data, (char*)&mask, length);
 
-    if (iocp_tcp_send(ws_session->session, ws_proto_header, ws_proto_header_length))
+    if (net_tcp_send(ws_session->session, ws_proto_header, ws_proto_header_length))
     {
-        return iocp_tcp_send(ws_session->session, ws_session->mgr->mask_buffer, length);
+        return net_tcp_send(ws_session->session, ws_session->mgr->mask_buffer, length);
     }
 
     return false;
@@ -476,7 +476,7 @@ bool _ws_server_close(ws_socket* ws_session, unsigned short status_code, const c
 
     memcpy(web_socket_frame + 4, message, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 4);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 4);
 }
 
 bool _ws_client_close(ws_socket* ws_session, unsigned short status_code, const char* message, unsigned int length)
@@ -503,7 +503,7 @@ bool _ws_client_close(ws_socket* ws_session, unsigned short status_code, const c
     _unmask_data_overflow(web_socket_frame + 6, (const char*)&status_code, (char*)&mask, 2);
     _unmask_data_overflow(web_socket_frame + 8, message, (char*)&mask, length);
 
-    return iocp_tcp_send(ws_session->session, web_socket_frame, length + 8);
+    return net_tcp_send(ws_session->session, web_socket_frame, length + 8);
 }
 
 void _ws_close_socket(ws_socket* ws_session, ws_error type, int code, const char* reason, unsigned int length)
@@ -533,7 +533,7 @@ void _ws_close_socket(ws_socket* ws_session, ws_error type, int code, const char
         }
     }
 
-    iocp_tcp_close_session(ws_session->session);
+    net_tcp_close_session(ws_session->session);
 }
 
 unsigned int _parser_http_packet(ws_socket* ws_session, const char* data, const unsigned int len)
@@ -608,7 +608,7 @@ unsigned int _parser_web_socket_packet(ws_socket* ws_session, const char* data, 
 
 unsigned int _ws_parser_packet(HSESSION session, const char* data, const unsigned int len)
 {
-    ws_socket* ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
+    ws_socket* ws_session = (ws_socket*)net_tcp_get_session_data(session);
 
     switch (ws_session->state)
     {
@@ -843,7 +843,7 @@ void _on_server_http_data(ws_socket* ws_session, const char* data, const unsigne
 
     if (upgrade_response_length)
     {
-        iocp_tcp_send(ws_session->session, upgrade_response, upgrade_response_length);
+        net_tcp_send(ws_session->session, upgrade_response, upgrade_response_length);
     }
     else
     {
@@ -1386,7 +1386,7 @@ void _ws_on_establish(HLISTENER net_handle, HSESSION session)
     ws_socket* ws_session = 0;
     if (net_handle)
     {
-        ws_listener* listener = (ws_listener*)iocp_tcp_get_listener_data(net_handle);
+        ws_listener* listener = (ws_listener*)net_tcp_get_listener_data(net_handle);
         ws_session = _ws_alloc_socket(listener->mgr);
 
         ws_session->session = session;
@@ -1399,13 +1399,13 @@ void _ws_on_establish(HLISTENER net_handle, HSESSION session)
         ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
         ws_session->fragment_data = 0;
         ws_session->fragment_size = 0;
-        iocp_tcp_set_session_data(session, ws_session);
+        net_tcp_set_session_data(session, ws_session);
     }
     else
     {
-        ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
+        ws_session = (ws_socket*)net_tcp_get_session_data(session);
         ws_session->state = ws_client_http;
-        iocp_tcp_send(ws_session->session, ws_session->fragment_data, ws_session->fragment_size);
+        net_tcp_send(ws_session->session, ws_session->fragment_data, ws_session->fragment_size);
         libsvr_memory_manager_free(ws_session->fragment_data);
         //free(ws_session->fragment_data);
         ws_session->fragment_data = 0;
@@ -1415,7 +1415,7 @@ void _ws_on_establish(HLISTENER net_handle, HSESSION session)
 
 void _ws_on_terminate(HSESSION session)
 {
-    ws_socket* ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
+    ws_socket* ws_session = (ws_socket*)net_tcp_get_session_data(session);
 
     if (ws_session->state == ws_server_websocket ||
         ws_session->state == ws_client_websocket)
@@ -1436,7 +1436,7 @@ void _ws_on_terminate(HSESSION session)
 
 void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error)
 {
-    ws_socket* ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
+    ws_socket* ws_session = (ws_socket*)net_tcp_get_session_data(session);
 
     switch (module_error)
     {
@@ -1474,7 +1474,7 @@ void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error
 
 void _ws_on_recv(HSESSION session, const char* data, const unsigned int len)
 {
-    ws_socket* ws_session = (ws_socket*)iocp_tcp_get_session_data(session);
+    ws_socket* ws_session = (ws_socket*)net_tcp_get_session_data(session);
 
     switch (ws_session->state)
     {
@@ -1491,7 +1491,7 @@ void _ws_on_recv(HSESSION session, const char* data, const unsigned int len)
         _on_server_web_socket_data(ws_session, data, len);
         break;
     default:
-        iocp_tcp_close_session(session);
+        net_tcp_close_session(session);
     }
 }
 
@@ -1560,7 +1560,7 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
 
-    listener->listener = iocp_tcp_listen(
+    listener->listener = net_tcp_listen(
         mgr->net_mgr,
         ip,
         port,
@@ -1580,7 +1580,7 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
     }
     else
     {
-        iocp_tcp_set_listener_data(listener->listener, listener);
+        net_tcp_set_listener_data(listener->listener, listener);
     }
 
 
@@ -1615,7 +1615,7 @@ ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
     }
     else
     {
-        iocp_tcp_set_listener_data(listener->listener, listener);
+        net_tcp_set_listener_data(listener->listener, listener);
     }
 
 
@@ -1626,7 +1626,7 @@ ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
 
 void ws_close_listener(ws_listener* ws_listener)
 {
-    iocp_tcp_close_listener(ws_listener->listener);
+    net_tcp_close_listener(ws_listener->listener);
     free(ws_listener);
 }
 
@@ -1806,7 +1806,7 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         host_name[host_name_seg.mem_size] = 0;
     }
 
-    HSESSION session = iocp_tcp_connect(
+    HSESSION session = net_tcp_connect(
         ws_mgr->net_mgr, host_name,
         (unsigned short)port,
         recv_buf_size,
@@ -1871,7 +1871,7 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         ws_session->fragment_size = (unsigned int)copy_length;
     }
 
-    iocp_tcp_set_session_data(ws_session->session, ws_session);
+    net_tcp_set_session_data(ws_session->session, ws_session);
 
     return ws_session;
 FAIL:
@@ -1968,7 +1968,7 @@ ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_he
         ws_session->fragment_size = (unsigned int)copy_length;
     }
 
-    iocp_tcp_set_session_data(ws_session->session, ws_session);
+    net_tcp_set_session_data(ws_session->session, ws_session);
 
     return ws_session;
 FAIL:

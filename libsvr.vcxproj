@@ -21,7 +21,6 @@
   <ItemGroup>
     <ClInclude Include="include\avl_tree.h" />
     <ClInclude Include="include\file_log.h" />
-    <ClInclude Include="include\iocp_tcp.h" />
     <ClInclude Include="include\json.h" />
     <ClInclude Include="include\lib_svr_def.h" />
     <ClInclude Include="include\lock_free_queue.hpp" />
@@ -29,6 +28,7 @@
     <ClInclude Include="include\memory_pool.h" />
     <ClInclude Include="include\memory_trace.hpp" />
     <ClInclude Include="include\net_data.hpp" />
+    <ClInclude Include="include\net_tcp.h" />
     <ClInclude Include="include\rb_tree.h" />
     <ClInclude Include="include\share_memory.h" />
     <ClInclude Include="include\smemory.hpp" />
