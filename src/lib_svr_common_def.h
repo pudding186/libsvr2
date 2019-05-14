@@ -221,6 +221,15 @@ typedef struct st_json_struct
 
 //////////////////////////////////////////////////////////////////////////
 
+#define BIO_RECV                0
+#define BIO_SEND                1
+
+#define DEF_SSL_SEND_CACHE_SIZE 4096
+#define DEF_SSL_RECV_CACHE_SIZE 4096
+
+#define SSL_UN_HAND_SHAKE       0
+#define SSL_HAND_SHAKE          1
+
 //////////////////////////////////////////////////////////////////////////
 
 extern ptrdiff_t trace_info_cmp(void* info1, void* info2);

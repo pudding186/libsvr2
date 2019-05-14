@@ -1594,7 +1594,7 @@ ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
 
-    listener->listener = iocp_ssl_listen(
+    listener->listener = net_ssl_listen(
         mgr->net_mgr,
         ip,
         port,
@@ -1902,7 +1902,7 @@ ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_he
         host_name[host_name_seg.mem_size] = 0;
     }
 
-    HSESSION session = iocp_ssl_connect(
+    HSESSION session = net_ssl_connect(
         ws_mgr->net_mgr, host_name,
         (unsigned short)port,
         recv_buf_size,

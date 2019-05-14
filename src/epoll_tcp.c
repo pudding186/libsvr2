@@ -15,7 +15,8 @@
 #include "../include/timer.h"
 #include "../include/memory_pool.h"
 #include "../include/rb_tree.h"
-#include "../include/epoll_tcp.h"
+#include "../include/net_tcp.h"
+#include "../include/ssl_tcp.h"
 
 //socket state
 #define SOCKET_STATE_NONE       0
@@ -204,6 +205,7 @@ typedef struct st_epoll_tcp_listener
 
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
+	SSL_CTX*						svr_ssl_ctx;
 
     int                             sock_fd;
     long                            state;
@@ -213,6 +215,24 @@ typedef struct st_epoll_tcp_listener
     unsigned int                    accept_push;
     unsigned int                    accept_pop;
 }epoll_tcp_listener;
+
+typedef struct st_epoll_ssl_data
+{
+	SSL*                ssl;
+	BIO*                bio[2];
+	char*               ssl_recv_buf;
+	unsigned int        ssl_recv_buf_size;
+	char*               ssl_send_buf;
+	unsigned int        ssl_send_buf_size;
+	unsigned int        ssl_read_length;
+	unsigned int        ssl_write_length;
+	unsigned int        ssl_state;
+	union
+	{
+		epoll_tcp_listener* ssl_listener;
+		SSL_CTX*            ssl_ctx_client;
+	}ssl_pt;
+}epoll_ssl_data;
 
 typedef struct st_epoll_tcp_socket
 {
@@ -227,6 +247,7 @@ typedef struct st_epoll_tcp_socket
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
     struct st_epoll_tcp_listener*   listener;
+	struct st_epoll_ssl_data*		ssl_data;
 
     HLOOPCACHE                      recv_loop_cache;
     HLOOPCACHE                      send_loop_cache;
@@ -368,6 +389,7 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->need_req_close = true;
 
     sock_ptr->user_data = 0;
+	sock_ptr->ssl_data = 0;
 }
 
 bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
@@ -538,6 +560,123 @@ bool _epoll_tcp_manager_is_socket(epoll_tcp_manager* mgr, void* ptr)
 	return memory_unit_check(mgr->socket_pool, ptr);
 }
 
+epoll_ssl_data* _epoll_ssl_data_alloc(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+{
+	epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+
+	data->ssl_state = SSL_UN_HAND_SHAKE;
+
+	data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
+	data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
+
+	data->ssl_recv_buf_size = ssl_recv_cache_size;
+	data->ssl_send_buf_size = ssl_send_cache_size;
+
+	data->ssl_read_length = 0;
+	data->ssl_write_length = 0;
+
+	data->ssl = 0;
+	data->bio[BIO_RECV] = 0;
+	data->bio[BIO_SEND] = 0;
+
+	return data;
+}
+
+void _epoll_ssl_data_free(epoll_tcp_manager* mgr, epoll_ssl_data* data)
+{
+	_epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
+}
+
+bool _init_server_ssl_data(epoll_tcp_listener* listener, epoll_ssl_data* data)
+{
+	data->ssl_pt.ssl_listener = listener;
+
+	data->ssl = SSL_new(listener->svr_ssl_ctx);
+	if (!data->ssl)
+	{
+		return false;
+	}
+
+	data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+	data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+
+	if ((!data->bio[BIO_RECV]) ||
+		(!data->bio[BIO_SEND]))
+	{
+		return false;
+	}
+
+	SSL_set_bio(data->ssl, data->bio[BIO_RECV], data->bio[BIO_SEND]);
+
+	SSL_set_accept_state(data->ssl);
+
+	return true;
+}
+
+bool _init_client_ssl_data(epoll_tcp_socket* sock_ptr)
+{
+	sock_ptr->ssl_data->ssl = SSL_new(sock_ptr->ssl_data->ssl_pt.ssl_ctx_client);
+	sock_ptr->ssl_data->ssl_pt.ssl_ctx_client = 0;
+
+	if (!sock_ptr->ssl_data->ssl)
+	{
+		return false;
+	}
+
+	sock_ptr->ssl_data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+	sock_ptr->ssl_data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+
+	if ((!sock_ptr->ssl_data->bio[BIO_RECV]) ||
+		(!sock_ptr->ssl_data->bio[BIO_SEND]))
+	{
+		return false;
+	}
+
+	SSL_set_bio(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data->bio[BIO_SEND]);
+
+	SSL_set_connect_state(sock_ptr->ssl_data->ssl);
+
+	return true;
+}
+
+void _uninit_ssl_data(epoll_ssl_data* data)
+{
+	if (data->ssl)
+	{
+		SSL_free(data->ssl);
+		data->ssl = 0;
+	}
+	else
+	{
+		if (data->bio[BIO_RECV])
+		{
+			BIO_free(data->bio[BIO_RECV]);
+			data->bio[BIO_RECV] = 0;
+		}
+
+		if (data->bio[BIO_SEND])
+		{
+			BIO_free(data->bio[BIO_SEND]);
+			data->bio[BIO_SEND] = 0;
+		}
+	}
+}
+
+bool _is_ssl_error(int ssl_error)
+{
+	switch (ssl_error)
+	{
+	case SSL_ERROR_NONE:
+	case SSL_ERROR_WANT_READ:
+	case SSL_ERROR_WANT_WRITE:
+	case SSL_ERROR_WANT_CONNECT:
+	case SSL_ERROR_WANT_ACCEPT:
+		return false;
+
+	default: return true;
+	}
+}
+
 void _epoll_tcp_proc_push_evt_establish(epoll_tcp_proc* proc, epoll_tcp_listener* listener, epoll_tcp_socket* sock_ptr)
 {
     net_event* evt;
@@ -596,6 +735,25 @@ void _epoll_tcp_proc_push_evt_system_error(epoll_tcp_proc* proc, epoll_tcp_socke
     evt->evt.evt_system_error.err_code = err_code;
 
     loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_ssl_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
+{
+	net_event* evt;
+	size_t evt_len = sizeof(net_event);
+
+	loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+	if (evt_len != sizeof(net_event))
+	{
+		CRUSH_CODE();
+	}
+
+	evt->sock_ptr = sock_ptr;
+	evt->type = NET_EVENT_SSL_ERROR;
+	evt->evt.evt_ssl_error.err_code = err_code;
+
+	loop_cache_push(proc->list_net_evt, evt_len);
 }
 
 void _epoll_tcp_proc_push_evt_module_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error err_code)
@@ -993,18 +1151,37 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
         CRUSH_CODE();
     }
 
-    if (!_epoll_tcp_socket_proc_add(proc, sock_ptr))
-    {
-        close(sock_ptr->sock_fd);
-        sock_ptr->sock_fd = -1;
-        sock_ptr->state = SOCKET_STATE_DELETE;
-        _epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
-    }
-    else
-    {
-        sock_ptr->state = SOCKET_STATE_ESTABLISH;
-        _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
-    }
+	if (sock_ptr->ssl_data)
+	{
+		if (!_init_server_ssl_data(sock_ptr->listener, sock_ptr->ssl_data))
+		{
+			close(sock_ptr->sock_fd);
+			sock_ptr->sock_fd = -1;
+			sock_ptr->state = SOCKET_STATE_DELETE;
+			_epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
+			return;
+		}
+	}
+
+	if (_epoll_tcp_socket_proc_add(proc, sock_ptr))
+	{
+		if (!sock_ptr->ssl_data)
+		{
+			_epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+		}
+	}
+	else
+	{
+		if (sock_ptr->ssl_data)
+		{
+			_uninit_ssl_data(sock_ptr->ssl_data);
+		}
+
+		close(sock_ptr->sock_fd);
+		sock_ptr->sock_fd = -1;
+		sock_ptr->state = SOCKET_STATE_DELETE;
+		_epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
+	}
 }
 
 void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
@@ -1247,7 +1424,12 @@ void _epoll_tcp_socket_on_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock
     }
     break;
     case error_ssl:
-        break;
+	{
+		sock_ptr->state = SOCKET_STATE_DELETE;
+
+		_epoll_tcp_proc_push_evt_ssl_error(proc, sock_ptr, system_error);
+	}
+    break;
     case error_ok:
     {
         _epoll_tcp_proc_push_evt_terminate(proc, sock_ptr);
@@ -1281,6 +1463,130 @@ void _epoll_tcp_socket_close(epoll_tcp_socket* sock_ptr, net_tcp_error error, in
             _epoll_tcp_proc_push_req_terminate(sock_ptr->proc, sock_ptr, error, sys_error);
         }
     }
+}
+
+void _epoll_tcp_ssl_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+	//if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
+	//{
+	//	return;
+	//}
+
+	//int bio_ret;
+	//int ssl_ret;
+	//unsigned int decrypt_len = 0;
+	//int data_recv = 0;
+
+	//bool need_close = false;
+	//bool need_recv_activate = false;
+
+	//for (;;)
+	//{
+	//	data_recv = recv(sock_ptr->sock_fd, sock_ptr->ssl_data.ssl_recv_buf, sock_ptr->ssl_data->ssl_recv_buf_size, 0);
+
+	//	if (data_recv > 0)
+	//	{
+	//		bio_ret = BIO_write(sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data.ssl_recv_buf, data_recv);
+
+	//		if (bio_ret <= 0)
+	//		{
+	//			if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, bio_ret)))
+	//			{
+	//				_epoll_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
+	//				return;
+	//			}
+	//			need_recv_activate = true;
+	//			break;
+	//		}
+	//		else
+	//		{
+	//			if (bio_ret != data_recv)
+	//			{
+	//				CRUSH_CODE();
+	//			}
+	//		}
+	//	}
+	//	else if (data_recv < 0)
+	//	{
+	//		if (errno == EINTR)
+	//		{
+	//			continue;
+	//		}
+	//		else if (errno == EAGAIN ||
+	//			errno == EWOULDBLOCK)
+	//		{
+	//			break;
+	//		}
+	//		else
+	//		{
+	//			_epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
+	//			return;
+	//		}
+	//	}
+	//	else
+	//	{
+	//		need_close = true;
+	//		break;
+	//	}
+	//}
+
+	//for (;;)
+	//{
+	//	char* free_data_ptr = 0;
+	//	size_t free_data_len = 0;
+	//	loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_ptr, &free_data_len);
+
+	//	if (free_data_len)
+	//	{
+	//		ssl_ret = SSL_read(sock_ptr->ssl_data->ssl, free_data_ptr, (int)free_data_len);
+
+	//		if (ssl_ret > 0)
+	//		{
+	//			if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
+	//			{
+	//				CRUSH_CODE();
+	//			}
+	//			decrypt_len += ssl_ret;
+	//		}
+	//		else
+	//		{
+	//			if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
+	//			{
+	//				_epoll_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
+	//				return;
+	//			}
+	//			break;
+	//		}
+	//	}
+	//	else
+	//	{
+	//		break;
+	//	}
+	//}
+
+	//if (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE)
+	//{
+	//	if (sock_ptr->send_req == sock_ptr->send_ack)
+	//	{
+	//		_epoll_tcp_socket_on_send(proc, req->sock_ptr);
+	//	}
+
+	//	if (SSL_is_init_finished(sock_ptr->ssl_data->ssl))
+	//	{
+	//		sock_ptr->ssl_data->ssl_state = SSL_HAND_SHAKE;
+	//		_epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+	//	}
+	//}
+	//else
+	//{
+	//	_epoll_tcp_proc_push_evt_data(proc, sock_ptr, decrypt_len);
+	//}
+
+}
+
+void _epoll_tcp_ssl_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+
 }
 
 void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
@@ -1756,6 +2062,15 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 
 			sock_ptr->listener = listener;
 
+			if (listener->svr_ssl_ctx)
+			{
+				sock_ptr->ssl_data = _epoll_ssl_data_alloc(listener->mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+				if (!sock_ptr->ssl_data)
+				{
+					CRUSH_CODE();
+				}
+			}
+
 			_epoll_tcp_proc_push_req_accept(sock_ptr->proc, sock_ptr);
 		}
 		else
@@ -1960,7 +2275,7 @@ bool _epoll_tcp_listener_listen(epoll_tcp_listener* listener, const char* ip, un
     return true;
 }
 
-void destroy_epoll_tcp(epoll_tcp_manager* mgr)
+void destroy_net_tcp(epoll_tcp_manager* mgr)
 {
     for (unsigned int i = 0; i < mgr->net_proc_num; i++)
     {
@@ -1996,7 +2311,7 @@ void destroy_epoll_tcp(epoll_tcp_manager* mgr)
     free(mgr);
 }
 
-epoll_tcp_manager* create_epoll_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
+epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet,
     unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num)
 {
@@ -2078,7 +2393,7 @@ epoll_tcp_manager* create_epoll_tcp(pfn_on_establish func_on_establish, pfn_on_t
     return mgr;
 }
 
-epoll_tcp_socket* epoll_tcp_connect(
+epoll_tcp_socket* net_tcp_connect(
     epoll_tcp_manager* mgr,
     const char* ip,
     unsigned short port,
@@ -2179,7 +2494,7 @@ epoll_tcp_socket* epoll_tcp_connect(
     return sock_ptr;
 }
 
-epoll_tcp_listener* epoll_tcp_listen(
+epoll_tcp_listener* net_tcp_listen(
     epoll_tcp_manager* mgr,
     const char * ip,
     unsigned short port,
@@ -2202,6 +2517,7 @@ epoll_tcp_listener* epoll_tcp_listen(
 
     listener->user_data = 0;
     listener->mgr = mgr;
+	listener->svr_ssl_ctx = 0;
 
     if (func_on_establish)
     {
@@ -2257,7 +2573,7 @@ epoll_tcp_listener* epoll_tcp_listen(
     return listener;
 }
 
-bool epoll_tcp_send(epoll_tcp_socket* sock_ptr, const void* data, unsigned int len)
+bool net_tcp_send(epoll_tcp_socket* sock_ptr, const void* data, unsigned int len)
 {
     if (!len)
     {
@@ -2293,7 +2609,7 @@ bool epoll_tcp_send(epoll_tcp_socket* sock_ptr, const void* data, unsigned int l
     return true;
 }
 
-bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
+bool net_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
 {
 	unsigned int unbusy_proc_count = 0;
 
@@ -2303,7 +2619,6 @@ bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
 
 		for (;;)
 		{
-			//if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
 			if (_do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
 			{
 				unbusy_proc_count = 0;
@@ -2335,7 +2650,6 @@ bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
 	{
 		for (;;)
 		{
-			//if (mgr->tcp_proc_array[mgr->cur_proc_idx]->do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
 			if (_do_net_evt(mgr->tcp_proc_array[mgr->cur_proc_idx]))
 			{
 				unbusy_proc_count = 0;
@@ -2360,7 +2674,7 @@ bool epoll_tcp_run(epoll_tcp_manager* mgr, unsigned int run_time)
 	}
 }
 
-void epoll_tcp_close_listener(epoll_tcp_listener* listener)
+void net_tcp_close_listener(epoll_tcp_listener* listener)
 {
     if (listener)
     {
@@ -2380,12 +2694,12 @@ void epoll_tcp_close_listener(epoll_tcp_listener* listener)
     }
 }
 
-void epoll_tcp_close_session(epoll_tcp_socket* sock_ptr)
+void net_tcp_close_session(epoll_tcp_socket* sock_ptr)
 {
     _epoll_tcp_socket_close(sock_ptr, error_ok, 0, false);
 }
 
-int epoll_tcp_session_socket(epoll_tcp_socket* sock_ptr)
+int net_tcp_session_socket(epoll_tcp_socket* sock_ptr)
 {
     return sock_ptr->sock_fd;
 }
@@ -2395,32 +2709,32 @@ int epoll_tcp_listener_socket(epoll_tcp_listener* listener)
     return listener->sock_fd;
 }
 
-void epoll_tcp_set_listener_data(epoll_tcp_listener* listener, void* user_data)
+void net_tcp_set_listener_data(epoll_tcp_listener* listener, void* user_data)
 {
     listener->user_data = user_data;
 }
 
-void epoll_tcp_set_session_data(epoll_tcp_socket* sock_ptr, void* user_data)
+void net_tcp_set_session_data(epoll_tcp_socket* sock_ptr, void* user_data)
 {
     sock_ptr->user_data = user_data;
 }
 
-void* epoll_tcp_get_listener_data(epoll_tcp_listener* listener)
+void* net_tcp_get_listener_data(epoll_tcp_listener* listener)
 {
     return listener->user_data;
 }
 
-void* epoll_tcp_get_session_data(epoll_tcp_socket* sock_ptr)
+void* net_tcp_get_session_data(epoll_tcp_socket* sock_ptr)
 {
     return sock_ptr->user_data;
 }
 
-unsigned int epoll_tcp_get_send_free_size(epoll_tcp_socket* sock_ptr)
+unsigned int net_tcp_get_send_free_size(epoll_tcp_socket* sock_ptr)
 {
     return (unsigned int)loop_cache_free_size(sock_ptr->send_loop_cache);
 }
 
-void epoll_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size, unsigned int delay_time)
+void net_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size, unsigned int delay_time)
 {
     sock_ptr->data_delay_send_size = pkg_size;
     _epoll_tcp_socket_mod_timer_send(sock_ptr, delay_time);
