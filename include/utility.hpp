@@ -31,8 +31,16 @@ typedef struct st_mem_seg
     const void* mem;
     size_t      mem_size;
 }mem_seg;
+
+extern const void* (memmem_s)(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
+
 #ifdef _MSC_VER
-extern const void* (memmem)(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
+
+#elif __GNUC__
+extern unsigned long long (htonll)(unsigned long long value);
+extern unsigned long long (ntohll)(unsigned long long value);
+#else
+#error "unknown compiler"
 #endif
 extern size_t (split_mem_to_segments)(const void* mem, size_t mem_size, const void* split, size_t  split_size, mem_seg* segs, size_t max_mem_seg);
 

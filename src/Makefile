@@ -5,7 +5,7 @@
 include ../makefile_common
 
 C_OBJS=${shell ls *.c}
-CPP_OBJS=$(shell ls *.cpp)
+CPP_OBJS=${shell ls *.cpp}
 
 PROGS=$(LIBF_SVR)
 

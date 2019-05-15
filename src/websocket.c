@@ -538,7 +538,9 @@ void _ws_close_socket(ws_socket* ws_session, ws_error type, int code, const char
 
 unsigned int _parser_http_packet(ws_socket* ws_session, const char* data, const unsigned int len)
 {
-    ws_session;
+#ifdef _MSC_VER
+	UNREFERENCED_PARAMETER(ws_session);
+#endif
     if (len <= 4)
     {
         return 0;
@@ -552,7 +554,9 @@ unsigned int _parser_http_packet(ws_socket* ws_session, const char* data, const 
 
 unsigned int _parser_web_socket_packet(ws_socket* ws_session, const char* data, const unsigned int len)
 {
-    ws_session;
+#ifdef _MSC_VER
+	UNREFERENCED_PARAMETER(ws_session);
+#endif
     if (len < 2)
     {
         return 0;
@@ -676,7 +680,7 @@ mem_seg _response_extensions_deflate(ws_socket* ws_session, http_header* header_
 
     if (header_extensions)
     {
-        if (memmem(header_extensions->value, header_extensions->value_length, "permessage-deflate", strlen("permessage-deflate")))
+        if (memmem_s(header_extensions->value, header_extensions->value_length, "permessage-deflate", strlen("permessage-deflate")))
         {
             ws_session->extension_options |= ws_ext_defalte;
 
@@ -701,15 +705,15 @@ void _on_client_http_data(ws_socket* ws_session, const char* data, const unsigne
 
     for (http_header* h = headers; h->key; ++h)
     {
-        if (memmem(h->key, h->key_length, "upgrade", strlen("upgrade")))
+        if (memmem_s(h->key, h->key_length, "upgrade", strlen("upgrade")))
         {
-            if (memmem(h->value, h->value_length, "websocket", strlen("websocket")))
+            if (memmem_s(h->value, h->value_length, "websocket", strlen("websocket")))
             {
                 check_head_upgrade = true;
             }
         }
 
-        if (memmem(h->key, h->key_length, "sec-websocket-extensions", strlen("sec-websocket-extensions")))
+        if (memmem_s(h->key, h->key_length, "sec-websocket-extensions", strlen("sec-websocket-extensions")))
         {
             _response_extensions_deflate(ws_session, h);
         }
@@ -741,7 +745,7 @@ void _on_server_http_data(ws_socket* ws_session, const char* data, const unsigne
     unsigned int upgrade_response_length = 0;
 
     const char* req_line_begin = data;
-    const char* req_line_end = memmem(data, len, "\r\n", 2);
+    const char* req_line_end = memmem_s(data, len, "\r\n", 2);
 
     mem_seg req_line_seg[3];
 
@@ -767,9 +771,9 @@ void _on_server_http_data(ws_socket* ws_session, const char* data, const unsigne
         {
             if (!check_head_upgrade)
             {
-                if (memmem(h->key, h->key_length, "upgrade", strlen("upgrade")))
+                if (memmem_s(h->key, h->key_length, "upgrade", strlen("upgrade")))
                 {
-                    if (memmem(h->value, h->value_length, "websocket", strlen("websocket")))
+                    if (memmem_s(h->value, h->value_length, "websocket", strlen("websocket")))
                     {
                         check_head_upgrade = true;
                         continue;
@@ -779,7 +783,7 @@ void _on_server_http_data(ws_socket* ws_session, const char* data, const unsigne
 
             if (!check_head_key)
             {
-                if (memmem(h->key, h->key_length, "sec-websocket-key", strlen("sec-websocket-key")))
+                if (memmem_s(h->key, h->key_length, "sec-websocket-key", strlen("sec-websocket-key")))
                 {
                     head_key = h;
 
@@ -790,7 +794,7 @@ void _on_server_http_data(ws_socket* ws_session, const char* data, const unsigne
 
             if (!check_head_extensions)
             {
-                if (memmem(h->key, h->key_length, "sec-websocket-extensions", strlen("sec-websocket-extensions")))
+                if (memmem_s(h->key, h->key_length, "sec-websocket-extensions", strlen("sec-websocket-extensions")))
                 {
                     head_extensions = h;
 
@@ -1450,10 +1454,17 @@ void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error
     case error_system:
     {
         char sys_error[64];
-        int sys_error_length = sprintf_s(sys_error, sizeof(sys_error), "svr sys error: %d", system_error);
+		int sys_error_length = snprintf(sys_error, sizeof(sys_error), "svr sys error: %d", system_error);
         _ws_close_socket(ws_session, ws_error_websocket, 1001, sys_error, sys_error_length);
     }
     break;
+	case error_ssl:
+	{
+		char ssl_error[64];
+		int ssl_error_length = snprintf(ssl_error, sizeof(ssl_error), "svr ssl error: %d", system_error);
+		_ws_close_socket(ws_session, ws_error_websocket, 1001, ssl_error, ssl_error_length);
+	}
+	break;
     case error_send_overflow:
     {
         _ws_close_socket(ws_session, ws_error_websocket, 1001, "svr send overflow", (unsigned int)strlen("svr send overflow"));
@@ -1469,6 +1480,8 @@ void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error
         _ws_close_socket(ws_session, ws_error_websocket, 1002, "svr error packet", (unsigned int)strlen("svr error packet"));
     }
     break;
+	case error_ok:
+	break;
     }
 }
 
@@ -1512,8 +1525,8 @@ ws_manager* create_ws_manager(HNETMANAGER net_mgr,
 
     mgr->ws_socket_unit = create_memory_unit(sizeof(ws_socket));
 
-    ZeroMemory(&mgr->inflation_stream, sizeof(mgr->inflation_stream));
-    ZeroMemory(&mgr->deflation_stream, sizeof(mgr->deflation_stream));
+    memset(&mgr->inflation_stream, 0, sizeof(mgr->inflation_stream));
+    memset(&mgr->deflation_stream, 0, sizeof(mgr->deflation_stream));
 
     inflateInit2(&mgr->inflation_stream, -15);
     deflateInit2(&mgr->deflation_stream, 1, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
@@ -1843,7 +1856,7 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         size_t extra_headers_length = strlen(extra_headers);
         
         char sz_port[16] = { 0 };
-        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+		ulltostr(port, sz_port, sizeof(sz_port), 10);
         size_t port_length = strlen(sz_port);
 
         const char* tmp_data =
@@ -1940,7 +1953,7 @@ ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_he
         size_t extra_headers_length = strlen(extra_headers);
 
         char sz_port[16] = { 0 };
-        _itoa_s(port, sz_port, sizeof(sz_port), 10);
+		ulltostr(port, sz_port, sizeof(sz_port), 10);
         size_t port_length = strlen(sz_port);
 
         const char* tmp_data =

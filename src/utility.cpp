@@ -3,6 +3,7 @@
 #include <windows.h>
 #elif __GNUC__
 #include <limits.h>
+#include <endian.h>
 #else
 #error "unknown compiler"
 #endif
@@ -424,7 +425,7 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
 
 //////////////////////////////////////////////////////////////////////////
 
-const void *memmem(const void *haystack, size_t haystacklen,
+const void *memmem_s(const void *haystack, size_t haystacklen,
     const void *needle, size_t needlelen)
 {
     if (needlelen > 1)
@@ -458,6 +459,17 @@ const void *memmem(const void *haystack, size_t haystacklen,
     else
         return memchr(haystack, *(char*)needle, haystacklen);
 }
+#elif __GNUC__
+unsigned long long (htonll)(unsigned long long value)
+{
+	return htobe64(value);
+}
+
+unsigned long long (ntohll)(unsigned long long value)
+{
+	return be64toh(value);
+}
+
 #endif
 
 size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split, size_t  split_size, mem_seg* segs, size_t max_mem_seg)
@@ -467,7 +479,7 @@ size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split
     const char* ptr_pos;
     size_t seg_count = 0;
 
-    ptr_pos = (const char*)memmem(ptr_begin, ptr_end - ptr_begin, split, split_size);
+    ptr_pos = (const char*)memmem_s(ptr_begin, ptr_end - ptr_begin, split, split_size);
 
     while (ptr_pos)
     {
@@ -488,7 +500,7 @@ size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split
         ++seg_count;
 
         ptr_begin = ptr_pos + split_size;
-        ptr_pos = (const char*)memmem(ptr_begin, ptr_end - ptr_begin, split, split_size);
+        ptr_pos = (const char*)memmem_s(ptr_begin, ptr_end - ptr_begin, split, split_size);
     }
 
     if (ptr_begin < ptr_end)

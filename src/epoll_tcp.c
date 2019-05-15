@@ -2377,7 +2377,7 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
         !mgr->memory_mgr ||
         !mgr->max_pkg_buf)
     {
-        destroy_epoll_tcp(mgr);
+        destroy_net_tcp(mgr);
         return 0;
     }
 
@@ -2385,7 +2385,7 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     {
         if (!mgr->tcp_proc_array[i])
         {
-            destroy_epoll_tcp(mgr);
+            destroy_net_tcp(mgr);
             return 0;
         }
     }
