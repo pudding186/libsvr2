@@ -1805,7 +1805,7 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
     }
 }
 
-void iocp_tcp_close_listener(iocp_tcp_listener* listener)
+void net_tcp_close_listener(iocp_tcp_listener* listener)
 {
     unsigned int i;
     listener->state = SOCKET_STATE_NONE;
@@ -2868,7 +2868,7 @@ iocp_tcp_listener* net_tcp_listen(
 
     if (!_iocp_tcp_listener_listen(listener, mgr->max_accept_ex_num, ip, port, reuse_addr))
     {
-        iocp_tcp_close_listener(listener);
+        net_tcp_close_listener(listener);
 
         return 0;
     }
@@ -2944,7 +2944,7 @@ iocp_tcp_listener* net_ssl_listen(HNETMANAGER mgr,
 
     if (!_iocp_tcp_listener_listen(listener, mgr->max_accept_ex_num, ip, port, reuse_addr))
     {
-        iocp_tcp_close_listener(listener);
+        net_tcp_close_listener(listener);
 
         return 0;
     }
@@ -3051,7 +3051,7 @@ void* net_tcp_get_session_data(iocp_tcp_socket* sock_ptr)
     return sock_ptr->user_data;
 }
 
-bool iocp_tcp_get_peer_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
+bool net_tcp_get_peer_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
 {
     if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
     {
@@ -3085,7 +3085,7 @@ bool iocp_tcp_get_peer_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
     return false;
 }
 
-bool iocp_tcp_get_local_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
+bool net_tcp_get_local_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
 {
     if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
     {
@@ -3120,7 +3120,7 @@ bool iocp_tcp_get_local_ip_port(iocp_tcp_socket* sock_ptr, ip_info* info)
     return false;
 }
 
-bool iocp_tcp_get_peer_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
+bool net_tcp_get_peer_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
 {
     if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
     {
@@ -3145,7 +3145,7 @@ bool iocp_tcp_get_peer_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
     return false;
 }
 
-bool iocp_tcp_get_local_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
+bool net_tcp_get_local_sock_addr(iocp_tcp_socket* sock_ptr, addr_info* info)
 {
     if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
     {

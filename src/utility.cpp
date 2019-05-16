@@ -283,6 +283,41 @@ size_t lltostr(long long val, char* buf, size_t size, unsigned int radix)
     return ulltostr(val, buf, size, radix);
 }
 
+const void *memmem_s(const void *haystack, size_t haystacklen,
+	const void *needle, size_t needlelen)
+{
+	if (needlelen > 1)
+	{
+		const char* ptr_find = (const char*)haystack;
+		const char* ptr_end = (const char*)haystack + haystacklen;
+
+		for (;;)
+		{
+			ptr_find = (const char*)memchr(ptr_find, *(const char*)needle, ptr_end - ptr_find);
+
+			if (!ptr_find)
+			{
+				return 0;
+			}
+
+			if ((size_t)(ptr_end - ptr_find) < needlelen)
+			{
+				return 0;
+			}
+
+			if (memcmp(ptr_find, needle, needlelen))
+			{
+				ptr_find += needlelen;
+			}
+			else
+				return ptr_find;
+
+		}
+	}
+	else
+		return memchr(haystack, *(char*)needle, haystacklen);
+}
+
 #ifdef _MSC_VER
 bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, void* user_data)
 {
@@ -424,41 +459,6 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
 
 
 //////////////////////////////////////////////////////////////////////////
-
-const void *memmem_s(const void *haystack, size_t haystacklen,
-    const void *needle, size_t needlelen)
-{
-    if (needlelen > 1)
-    {
-        const char* ptr_find = (const char*)haystack;
-        const char* ptr_end = (const char*)haystack + haystacklen;
-
-        for (;;)
-        {
-            ptr_find = (const char*)memchr(ptr_find, *(const char*)needle, ptr_end - ptr_find);
-
-            if (!ptr_find)
-            {
-                return 0;
-            }
-
-            if ((size_t)(ptr_end - ptr_find) < needlelen)
-            {
-                return 0;
-            }
-
-            if (memcmp(ptr_find, needle, needlelen))
-            {
-                ptr_find += needlelen;
-            }
-            else
-                return ptr_find;
-
-        }
-    }
-    else
-        return memchr(haystack, *(char*)needle, haystacklen);
-}
 #elif __GNUC__
 unsigned long long (htonll)(unsigned long long value)
 {

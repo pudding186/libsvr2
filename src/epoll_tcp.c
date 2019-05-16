@@ -254,6 +254,9 @@ typedef struct st_epoll_tcp_socket
 
     HTIMERINFO                      timer_send;
     HTIMERINFO                      timer_close;
+
+	struct sockaddr_in6				local_sockaddr;
+	struct sockaddr_in6				peer_sockaddr;
     
     int                             sock_fd;
     long                            state;
@@ -1018,6 +1021,18 @@ void _epoll_tcp_proc_push_req_close_socket(epoll_tcp_proc* proc, epoll_tcp_socke
     loop_cache_push(proc->list_net_req, req_len);
 }
 
+void _epoll_tcp_socket_get_sockaddr(epoll_tcp_socket* sock_ptr)
+{
+	if (sock_ptr->sock_fd != -1)
+	{
+		socklen_t addr_len = sizeof(sock_ptr->local_sockaddr);
+		getsockname(sock_ptr->sock_fd, (struct sockaddr*)&sock_ptr->local_sockaddr, &addr_len);
+
+		addr_len = sizeof(sock_ptr->peer_sockaddr);
+		getpeername(sock_ptr->sock_fd, (struct sockaddr*)&sock_ptr->peer_sockaddr, &addr_len);
+	}
+}
+
 void _epoll_tcp_socket_on_timer_send(epoll_tcp_socket* sock_ptr)
 {
     if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
@@ -1165,6 +1180,9 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 
 	if (_epoll_tcp_socket_proc_add(proc, sock_ptr))
 	{
+
+		sock_ptr->state = SOCKET_STATE_ESTABLISH;
+		_epoll_tcp_socket_get_sockaddr(sock_ptr);
 		if (!sock_ptr->ssl_data)
 		{
 			_epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
@@ -1784,6 +1802,7 @@ unsigned int _do_epoll_evt(epoll_tcp_proc* proc, int time_out)
 			if (sock_ptr->state == SOCKET_STATE_CONNECT)
 			{
 				sock_ptr->state = SOCKET_STATE_ESTABLISH;
+				_epoll_tcp_socket_get_sockaddr(sock_ptr);
 				_epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
 			}
 			else
@@ -2727,6 +2746,125 @@ void* net_tcp_get_listener_data(epoll_tcp_listener* listener)
 void* net_tcp_get_session_data(epoll_tcp_socket* sock_ptr)
 {
     return sock_ptr->user_data;
+}
+
+bool net_tcp_get_peer_ip_port(epoll_tcp_socket* sock_ptr, ip_info* info)
+{
+	if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
+	{
+		info->ip_type = ip_v4;
+		struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->peer_sockaddr;
+		inet_ntop(sockaddr_v4->sin_family,
+			&sockaddr_v4->sin_addr,
+			info->ip_str,
+			sizeof(info->ip_str));
+		info->port = ntohs(sockaddr_v4->sin_port);
+
+		return true;
+	}
+	else if (sock_ptr->peer_sockaddr.sin6_family == AF_INET6)
+	{
+		info->ip_type = ip_v6;
+		inet_ntop(sock_ptr->peer_sockaddr.sin6_family,
+			&sock_ptr->peer_sockaddr.sin6_addr,
+			info->ip_str,
+			sizeof(info->ip_str));
+
+		info->port = ntohs(sock_ptr->peer_sockaddr.sin6_port);
+
+		return true;
+	}
+	else
+	{
+		info->ip_type = ip_unknow;
+	}
+
+	return false;
+}
+
+bool net_tcp_get_local_ip_port(epoll_tcp_socket* sock_ptr, ip_info* info)
+{
+	if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
+	{
+		info->ip_type = ip_v4;
+		struct sockaddr_in* sockaddr_v4 = (struct sockaddr_in*)&sock_ptr->local_sockaddr;
+		inet_ntop(sockaddr_v4->sin_family,
+			&sockaddr_v4->sin_addr,
+			info->ip_str,
+			sizeof(info->ip_str));
+		info->port = ntohs(sockaddr_v4->sin_port);
+
+		return true;
+	}
+	else if (sock_ptr->local_sockaddr.sin6_family == AF_INET6)
+	{
+		info->ip_type = ip_v6;
+		inet_ntop(sock_ptr->local_sockaddr.sin6_family,
+			&sock_ptr->local_sockaddr.sin6_addr,
+			info->ip_str,
+			sizeof(info->ip_str));
+
+		info->port = ntohs(sock_ptr->local_sockaddr.sin6_port);
+
+		return true;
+	}
+	else
+	{
+		info->ip_type = ip_unknow;
+		info->port = 0;
+	}
+
+	return false;
+}
+
+bool net_tcp_get_peer_sock_addr(epoll_tcp_socket* sock_ptr, addr_info* info)
+{
+	if (sock_ptr->peer_sockaddr.sin6_family == AF_INET)
+	{
+		info->addr_type = addr_v4;
+		info->sock_addr_ptr.v4 = (struct sockaddr_in*)&sock_ptr->peer_sockaddr;
+
+		return true;
+	}
+	else if (sock_ptr->peer_sockaddr.sin6_family == AF_INET6)
+	{
+		info->addr_type = addr_v6;
+		info->sock_addr_ptr.v6 = &sock_ptr->peer_sockaddr;
+
+		return true;
+	}
+	else
+	{
+		info->addr_type = addr_unknow;
+		info->sock_addr_ptr.v4 = 0;
+	}
+
+	return false;
+}
+
+bool net_tcp_get_local_sock_addr(epoll_tcp_socket* sock_ptr, addr_info* info)
+{
+	if (sock_ptr->local_sockaddr.sin6_family == AF_INET)
+	{
+		info->addr_type = addr_v4;
+		info->sock_addr_ptr.v4 = (struct sockaddr_in*)&sock_ptr->local_sockaddr;
+
+		return true;
+	}
+	else if (sock_ptr->local_sockaddr.sin6_family == AF_INET6)
+	{
+		info->addr_type = addr_v6;
+		info->sock_addr_ptr.v6 = &sock_ptr->local_sockaddr;
+
+		return true;
+	}
+	else
+	{
+		info->addr_type = addr_unknow;
+		info->sock_addr_ptr.v4 = 0;
+	}
+
+	return false;
 }
 
 unsigned int net_tcp_get_send_free_size(epoll_tcp_socket* sock_ptr)
