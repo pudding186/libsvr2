@@ -235,7 +235,7 @@ unsigned int _ws_inflate(ws_manager* mgr, const char* data, unsigned int length)
     return inflate_length;
 }
 
-inline void _unmask_data_overflow(char* dst, const char* src, char* mask, unsigned int length)
+static inline void _unmask_data_overflow(char* dst, const char* src, char* mask, unsigned int length)
 {
     for (unsigned int n = (length >> 2) + 1; n; n--)
     {
@@ -246,7 +246,7 @@ inline void _unmask_data_overflow(char* dst, const char* src, char* mask, unsign
     }
 }
 
-inline void _unmask_data_copy_mask(char *dst, char *src, char *mask_ptr, unsigned int length)
+static inline void _unmask_data_copy_mask(char *dst, char *src, char *mask_ptr, unsigned int length)
 {
     char mask[4];
     mask[0] = mask_ptr[0];

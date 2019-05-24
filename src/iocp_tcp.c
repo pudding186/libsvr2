@@ -2876,7 +2876,8 @@ iocp_tcp_listener* net_tcp_listen(
     return listener;
 }
 
-iocp_tcp_listener* net_ssl_listen(HNETMANAGER mgr,
+iocp_tcp_listener* net_ssl_listen(
+	iocp_tcp_manager* mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,

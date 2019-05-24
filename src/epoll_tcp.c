@@ -1232,81 +1232,76 @@ void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_p
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = 0;
 
-    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &port, sizeof(port)))
-    {
-        CRUSH_CODE();
-    }
+	if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
+	{
+		CRUSH_CODE();
+	}
 
-    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len)))
-    {
-        CRUSH_CODE();
-    }
+	if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &port, sizeof(port)))
+	{
+		CRUSH_CODE();
+	}
 
-    if (ip_len)
-    {
-        if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, ip_data, MAX_IP_LEN))
-        {
-            CRUSH_CODE();
-        }
-    }
+	if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, ip_data, ip_len))
+	{
+		CRUSH_CODE();
+	}
 
-    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
-    {
-        CRUSH_CODE();
-    }
 
-    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
-    {
-        CRUSH_CODE();
-    }
+	if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
+	{
+		CRUSH_CODE();
+	}
 
-    if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len)))
-    {
-        CRUSH_CODE();
-    }
+	if (bind_ip_len)
+	{
+		if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr)))
+		{
+			CRUSH_CODE();
+		}
 
-    if (bind_ip_len)
-    {
-        if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, bind_ip_data, MAX_IP_LEN))
-        {
-            CRUSH_CODE();
-        }
-    }
+		if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port)))
+		{
+			CRUSH_CODE();
+		}
 
-    if (bind_ip_len)
-    {
-        hints.ai_flags = AI_PASSIVE;
+		if (!loop_cache_pop_data(sock_ptr->recv_loop_cache, bind_ip_data, bind_ip_len))
+		{
+			CRUSH_CODE();
+		}
 
-        ulltostr(bind_port, sz_port, sizeof(sz_port), 10);
+		hints.ai_flags = AI_PASSIVE;
 
-        if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
-        {
-            if (result)
-            {
-                freeaddrinfo(result);
-            }
+		ulltostr(bind_port, sz_port, sizeof(sz_port), 10);
 
-            goto ERROR_DEAL;
-        }
-        else
-        {
-            if (result->ai_addrlen >= sizeof(local_sockaddr))
-            {
-                freeaddrinfo(result);
-                goto ERROR_DEAL;
-            }
+		if (getaddrinfo(bind_ip_data, sz_port, &hints, &result))
+		{
+			if (result)
+			{
+				freeaddrinfo(result);
+			}
 
-            memcpy(&local_sockaddr, result->ai_addr, result->ai_addrlen);
+			goto ERROR_DEAL;
+		}
+		else
+		{
+			if (result->ai_addrlen >= sizeof(sock_ptr->local_sockaddr))
+			{
+				freeaddrinfo(result);
+				goto ERROR_DEAL;
+			}
 
-            freeaddrinfo(result);
-            result = 0;
-        }
-    }
+			memcpy(&sock_ptr->local_sockaddr, result->ai_addr, result->ai_addrlen);
 
-    if (ip_len <= 0)
-    {
-        CRUSH_CODE();
-    }
+			freeaddrinfo(result);
+			result = 0;
+		}
+	}
+
+	if (ip_len <= 0)
+	{
+		CRUSH_CODE();
+	}
 
     {
         hints.ai_flags = 0;
@@ -1366,7 +1361,7 @@ void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_p
 
     if (!bind_ip_len)
     {
-        if (local_sockaddr.sin6_family == AF_INET)
+        if (peer_sockaddr.sin6_family == AF_INET)
         {
             struct sockaddr_in* addr = (struct sockaddr_in*)&local_sockaddr;
             addr->sin_family = AF_INET;
@@ -2483,30 +2478,37 @@ epoll_tcp_socket* net_tcp_connect(
     sock_ptr->listener = 0;
     sock_ptr->state = SOCKET_STATE_CONNECT;
 
-    size_t ip_len = strlen(ip);
-    size_t bind_ip_len = strlen(bind_ip);
+	size_t ip_len = 0;
+	size_t bind_ip_len = 0;
 
-    if (ip_len >= MAX_IP_LEN ||
-        bind_ip_len >= MAX_IP_LEN)
-    {
-        _epoll_tcp_manager_free_socket(mgr, sock_ptr);
-        return 0;
-    }
+	if (ip)
+	{
+		ip_len = strlen(ip) + 1;
+	}
 
-    loop_cache_push_data(sock_ptr->recv_loop_cache, &port, sizeof(port));
-    loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
-    if (ip_len)
-    {
-        loop_cache_push_data(sock_ptr->recv_loop_cache, ip, ip_len);
-    }
+	if (bind_ip)
+	{
+		bind_ip_len = strlen(bind_ip) + 1;
+	}
 
-    loop_cache_push_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
-    loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
-    loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
-    if (bind_ip_len)
-    {
-        loop_cache_push_data(sock_ptr->recv_loop_cache, bind_ip, bind_ip_len);
-    }
+	if (ip_len >= MAX_IP_LEN ||
+		ip_len == 0 ||
+		bind_ip_len + 1 >= MAX_IP_LEN)
+	{
+		return false;
+	}
+
+	loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
+	loop_cache_push_data(sock_ptr->recv_loop_cache, &port, sizeof(port));
+	loop_cache_push_data(sock_ptr->recv_loop_cache, ip, ip_len);
+
+	loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
+	if (bind_ip_len)
+	{
+		loop_cache_push_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
+		loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
+		loop_cache_push_data(sock_ptr->recv_loop_cache, bind_ip, bind_ip_len);
+	}
 
     _epoll_tcp_proc_push_req_connect(sock_ptr->proc, sock_ptr);
 
@@ -2876,6 +2878,42 @@ void net_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size,
 {
     sock_ptr->data_delay_send_size = pkg_size;
     _epoll_tcp_socket_mod_timer_send(sock_ptr, delay_time);
+}
+
+epoll_tcp_socket* net_ssl_connect(
+	epoll_tcp_manager* mgr,
+	const char* ip,
+	unsigned short port,
+	unsigned int recv_buf_size,
+	unsigned int send_buf_size,
+	bool reuse_addr,
+	const char* bind_ip,
+	unsigned short bind_port,
+	SSL_CTX* cli_ssl_ctx,
+	pfn_on_establish func_on_establish,
+	pfn_on_terminate func_on_terminate,
+	pfn_on_error func_on_error,
+	pfn_on_recv func_on_recv,
+	pfn_parse_packet func_parse_packet)
+{
+	return 0;
+}
+
+epoll_tcp_listener* net_ssl_listen(
+	epoll_tcp_manager* mgr,
+	const char* ip,
+	unsigned short port,
+	unsigned int recv_buf_size,
+	unsigned int send_buf_size,
+	bool reuse_addr,
+	SSL_CTX* svr_ssl_ctx,
+	pfn_on_establish func_on_establish,
+	pfn_on_terminate func_on_terminate,
+	pfn_on_error func_on_error,
+	pfn_on_recv func_on_recv,
+	pfn_parse_packet func_parse_packet)
+{
+	return 0;
 }
 
 #endif
