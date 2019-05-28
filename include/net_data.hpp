@@ -68,8 +68,8 @@ public:
         }
         else
         {
-            CRUSH_CODE();
-            return m_array[0];
+            throw "operator [] overflow";
+            //return m_array[0];
         }
     }
 
@@ -107,7 +107,8 @@ public:
             {
                 if (m_capacity == (std::numeric_limits<U>::max)())
                 {
-                    CRUSH_CODE();
+                    //CRUSH_CODE();
+                    throw "capacity is max";
                 }
                 else
                 {
@@ -236,8 +237,9 @@ public:
         }
         else
         {
-            CRUSH_CODE();
-            return m_array[0];
+            //CRUSH_CODE();
+            //return m_array[0];
+            throw "operator [] overflow";
         }
     }
 
@@ -312,7 +314,8 @@ public:
             {
                 if (m_capacity == (std::numeric_limits<U>::max)())
                 {
-                    CRUSH_CODE();
+                    //CRUSH_CODE();
+                    throw "capacity is max";
                 }
                 else
                 {
@@ -482,7 +485,8 @@ protected:
 		{
 			if (cur_size == (std::numeric_limits<size_t>::max)())
 			{
-                CRUSH_CODE();
+                //CRUSH_CODE();
+                throw "capacity is max";
 			}
 			else
 			{
@@ -501,7 +505,8 @@ protected:
 
 				if ((std::numeric_limits<size_t>::max)() - cur_size < cur_size / 2)
 				{
-                    CRUSH_CODE();
+                    //CRUSH_CODE();
+                    throw "capacity is max";
 				}
 			}
 		}
