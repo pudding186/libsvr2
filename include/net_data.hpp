@@ -1,4 +1,5 @@
 #pragma once
+#include <string.h>
 #include "./lib_svr_def.h"
 #include "./smemory.hpp"
 #ifdef  __cplusplus

@@ -118,6 +118,7 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
 
     fprintf(pHppFile, "#pragma once\r\n\r\n");
     fprintf(pHppFile, "#include \"net_data.hpp\"\r\n\r\n");
+    fprintf(pCppFile, "#include <new>\r\n\r\n");
     fprintf(pCppFile, "#include \"%s.hpp\"\r\n\r\n", strVal.c_str());
 
     strMouleName = strVal;
@@ -1026,7 +1027,7 @@ bool CProtocolMaker::__WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHp
 			}
 			else
 			{
-				fprintf(pCppFile, "\t%s.EnCode(net_data);", strName.c_str());
+				fprintf(pCppFile, "\t%s.EnCode(net_data);\r\n\r\n", strName.c_str());
 			}
 		}
 		else
@@ -1080,7 +1081,7 @@ bool CProtocolMaker::__WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHp
 
 	if (is_empty)
 	{
-		fprintf(pCppFile, "\tnet_data;\r\n");
+		fprintf(pCppFile, "\t(void)(net_data);\r\n");
 	}
 
 	fprintf(pCppFile, "\treturn true;\r\n");
@@ -1179,7 +1180,7 @@ bool CProtocolMaker::__WriteStructProtocolDeCodeFunc(CMarkupSTL& rXml, FILE* pHp
 
 	if (is_empty)
 	{
-		fprintf(pCppFile, "\tnet_data;\r\n");
+		fprintf(pCppFile, "\t(void)(net_data);\r\n");
 	}
 
 	fprintf(pCppFile, "\treturn true;\r\n");
@@ -1255,7 +1256,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     fprintf(pHppFile, "//===============以下协议回调函数需要使用者来实现===============\r\n");
     for (int i = 0; i < (int)m_vecProtocol.size(); i++)
     {
-        fprintf(pHppFile, "\tvirtual void OnRecv_%s(%s& rstProtocol){ rstProtocol; };\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
+        fprintf(pHppFile, "\tvirtual void OnRecv_%s(%s& rstProtocol){ (void)(rstProtocol); };\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
     }
     //fprintf(pHppFile, "private:\r\n\tEnCodeFunc%s m_EnCodeFuncArray[%d];\r\n\tEnCodeFunc%s m_DeCodeFuncArray[%d];\r\n\tchar* m_EnCodeBuffer;\r\n\tchar* m_DeCodeBuffer;\r\n\tsize_t m_EnCodeBufferSize;\r\n\tsize_t m_DeCodeBufferSize;\r\n};\r\n", strProtocolName.c_str(), m_mapProtocol.size(), strProtocolName.c_str(), m_mapProtocol.size());
 	fprintf(pHppFile, "private:\r\n\t void* m_protocol_buffer;\r\n");
@@ -1347,7 +1348,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 		fprintf(pCppFile, "\t{\r\n");
 		//fprintf(pCppFile, "\t\t%s* proto = (%s*)m_protocol_buffer;\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
 		//fprintf(pCppFile, "\t\tnew(proto)%s();\r\n", m_vecProtocol[i].c_str());
-		fprintf(pCppFile, "\t\t%s* proto = new(m_protocol_buffer)%s();\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
+		fprintf(pCppFile, "\t\t%s* proto = new(m_protocol_buffer) %s();\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
 		fprintf(pCppFile, "\t\tif (proto->DeCode(net_data))\r\n");
 		fprintf(pCppFile, "\t\t{\r\n");
 		fprintf(pCppFile, "\t\t\tOnRecv_%s(*proto);\r\n", m_vecProtocol[i].c_str());
