@@ -2337,6 +2337,7 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     mgr->def_on_terminate = func_on_terminate;
     mgr->def_on_error = func_on_error;
     mgr->def_on_recv = func_on_recv;
+    mgr->def_parse_packet = func_parse_packet;
 
     mgr->socket_pool = create_memory_unit(sizeof(epoll_tcp_socket));
     memory_unit_set_grow_count(mgr->socket_pool, max_socket_num);
