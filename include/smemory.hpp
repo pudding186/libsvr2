@@ -56,70 +56,24 @@ namespace SMemory
 
         //////////////////////////////////////////////////////////////////////////
 
-        inline static void* Alloc(size_t mem_size)
-        {
-            return memory_manager_alloc(def_mem_mgr, mem_size);
-        }
+        static void* Alloc(size_t mem_size);
 
-        inline static void* Realloc(void* old_mem, size_t new_size)
-        {
-            return memory_manager_realloc(def_mem_mgr, old_mem, new_size);
-        }
+        static void* Realloc(void* old_mem, size_t new_size);
 
-        inline static void Free(void* mem)
-        {
-            memory_manager_free(def_mem_mgr, mem);
-        }
-        inline static bool IsValidMem(void* mem)
-        {
-            return memory_manager_check(def_mem_mgr, mem);
-        }
+        static void Free(void* mem);
 
-        inline static void* TraceAlloc(size_t mem_size, const char* file, int line)
-        {
-            void* mem = memory_manager_alloc(def_mem_mgr, mem_size);
-            trace_alloc("alloc", file, line, mem, mem_size);
+        static bool IsValidMem(void* mem);
 
-            return mem;
-        }
+        static void* TraceAlloc(size_t mem_size, const char* file, int line);
 
-        inline static void* TraceRealloc(void* old_mem, size_t new_size, const char* file, int line)
-        {
-            if (old_mem)
-            {
-                trace_free(old_mem);
-            }
-            void* new_mem = memory_manager_realloc(def_mem_mgr, old_mem, new_size);
-            trace_alloc("realloc", file, line, new_mem, new_size);
-            return new_mem;
-        }
+        static void* TraceRealloc(void* old_mem, size_t new_size, const char* file, int line);
 
-        inline static void TraceFree(void* mem)
-        {
-            trace_free(mem);
-            memory_manager_free(def_mem_mgr, mem);
-        }
+        static void TraceFree(void* mem);
 
-        inline static void Init(void)
-        {
-            if (!def_mem_mgr)
-            {
-                def_mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
-            }
-        }
-
-        inline static void UnInit(void)
-        {
-            if (def_mem_mgr)
-            {
-                destroy_memory_manager(def_mem_mgr);
-                def_mem_mgr = 0;
-            }
-        }
+        static HMEMORYMANAGER DefMemMgr(void);
 
     protected:
         HMEMORYUNIT                     unit;
-        static TLS_VAR HMEMORYMANAGER   def_mem_mgr;
     };
 
     template <typename T, bool is_pod = std::is_pod<T>::value>
@@ -153,16 +107,16 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(HMEMORYMANAGER*)ptr = def_mem_mgr;
+                *(HMEMORYMANAGER*)ptr = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
 
                 return new((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**))T(std::forward<Args>(args)...);
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(def_mem_mgr, sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
                 *(size_t*)ptr = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = def_mem_mgr;
+                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
                 T* obj = (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
 
@@ -183,7 +137,7 @@ namespace SMemory
         {
             unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*);
 
-            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != def_mem_mgr)
+            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != DefMemMgr())
             {
                 char* p = (char*)((intptr_t)THD_DEL_SIG);
                 *p = 'a';
@@ -212,7 +166,7 @@ namespace SMemory
                 }
 
                 *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
-                memory_manager_free(def_mem_mgr, pTmp - sizeof(size_t));
+                memory_manager_free(DefMemMgr(), pTmp - sizeof(size_t));
             }
         }
     };
@@ -238,15 +192,15 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(HMEMORYMANAGER*)ptr = def_mem_mgr;
+                *(HMEMORYMANAGER*)ptr = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
                 return (T*)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(def_mem_mgr, sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
                 *(size_t*)ptr = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = def_mem_mgr;
+                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
                 return (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
             }
@@ -258,7 +212,7 @@ namespace SMemory
         {
             unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*);
 
-            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != def_mem_mgr)
+            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != DefMemMgr())
             {
                 char* p = (char*)((intptr_t)THD_DEL_SIG);
                 *p = 'a';
@@ -275,7 +229,7 @@ namespace SMemory
             else
             {
                 *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
-                memory_manager_free(def_mem_mgr, pTmp - sizeof(size_t));
+                memory_manager_free(DefMemMgr(), pTmp - sizeof(size_t));
             }
         }
     };

@@ -124,8 +124,10 @@ void shm_free(void* mem)
         return;
     }
 
+    int handle = info->handle;
+
     shmdt(info->mem);
-    shmctl(info->handle, IPC_RMID, 0);
+    shmctl(handle, IPC_RMID, 0);
 }
 
 #else

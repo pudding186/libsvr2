@@ -4,6 +4,15 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+
+#ifdef _MSC_VER
+#define TLS_VAR __declspec(thread)
+#elif __GNUC__
+#define TLS_VAR __thread
+#else
+#error "unknown compiler"
+#endif
+
 #ifdef  __cplusplus
 extern "C" {
 #endif

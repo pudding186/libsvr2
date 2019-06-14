@@ -4,6 +4,8 @@
 #elif __GNUC__
 #include <limits.h>
 #include <endian.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #else
 #error "unknown compiler"
 #endif
@@ -354,7 +356,7 @@ bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, vo
     dir_list_tail = node;
     node->next = 0;
 
-    do 
+    do
     {
         hFind = FindFirstFileW(dir_list_head->dir_file_full_path, &FindFileDataW);
 
@@ -680,11 +682,11 @@ HFUNCPERFMGR CreateFuncPerfMgr(int shm_key)
 #ifdef _MSC_VER
         shm_key = ::GetCurrentThreadId();
 #elif __GNUC__
-        shm_key = (int)pthread_self();
+        shm_key = (int)syscall(__NR_getpid);
 #else
 #error "unknown compiler"
 #endif
-        
+
     }
 
     if (mgr->Init(shm_key))
