@@ -16,7 +16,7 @@
 
 #include "./lib_svr_common_def.h"
 #include "../include/utility.hpp"
-#include "../include/share_memory.h"
+//#include "../include/share_memory.h"
 #include "../include/memory_pool.h"
 #include "../include/smemory.hpp"
 
@@ -539,7 +539,7 @@ public:
     {
         m_func_list = 0;
         m_func_stack = 0;
-        m_shm_key = 0;
+        //m_shm_key = 0;
         m_cur_func_perf_info = 0;
     }
     ~CFuncPerformanceMgr(void)
@@ -600,18 +600,19 @@ public:
         }
     };
 
-    bool Init(int shm_key)
+    bool Init(void)
     {
 
-        if (!shm_key)
-        {
-            m_shm_key = (int)rand_integer(1, INT_MAX);
-        }
-        else
-            m_shm_key = shm_key;
+        //if (!shm_key)
+        //{
+        //    m_shm_key = (int)rand_integer(1, INT_MAX);
+        //}
+        //else
+        //    m_shm_key = shm_key;
 
-        size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
-        m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
+        //size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
+        //m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
+        m_func_stack = (struct func_stack*)malloc(sizeof(struct func_stack) + sizeof(size_t));
         if (!m_func_stack)
         {
             return false;
@@ -627,7 +628,8 @@ public:
     {
         if (m_func_stack)
         {
-            shm_free(m_func_stack);
+            //shm_free(m_func_stack);
+            free(m_func_stack);
             m_func_stack = 0;
         }
 
@@ -636,8 +638,8 @@ public:
 
 protected:
     CFuncPerformanceInfo * m_func_list;
-    void*                   m_shm;
-    int						m_shm_key;
+    //void*                   m_shm;
+    //int						m_shm_key;
     struct func_stack*		m_func_stack;
     CFuncPerformanceInfo*	m_cur_func_perf_info;
 private:
@@ -658,38 +660,38 @@ CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPE
     m_parent_func_perf_info = mgr->m_cur_func_perf_info;
     mgr->m_cur_func_perf_info = info;
     mgr->m_func_stack->Push(info);
-    m_cycles = __rdtsc();
+    //m_cycles = __rdtsc();
 }
 
 CFuncPerformanceCheck::~CFuncPerformanceCheck(void)
 {
-    m_cycles = __rdtsc() - m_cycles;
+    //m_cycles = __rdtsc() - m_cycles;
     m_mgr->m_func_stack->Pop();
-    m_func_perf_info->elapse_cycles += m_cycles;
-    if (m_parent_func_perf_info)
-    {
-        m_parent_func_perf_info->elapse_cycles -= m_cycles;
-    }
+    //m_func_perf_info->elapse_cycles += m_cycles;
+    //if (m_parent_func_perf_info)
+    //{
+    //    m_parent_func_perf_info->elapse_cycles -= m_cycles;
+    //}
     m_mgr->m_cur_func_perf_info = m_parent_func_perf_info;
 }
 
-HFUNCPERFMGR CreateFuncPerfMgr(int shm_key)
+HFUNCPERFMGR CreateFuncPerfMgr(void)
 {
     HFUNCPERFMGR mgr = new CFuncPerformanceMgr;
 
-    if (!shm_key)
-    {
-#ifdef _MSC_VER
-        shm_key = ::GetCurrentThreadId();
-#elif __GNUC__
-        shm_key = (int)syscall(__NR_getpid);
-#else
-#error "unknown compiler"
-#endif
+//    if (!shm_key)
+//    {
+//#ifdef _MSC_VER
+//        shm_key = ::GetCurrentThreadId();
+//#elif __GNUC__
+//        shm_key = (int)syscall(__NR_getpid);
+//#else
+//#error "unknown compiler"
+//#endif
+//
+//    }
 
-    }
-
-    if (mgr->Init(shm_key))
+    if (mgr->Init())
     {
         return mgr;
     }

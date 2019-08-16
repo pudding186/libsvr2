@@ -120,14 +120,14 @@ public:
     CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr);
     ~CFuncPerformanceCheck(void);
 protected:
-    unsigned long long m_cycles;
+    //unsigned long long m_cycles;
     CFuncPerformanceInfo* m_parent_func_perf_info;
     CFuncPerformanceInfo* m_func_perf_info;
     HFUNCPERFMGR	m_mgr;
 private:
 };
 
-extern HFUNCPERFMGR(CreateFuncPerfMgr)(int shm_key = 0);
+extern HFUNCPERFMGR(CreateFuncPerfMgr)(void);
 extern void (DestroyFuncPerfMgr)(HFUNCPERFMGR mgr);
 extern CFuncPerformanceInfo* (FuncPerfFirst)(HFUNCPERFMGR mgr);
 extern int (GetFuncStackTop)(HFUNCPERFMGR mgr);
