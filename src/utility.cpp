@@ -25,16 +25,23 @@ class RandomNumGenarator
 public:
     RandomNumGenarator(long long lSeed1 = 0, long long lSeed2 = 0)
     {
+        srand((unsigned int)time(0));
         if (!lSeed1)
         {
-            m_lSeed1 = __rdtsc();
+            //m_lSeed1 = __rdtsc();
+            m_lSeed1 = rand();
+            m_lSeed1 <<= 32;
+            m_lSeed1 += rand();
         }
         else
             m_lSeed1 = lSeed1;
 
         if (!lSeed2)
         {
-            m_lSeed2 = __rdtsc();
+            //m_lSeed2 = __rdtsc();
+            m_lSeed2 = rand();
+            m_lSeed2 <<= 32;
+            m_lSeed2 += rand();
         }
         else
             m_lSeed2 = lSeed2;
