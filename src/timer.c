@@ -451,17 +451,15 @@ char* time_to_string(time_t time, char* str, size_t str_len)
 {
     struct tm TM;
 #ifdef _MSC_VER
-    if (!localtime_s(&TM, &time))
+    localtime_s(&TM, &time);
 #elif __GNUC__
-    if (!localtime_r(&time, &TM))
+    localtime_r(&time, &TM);
 #else
 #error "unknown compiler"
 #endif
-    {
-        strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &TM);
-        return str;
-    }
-    return 0;
+
+    strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &TM);
+    return str;
 }
 
 time_t string_to_time(const char* time_string)
