@@ -271,6 +271,7 @@ typedef struct st_epoll_tcp_socket
     unsigned int                    data_delay_send_size;
     bool                            need_send_active;
     bool                            need_req_close;
+    bool                            need_recv_active;
 
 }epoll_tcp_socket;
 
@@ -390,6 +391,7 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->data_delay_send_size = 0;
     sock_ptr->need_send_active = true;
     sock_ptr->need_req_close = true;
+    sock_ptr->need_recv_active = false;
 
     sock_ptr->user_data = 0;
 	sock_ptr->ssl_data = 0;
@@ -867,6 +869,8 @@ void _epoll_tcp_proc_push_evt_recv_activate(epoll_tcp_proc* proc, epoll_tcp_sock
 
     evt->sock_ptr = sock_ptr;
     evt->type = NET_EVENT_RECV_ACTIVATE;
+
+    sock_ptr->need_recv_active = true;
 
     loop_cache_push(proc->list_net_evt, evt_len);
 }
@@ -1609,6 +1613,11 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         return;
     }
 
+    if (sock_ptr->need_recv_active)
+    {
+        return;
+    }
+
     char* recv_ptr = 0;
     size_t recv_len = 0;
     unsigned data_push_len = 0;
@@ -1872,6 +1881,7 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 		break;
 		case NET_REQUEST_RECV_ACTIVATE:
 		{
+            req->sock_ptr->need_recv_active = false;
 			_epoll_tcp_socket_on_recv(proc, req->sock_ptr);
 		}
 		break;
