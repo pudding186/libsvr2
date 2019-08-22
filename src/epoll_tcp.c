@@ -1674,6 +1674,11 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&recv_ptr, &recv_len);
     }
 
+    if (data_push_len)
+    {
+        _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
+    }
+
     _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
 }
 
