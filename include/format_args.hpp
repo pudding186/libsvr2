@@ -5,7 +5,7 @@
 #include "./smemory.hpp"
 #include <fmt/core.h>
 #include <fmt/format.h>
-#include <fmt/format-inl.h>
+//#include <fmt/format-inl.h>
 // the type holding sequences
 template <size_t... N>
 struct idx_seq {};
@@ -59,22 +59,25 @@ template <>
 struct SFormatArgs<>
 {
     virtual void format_to_string(std::string& format_string) = 0;
+    virtual void print_to_file(std::FILE* file) = 0;
 };
 
 template <typename First, typename... Rest>
 struct SFormatArgs<First, Rest...>
     :public SFormatArgs<Rest...>
 {
-    SFormatArgs() :value() {}
+    SFormatArgs() :value(0) {}
     SFormatArgs(First&& first, Rest&&... rest)
         :value(std::forward<First>(first)),
         SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
 
     size_t size() { return sizeof...(Rest); }
 
-    typename std::enable_if<std::is_arithmetic<First>::value, First>::type value;
-
+    typename std::remove_reference<
+        typename std::enable_if<std::is_integral<typename std::remove_reference<First>::type>::value ||
+        std::is_floating_point<typename std::remove_reference<First>::type>::value, First>::type>::type value;
 };
+
 
 template <typename... Rest>
 struct SFormatArgs<std::string&, Rest...>
@@ -84,11 +87,6 @@ struct SFormatArgs<std::string&, Rest...>
     SFormatArgs(const std::string& str, Rest&&... rest)
         :value(str),
         SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
-
-    virtual void format_to_string(std::string& format_string)
-    {
-        format_impl(format_string, *this, idx_seq_type<sizeof...(Rest) + 1>());
-    }
 
     std::string value;
 };
@@ -102,11 +100,6 @@ struct SFormatArgs<const std::string&, Rest...>
         :value(str),
         SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
 
-    virtual void format_to_string(std::string& format_string)
-    {
-        format_impl(format_string, *this, idx_seq_type<sizeof...(Rest) + 1>());
-    }
-
     std::string value;
 };
 
@@ -119,11 +112,6 @@ struct SFormatArgs<const char (&)[N], Rest...>
         :SFormatArgs<Rest...>(std::forward<Rest>(rest)...)
     {
         memcpy(value, c_str, N);
-    }
-
-    virtual void format_to_string(std::string& format_string)
-    {
-        format_impl(format_string, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
     char value[N];
@@ -140,12 +128,29 @@ struct SFormatArgs<char(&)[N], Rest...>
         memcpy(value, c_str, N);
     }
 
+    char value[N];
+};
+
+template <typename... Rest>
+struct SFormatArgs<const char*, Rest...>
+    :public SFormatArgs<Rest...>
+{
+    SFormatArgs() :value(0) {}
+    SFormatArgs(const char* cstr, Rest&&... rest)
+        :value(cstr),
+        SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
+
     virtual void format_to_string(std::string& format_string)
     {
         format_impl(format_string, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
-    char value[N];
+    virtual void print_to_file(std::FILE* file)
+    {
+        printf_impl(file, *this, idx_seq_type<sizeof...(Rest) + 1>());
+    }
+
+    const char* value;
 };
 
 template <size_t N, typename FARGS> struct SFormatElement;
@@ -173,10 +178,16 @@ void format_impl(std::string& format_string, SFormatArgs<Rest...> &args, idx_seq
     format_string = fmt::format(get<I>(args)...);
 }
 
+template<typename... Rest, size_t... I>
+void printf_impl(std::FILE* file, SFormatArgs<Rest...> &args, idx_seq<I...>)
+{
+    fmt::print(file, get<I>(args)...);
+}
+
 //////////////////////////////////////////////////////////////////////////
 
-template <class... Types>
-auto new_format_args(Types&&... args)
-{
-    return S_NEW(SFormatArgs<Types...>, 1, std::forward<Types>(args)...);
-}
+//template <class... Types>
+//auto new_format_args(Types&&... args)
+//{
+//    return S_NEW(SFormatArgs<Types...>, 1, std::forward<Types>(args)...);
+//}
