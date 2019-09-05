@@ -447,7 +447,7 @@ int timer_remain_count(timer_info* timer)
 }
 
 //////////////////////////////////////////////////////////////////////////
-char* time_to_string(time_t time, char* str, size_t str_len)
+size_t time_to_string(time_t time, char* str, size_t str_len)
 {
     struct tm TM;
 #ifdef _MSC_VER
@@ -458,8 +458,7 @@ char* time_to_string(time_t time, char* str, size_t str_len)
 #error "unknown compiler"
 #endif
 
-    strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &TM);
-    return str;
+    return strftime(str, str_len, "%Y-%m-%d %H:%M:%S", &TM);
 }
 
 time_t string_to_time(const char* time_string)

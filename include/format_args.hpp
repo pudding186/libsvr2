@@ -5,7 +5,7 @@
 #include "./smemory.hpp"
 #include <fmt/core.h>
 #include <fmt/format.h>
-//#include <fmt/format-inl.h>
+#include <fmt/printf.h>
 // the type holding sequences
 template <size_t... N>
 struct idx_seq {};
@@ -58,8 +58,8 @@ struct SFormatArgs{};
 template <>
 struct SFormatArgs<>
 {
-    virtual void format_to_string(std::string& format_string) = 0;
-    virtual void print_to_file(std::FILE* file) = 0;
+    virtual void format_to_buffer(fmt::memory_buffer& buffer) = 0;
+    virtual int fprintf(std::FILE* file) = 0;
 };
 
 template <typename First, typename... Rest>
@@ -140,14 +140,14 @@ struct SFormatArgs<const char*, Rest...>
         :value(cstr),
         SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
 
-    virtual void format_to_string(std::string& format_string)
+    virtual void format_to_buffer(fmt::memory_buffer& buffer)
     {
-        format_impl(format_string, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
-    virtual void print_to_file(std::FILE* file)
+    virtual int fprintf(std::FILE* file)
     {
-        printf_impl(file, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        return fprintf_impl(file, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
     const char* value;
@@ -173,15 +173,15 @@ typename SFormatElement<N, SFormatArgs<Rest...>>::type& get(SFormatArgs<Rest...>
 }
 
 template<typename... Rest, size_t... I>
-void format_impl(std::string& format_string, SFormatArgs<Rest...> &args, idx_seq<I...>)
+void format_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
-    format_string = fmt::format(get<I>(args)...);
+    fmt::format_to(buffer, get<I>(args)...);
 }
 
 template<typename... Rest, size_t... I>
-void printf_impl(std::FILE* file, SFormatArgs<Rest...> &args, idx_seq<I...>)
+int fprintf_impl(std::FILE* file, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
-    fmt::print(file, get<I>(args)...);
+    return fmt::fprintf(file, get<I>(args)...);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -25,7 +25,7 @@ extern unsigned int (get_tick)(void);
 
 extern time_t(get_time)(void);
 
-extern char* (time_to_string)(time_t time, char* str, size_t str_len);
+extern size_t (time_to_string)(time_t time, char* str, size_t str_len);
 
 extern time_t (string_to_time)(const char* time_string);
 

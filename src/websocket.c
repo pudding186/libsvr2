@@ -102,51 +102,6 @@ typedef struct st_ws_socket
     void*               user_data;
 }ws_socket;
 
-// Based on utf8_check.c by Markus Kuhn, 2005
-// https://www.cl.cam.ac.uk/~mgk25/ucs/utf8_check.c
-// Optimized for predominantly 7-bit content by Alex Hultman, 2016
-// Licensed as Zlib, like the rest of this project
-static bool _is_valid_utf8(const unsigned char *s, size_t length)
-{
-    for (const unsigned char *e = s + length; s != e; ) {
-        if (s + 4 <= e && ((*(uint32_t *)s) & 0x80808080) == 0) {
-            s += 4;
-        }
-        else {
-            while (!(*s & 0x80)) {
-                if (++s == e) {
-                    return true;
-                }
-            }
-
-            if ((s[0] & 0x60) == 0x40) {
-                if (s + 1 >= e || (s[1] & 0xc0) != 0x80 || (s[0] & 0xfe) == 0xc0) {
-                    return false;
-                }
-                s += 2;
-            }
-            else if ((s[0] & 0xf0) == 0xe0) {
-                if (s + 2 >= e || (s[1] & 0xc0) != 0x80 || (s[2] & 0xc0) != 0x80 ||
-                    (s[0] == 0xe0 && (s[1] & 0xe0) == 0x80) || (s[0] == 0xed && (s[1] & 0xe0) == 0xa0)) {
-                    return false;
-                }
-                s += 3;
-            }
-            else if ((s[0] & 0xf8) == 0xf0) {
-                if (s + 3 >= e || (s[1] & 0xc0) != 0x80 || (s[2] & 0xc0) != 0x80 || (s[3] & 0xc0) != 0x80 ||
-                    (s[0] == 0xf0 && (s[1] & 0xf0) == 0x80) || (s[0] == 0xf4 && s[1] > 0x8f) || s[0] > 0xf4) {
-                    return false;
-                }
-                s += 4;
-            }
-            else {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
 unsigned int _ws_deflate(ws_manager* mgr, const char* data, unsigned int length)
 {
     int err;
@@ -951,7 +906,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
 
             if (ws_session->fragment_op_code == op_text)
             {
-                if (_is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
+                if (is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
                 {
                     ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
                 }
@@ -993,7 +948,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
 
             if (op_code == op_text)
             {
-                if (!_is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
+                if (!is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
                 {
                     _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
                     return;
@@ -1021,7 +976,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
 
                 if (pay_load_length > 2)
                 {
-                    if (_is_valid_utf8((unsigned char*)pay_load_data + 2, pay_load_length - 2))
+                    if (is_valid_utf8((unsigned char*)pay_load_data + 2, pay_load_length - 2))
                     {
                         message = pay_load_data + 2;
                         length = pay_load_length - 2;
@@ -1202,7 +1157,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
 
             if (ws_session->fragment_op_code == op_text)
             {
-                if (_is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
+                if (is_valid_utf8((unsigned char*)ws_session->fragment_data, ws_session->fragment_size))
                 {
                     ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
                 }
@@ -1244,7 +1199,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
 
             if (op_code == op_text)
             {
-                if (!_is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
+                if (!is_valid_utf8((const unsigned char*)pay_load_data, pay_load_length))
                 {
                     _ws_close_socket(ws_session, ws_error_websocket, 1007, "text not utf8", (unsigned int)strlen("text not utf8"));
                     return;
@@ -1272,7 +1227,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
 
                 if (pay_load_length > 2)
                 {
-                    if (_is_valid_utf8((unsigned char*)pay_load_data + 2, pay_load_length - 2))
+                    if (is_valid_utf8((unsigned char*)pay_load_data + 2, pay_load_length - 2))
                     {
                         message = pay_load_data + 2;
                         length = pay_load_length - 2;
@@ -1996,7 +1951,7 @@ bool ws_send_text(ws_socket* ws_session, const char* data, unsigned int length, 
         return false;
     }
 
-    if (!_is_valid_utf8((unsigned char*)data, length))
+    if (!is_valid_utf8((unsigned char*)data, length))
     {
         return false;
     }

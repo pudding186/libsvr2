@@ -171,7 +171,7 @@ typedef struct st_ptr_info
 }ptr_info;
 
 //////////////////////////////////////////////////////////////////////////
-typedef struct st_file_log* HFILELOG;
+typedef struct st_file_logger* HFILELOGGER;
 
 typedef enum st_file_log_level
 {

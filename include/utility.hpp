@@ -21,6 +21,8 @@ extern int (base64_decode)(const char *in, int in_len, char *out, int out_size);
 //extern int (mb_to_wc)(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size);
 //extern int (wc_to_mb)(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size);
 
+extern bool is_valid_utf8(const unsigned char *s, size_t length);
+
 extern size_t (lltostr)(long long val, char* buf, size_t size, unsigned int radix);
 extern size_t (ulltostr)(unsigned long long val, char* buf, size_t size, unsigned int radix);
 

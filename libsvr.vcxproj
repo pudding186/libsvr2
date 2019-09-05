@@ -20,10 +20,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\avl_tree.h" />
-    <ClInclude Include="include\file_log.h" />
+    <ClInclude Include="include\format_args.hpp" />
     <ClInclude Include="include\json.h" />
     <ClInclude Include="include\lib_svr_def.h" />
     <ClInclude Include="include\lock_free_queue.hpp" />
+    <ClInclude Include="include\logger.hpp" />
     <ClInclude Include="include\loop_cache.h" />
     <ClInclude Include="include\memory_pool.h" />
     <ClInclude Include="include\memory_trace.hpp" />
@@ -42,10 +43,10 @@
   <ItemGroup>
     <ClCompile Include="src\avl_tree.c" />
     <ClCompile Include="src\base64.c" />
-    <ClCompile Include="src\file_log.c" />
     <ClCompile Include="src\iocp_tcp.c" />
     <ClCompile Include="src\json.c" />
     <ClCompile Include="src\lib_svr_common_def.c" />
+    <ClCompile Include="src\logger.cpp" />
     <ClCompile Include="src\loop_cache.c" />
     <ClCompile Include="src\memory_pool.c">
       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Releaselib|x64'">Level4</WarningLevel>
