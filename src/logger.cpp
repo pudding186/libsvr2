@@ -7,6 +7,7 @@
 #include <endian.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/stat.h>
 #else
 #error "unknown compiler"
 #endif
@@ -151,7 +152,7 @@ protected:
 private:
 };
 
-static TLS_VAR log_proc_check s_check;
+static thread_local log_proc_check s_check;
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -317,6 +318,147 @@ bool log_thread::_check_log(log_cmd* cmd)
     return true;
 }
 #elif __GNUC__
+bool _mk_dir(const char* dir)
+{
+    char szPath[MAX_LOG_FILE_PATH] = { 0 };
+    strncpy(szPath, dir, MAX_LOG_FILE_PATH);
+    char* p1 = szPath + 1;
+
+    char* p = szPath;
+
+    for (size_t i = 0; i < strlen(szPath); i++)
+    {
+        if (*(p + i) == '\\')
+        {
+            *(p + i) = '/';
+        }
+    }
+
+    do
+    {
+        p1 = strchr(p1, '/');
+        if (p1 != 0)
+        {
+            *p1 = '\0';
+        }
+
+        if (-1 == mkdir(szPath, 0755))
+        {
+            if ((0 == p1) && (errno != EEXIST))
+            {
+                return false;
+            }
+        }
+        if (p1 != 0)
+        {
+            *p1++ = '/';
+        }
+
+    } while (p1 != 0);
+
+    return true;
+}
+
+bool log_thread::_check_log(log_cmd* cmd)
+{
+    char file_full_path[MAX_LOG_FILE_PATH];
+
+    time_t cur_time = std::chrono::system_clock::to_time_t(cmd->tpms);
+
+    if (!cmd->logger->file)
+    {
+        localtime_r(&cur_time, &cmd->logger->file_time);
+
+        snprintf(file_full_path, MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday);
+
+        //if (_wfopen_s(&cmd->logger->file, file_full_path, L"a"))
+        cmd->logger->file = fopen(file_full_path, "a");
+        if (!cmd->logger->file)
+        {
+            CRUSH_CODE();
+            return false;
+        }
+
+        cmd->logger->file_idx = 0;
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    if (cur_time != m_last_log_time)
+    {
+        m_last_log_tm.tm_sec += (int)(cur_time - m_last_log_time);
+
+        if (m_last_log_tm.tm_sec > 59)
+        {
+            localtime_r(&cur_time, &m_last_log_tm);
+        }
+
+        m_last_log_time = cur_time;
+        strftime(m_time_str, sizeof(m_time_str), "%Y-%m-%d %H:%M:%S", &m_last_log_tm);
+
+        if (m_last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = m_last_log_tm;
+
+            if (cmd->logger->file)
+            {
+                fclose(cmd->logger->file);
+                cmd->logger->file = 0;
+            }
+
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%s_%04d-%02d-%02d.txt",
+                cmd->logger->path, cmd->logger->name,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+
+            cmd->logger->file = fopen(file_full_path, "a");
+            if (!cmd->logger->file)
+            {
+                CRUSH_CODE();
+                return false;
+            }
+
+            fseek(cmd->logger->file, 0, SEEK_END);
+            cmd->logger->file_size = ftell(cmd->logger->file);
+        }
+    }
+
+    while (cmd->logger->file_size >= MAX_LOG_FILE_SIZE)
+    {
+        cmd->logger->file_idx++;
+
+        fclose(cmd->logger->file);
+        cmd->logger->file = 0;
+
+        snprintf(file_full_path, MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d_%zu.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday,
+            cmd->logger->file_idx);
+
+        cmd->logger->file = fopen(file_full_path, "a");
+        if (!cmd->logger->file)
+        {
+            CRUSH_CODE();
+            return false;
+        }
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    return true;
+}
 
 #else
 #error "unknown compiler"
@@ -702,6 +844,7 @@ void uninit_logger_manager(void)
     }
 }
 
+#ifdef _MSC_VER
 file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
 {
     wchar_t w_path[MAX_LOG_FILE_PATH];
@@ -710,7 +853,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     if (!is_valid_utf8((const unsigned char*)path_utf8, strlen(path_utf8)))
     {
         return 0;
-    }
+}
 
     if (!is_valid_utf8((const unsigned char*)name_utf8, strlen(name_utf8)))
     {
@@ -730,7 +873,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
         return 0;
     }
 
-    char* ptr= (char*)malloc(sizeof(file_logger) + sizeof(wchar_t)*(w_path_len + w_name_len));
+    char* ptr = (char*)malloc(sizeof(file_logger) + sizeof(wchar_t)*(w_path_len + w_name_len));
 
     file_logger* logger = (file_logger*)ptr;
     logger->path = (wchar_t*)(ptr + sizeof(file_logger));
@@ -751,6 +894,52 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
 
     return logger;
 }
+#elif __GNUC__
+file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
+{
+    size_t path_len = strlen(path_utf8);
+    size_t name_len = strlen(name_utf8);
+    if (!is_valid_utf8((const unsigned char*)path_utf8, path_len))
+    {
+        return 0;
+    }
+
+    if (!is_valid_utf8((const unsigned char*)name_utf8, name_len))
+    {
+        return 0;
+    }
+
+    if (!_mk_dir(path_utf8))
+    {
+        return 0;
+    }
+
+    char* ptr = (char*)malloc(sizeof(file_logger) + sizeof(char)*(path_len + name_len + 2));
+
+    file_logger* logger = (file_logger*)ptr;
+    logger->path = (char*)(ptr + sizeof(file_logger));
+    logger->name = (char*)(ptr + sizeof(file_logger) + sizeof(char)*(path_len + 1));
+
+    strncpy(logger->path, path_utf8, path_len + 1);
+    strncpy(logger->name, name_utf8, name_len + 1);
+
+    logger->log_thread_idx = _get_idle_log_thread_idx();
+    logger->file = 0;
+    logger->file_time = { 0 };
+    logger->file_size = 0;
+    logger->file_idx = 0;
+
+    logger->write_ack = 0;
+
+    logger->write_req = new std::atomic<size_t>(0);
+
+    return logger;
+}
+#else
+#error "unknown compiler"
+#endif
+
+
 
 void destroy_file_logger(file_logger* logger)
 {
