@@ -79,6 +79,7 @@ typedef struct st_log_proc
 {
     struct st_log_proc* next_proc;
     log_queue*          queue;
+    bool                is_run;
 }log_proc;
 
 typedef struct st_log_obj_pool
@@ -128,6 +129,29 @@ typedef struct st_logger_manager
 
 static logger_manager* g_logger_manager = 0;
 static TLS_VAR log_proc* s_log_proc = 0;
+
+class log_proc_check
+{
+public:
+    log_proc_check(void)
+    {
+        //m_proc = 0;
+    }
+
+    ~log_proc_check(void)
+    {
+        if (s_log_proc)
+        {
+            s_log_proc->is_run = false;
+        }
+    }
+
+    //log_proc* m_proc;
+protected:
+private:
+};
+
+static TLS_VAR log_proc_check s_check;
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -378,6 +402,10 @@ unsigned int log_thread::_proc_log()
 
             while (!loop_ptr_queue_push(proc->queue[m_idx].rcy_queue, cmd))
             {
+                if (!proc->is_run)
+                {
+                    break;
+                }
 #ifdef _MSC_VER
                 Sleep(1);
 #elif __GNUC__
@@ -500,6 +528,10 @@ log_proc* _get_log_proc(void)
             s_log_proc->queue[i].cmd_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
             s_log_proc->queue[i].rcy_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
         }
+
+        //s_check.m_proc = s_log_proc;
+        //s_log_proc->is_run = true;
+        s_log_proc->is_run = true;
 
         std::mutex mtx;
         mtx.lock();
@@ -650,6 +682,7 @@ void uninit_logger_manager(void)
             }
             free(cur_proc->queue);
             free(cur_proc);
+            cur_proc = 0;
             
         }
 

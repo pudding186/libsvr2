@@ -51,7 +51,7 @@ public:
         return _tail.load(std::memory_order_relaxed) - head;
     }
 
-    bool push(T&& data)
+    bool push(const T& data)
     {
         Node* node;
         size_t tail = _tail.load(std::memory_order_relaxed);
@@ -68,7 +68,8 @@ public:
                 break;
             }
         }
-        node->data = std::move(data);
+        //node->data = std::move(data);
+        new (&node->data)T(data);
         node->head.store(tail, std::memory_order_release);
         return true;
     }
@@ -90,7 +91,9 @@ public:
                 break;
             }
         }
-        result = std::move(node->data);
+        //result = std::move(node->data);
+        result = node->data;
+        (&node->data)->~T();
         node->tail.store(head + _capacity, std::memory_order_release);
         return true;
     }
@@ -158,7 +161,7 @@ public:
         return _tail.load(std::memory_order_relaxed) - head;
     }
 
-    bool push(T&& data)
+    bool push(const T& data)
     {
         Node* node;
         size_t tail = _tail.load(std::memory_order_relaxed);
@@ -175,7 +178,8 @@ public:
                 break;
             }
         }
-        node->data = std::move(data);
+        //node->data = std::move(data);
+        new (&node->data)T(data);
         node->head.store(tail, std::memory_order_release);
         return true;
     }
@@ -199,7 +203,9 @@ public:
             return false;
         }
 
-        result = std::move(node->data);
+        //result = std::move(node->data);
+        result = node->data;
+        (&node->data)->~T();
         node->tail.store(head + _capacity, std::memory_order_release);
         return true;
     }
@@ -266,7 +272,7 @@ public:
         return _tail.load(std::memory_order_relaxed) - head;
     }
 
-    bool push(T&& data)
+    bool push(const T& data)
     {
         Node* node;
         size_t tail = _tail.load(std::memory_order_relaxed);
@@ -277,7 +283,8 @@ public:
         }
         _tail.store(tail + 1, std::memory_order_relaxed);
 
-        node->data = std::move(data);
+        //node->data = std::move(data);
+        new (&node->data)T(data);
         node->head.store(tail, std::memory_order_release);
         return true;
     }
@@ -299,7 +306,9 @@ public:
                 break;
             }
         }
-        result = std::move(node->data);
+        //result = std::move(node->data);
+        result = node->data;
+        (&node->data)->~T();
         node->tail.store(head + _capacity, std::memory_order_release);
         return true;
     }
@@ -363,13 +372,14 @@ public:
         return _tail.load(std::memory_order_relaxed) - head;
     }
 
-    bool push(T&& data)
+    bool push(const T& data)
     {
         const auto current_tail = _tail.load(std::memory_order_relaxed);
         const auto next_tail = _increment(current_tail);
         if (next_tail != _head.load(std::memory_order_acquire))
         {
-            _queue[current_tail].data = std::move(data);
+            //_queue[current_tail].data = std::move(data);
+            new (&_queue[current_tail].data)T(data);
             _tail.store(next_tail, std::memory_order_release);
             return true;
         }
@@ -382,7 +392,9 @@ public:
         const auto current_head = _head.load(std::memory_order_relaxed);
         if (current_head == _tail.load(std::memory_order_acquire))
             return false; // empty queue
-        result = std::move(_queue[current_head].data);
+        //result = std::move(_queue[current_head].data);
+        result = _queue[current_head].data;
+        (&_queue[current_head].data)->~T();
         _head.store(_increment(current_head), std::memory_order_release);
         return true;
     }
