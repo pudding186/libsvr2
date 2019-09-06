@@ -59,7 +59,7 @@ template <>
 struct SFormatArgs<>
 {
     virtual void format_to_buffer(fmt::memory_buffer& buffer) = 0;
-    virtual int fprintf(std::FILE* file) = 0;
+    virtual void format_c_to_buffer(fmt::memory_buffer& buffer) = 0;
 };
 
 template <typename First, typename... Rest>
@@ -145,9 +145,9 @@ struct SFormatArgs<const char*, Rest...>
         format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
-    virtual int fprintf(std::FILE* file)
+    virtual void format_c_to_buffer(fmt::memory_buffer& buffer)
     {
-        return fprintf_impl(file, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        format_c_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
     const char* value;
@@ -178,16 +178,23 @@ void format_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &arg
     fmt::format_to(buffer, get<I>(args)...);
 }
 
+inline void vfprintf_to_buffer(fmt::memory_buffer& buffer, fmt::basic_string_view<char> format,
+    fmt::basic_format_args<typename fmt::printf_context<
+    fmt::internal::basic_buffer<char>>::type> args) {
+    fmt::printf(buffer, format, args);
+}
+
+template <typename... Args>
+inline void printf_to_buffer(fmt::memory_buffer& buffer, fmt::string_view format_str, const Args & ... args) {
+    auto vargs = fmt::make_format_args<
+        typename fmt::printf_context<fmt::internal::buffer>::type>(args...);
+    vfprintf_to_buffer(buffer, format_str, vargs);
+}
+
 template<typename... Rest, size_t... I>
-int fprintf_impl(std::FILE* file, SFormatArgs<Rest...> &args, idx_seq<I...>)
+void format_c_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
-    return fmt::fprintf(file, get<I>(args)...);
+    printf_to_buffer(buffer, get<I>(args)...);
 }
 
 //////////////////////////////////////////////////////////////////////////
-
-//template <class... Types>
-//auto new_format_args(Types&&... args)
-//{
-//    return S_NEW(SFormatArgs<Types...>, 1, std::forward<Types>(args)...);
-//}

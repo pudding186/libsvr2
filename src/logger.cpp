@@ -110,12 +110,12 @@ public:
     inline unsigned int get_proc_count(void) { return m_do_proc_count; }
 protected:
 private:
-    std::thread m_log_thread;
-    size_t      m_idx;
-    time_t      m_last_log_time;
-    struct tm   m_last_log_tm;
-    char        m_time_str[32];
-    unsigned int m_do_proc_count;
+    std::thread     m_log_thread;
+    size_t          m_idx;
+    time_t          m_last_log_time;
+    struct tm       m_last_log_tm;
+    char            m_time_str[32];
+    unsigned int    m_do_proc_count;
 };
 
 typedef struct st_logger_manager
@@ -495,19 +495,16 @@ void log_thread::_do_cmd(log_cmd* cmd)
         _check_log(cmd);
 
         fmt::memory_buffer out_prefix;
+        fmt::memory_buffer out_data;
+
         fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", m_time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
+        cmd->fmt_args->format_c_to_buffer(out_data);
 
-        int write_size = (int)std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-        if (write_size > 0)
-        {
-            cmd->logger->file_size += write_size;
-        }
+        size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
 
-        write_size = cmd->fmt_args->fprintf(cmd->logger->file);
-        if (write_size > 0)
-        {
-            cmd->logger->file_size += write_size;
-        }
+        write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+
+        cmd->logger->file_size += write_size;
 
         cmd->logger->write_ack++;
     }
