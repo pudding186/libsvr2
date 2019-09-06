@@ -147,6 +147,8 @@ public:
         }
     }
 
+    bool m_is_use;
+
     //log_proc* m_proc;
 protected:
 private:
@@ -671,7 +673,7 @@ log_proc* _get_log_proc(void)
             s_log_proc->queue[i].rcy_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
         }
 
-        //s_check.m_proc = s_log_proc;
+        s_check.m_is_use = true;
         //s_log_proc->is_run = true;
         s_log_proc->is_run = true;
 
