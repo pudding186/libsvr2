@@ -102,7 +102,7 @@ namespace SMemory
         }
 
         template <typename... Args>
-        T* New(size_t size, Args&&... args)
+        T* New(size_t size, Args... args)
         {
             if (size == 1)
             {
