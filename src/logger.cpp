@@ -72,22 +72,32 @@ typedef struct st_log_cmd
 
 typedef struct st_log_queue
 {
-    HLOOPPTRQUEUE   cmd_queue;
-    HLOOPPTRQUEUE   rcy_queue;
+    //HLOOPPTRQUEUE   cmd_queue;
+    //HLOOPPTRQUEUE   rcy_queue;
+    HLOOPCACHE  cmd_queue;
+    HLOOPCACHE  rcy_queue;
 }log_queue;
 
 typedef struct st_log_proc
 {
     struct st_log_proc* next_proc;
     log_queue*          queue;
+    time_t              last_log_time;
+    struct tm           last_log_tm;
+    char                time_str[32];
     bool                is_run;
 }log_proc;
 
 typedef struct st_log_obj_pool
 {
     struct st_log_obj_pool*     next_pool;
-    SMemory::IClassMemory*  obj_pool;
+    SMemory::IClassMemory*      obj_pool;
 }log_obj_pool;
+typedef struct st_log_mem_pool
+{
+    struct st_log_mem_pool*     next_pool;
+    HMEMORYMANAGER              mem_pool;
+}log_mem_pool;
 
 class log_thread
 {
@@ -102,9 +112,9 @@ public:
 
     void _log_func();
 
-    bool _check_log(log_cmd* cmd);
+    bool _check_log(log_cmd* cmd, log_proc* proc);
 
-    void _do_cmd(log_cmd* cmd);
+    void _do_cmd(log_cmd* cmd, log_proc* proc);
 
     inline void set_idx(size_t idx) { m_idx = idx; }
     inline unsigned int get_proc_count(void) { return m_do_proc_count; }
@@ -112,9 +122,6 @@ protected:
 private:
     std::thread     m_log_thread;
     size_t          m_idx;
-    time_t          m_last_log_time;
-    struct tm       m_last_log_tm;
-    char            m_time_str[32];
     unsigned int    m_do_proc_count;
 };
 
@@ -124,7 +131,9 @@ typedef struct st_logger_manager
     size_t              log_thread_num;
     size_t              log_queue_size;
     log_proc*           log_proc_head;
+    log_proc**          main_log_proc;
     log_obj_pool*       log_obj_pool_head;
+    log_mem_pool*       log_mem_pool_head;
     bool                is_run;
 }logger_manager;
 
@@ -161,15 +170,6 @@ static thread_local log_proc_check s_check;
 log_thread::log_thread()
 {
     m_log_thread = std::thread(&log_thread::_log_func, this);
-    m_last_log_time = std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()));
-#ifdef _MSC_VER
-    localtime_s(&m_last_log_tm, &m_last_log_time);
-#elif __GNUC__
-    localtime_r(&m_last_log_time, &m_last_log_tm);
-#else
-#error "unknown compiler"
-#endif
-    strftime(m_time_str, sizeof(m_time_str), "%Y-%m-%d %H:%M:%S", &m_last_log_tm);
     m_do_proc_count = 0;
 }
 
@@ -223,7 +223,7 @@ bool _mk_dir(const wchar_t* dir)
     return true;
 }
 
-bool log_thread::_check_log(log_cmd* cmd)
+bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
 {
     wchar_t file_full_path[MAX_LOG_FILE_PATH];
 
@@ -252,21 +252,26 @@ bool log_thread::_check_log(log_cmd* cmd)
         cmd->logger->file_size = ftell(cmd->logger->file);
     }
 
-    if (cur_time != m_last_log_time)
+    if (cur_time != proc->last_log_time)
     {
-        m_last_log_tm.tm_sec += (int)(cur_time - m_last_log_time);
-
-        if (m_last_log_tm.tm_sec > 59)
+        if (cur_time < proc->last_log_time)
         {
-            localtime_s(&m_last_log_tm, &cur_time);
+            CRUSH_CODE();
         }
 
-        m_last_log_time = cur_time;
-        strftime(m_time_str, sizeof(m_time_str), "%Y-%m-%d %H:%M:%S", &m_last_log_tm);
+        proc->last_log_tm.tm_sec += (int)(cur_time - proc->last_log_time);
 
-        if (m_last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        if (proc->last_log_tm.tm_sec > 59)
         {
-            cmd->logger->file_time = m_last_log_tm;
+            localtime_s(&proc->last_log_tm, &cur_time);
+        }
+
+        proc->last_log_time = cur_time;
+        strftime(proc->time_str, sizeof(proc->time_str), "%Y-%m-%d %H:%M:%S", &proc->last_log_tm);
+
+        if (proc->last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = proc->last_log_tm;
 
             if (cmd->logger->file)
             {
@@ -361,7 +366,7 @@ bool _mk_dir(const char* dir)
     return true;
 }
 
-bool log_thread::_check_log(log_cmd* cmd)
+bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
 {
     char file_full_path[MAX_LOG_FILE_PATH];
 
@@ -467,22 +472,20 @@ bool log_thread::_check_log(log_cmd* cmd)
 #endif
 
 
-void log_thread::_do_cmd(log_cmd* cmd)
+void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 {
     switch (cmd->option)
     {
     case opt_write:
     {
-        _check_log(cmd);
+        _check_log(cmd, proc);
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", m_time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
+        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
         cmd->fmt_args->format_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-
         write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
 
         cmd->logger->file_size += write_size;
@@ -492,16 +495,14 @@ void log_thread::_do_cmd(log_cmd* cmd)
     break;
     case opt_write_c:
     {
-        _check_log(cmd);
+        _check_log(cmd, proc);
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", m_time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
+        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
         cmd->fmt_args->format_c_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-
         write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
 
         cmd->logger->file_size += write_size;
@@ -534,14 +535,17 @@ unsigned int log_thread::_proc_log()
 
     while (proc)
     {
-        log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
+        //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
+        log_cmd* cmd;
 
-        if (cmd)
+        //if (cmd)
+        if (loop_cache_pop_data(proc->queue[m_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
         {
-            _do_cmd(cmd);
+            _do_cmd(cmd, proc);
             ++proc_count;
 
-            while (!loop_ptr_queue_push(proc->queue[m_idx].rcy_queue, cmd))
+            //while (!loop_ptr_queue_push(proc->queue[m_idx].rcy_queue, cmd))
+            while (!loop_cache_push_data(proc->queue[m_idx].rcy_queue, &cmd, sizeof(log_cmd*)))
             {
                 if (!proc->is_run)
                 {
@@ -583,11 +587,14 @@ void log_thread::_proc_log_end()
             }
         }
 
-        log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
+        //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
 
-        if (cmd)
+        //if (cmd)
+        log_cmd* cmd;
+
+        if (loop_cache_pop_data(proc->queue[m_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
         {
-            _do_cmd(cmd);
+            _do_cmd(cmd, proc);
             is_busy = true;
         }
 
@@ -657,6 +664,32 @@ void update_logger_obj_pool(SMemory::IClassMemory* new_obj_pool)
     mtx.unlock();
 }
 
+void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
+{
+    log_mem_pool* new_pool = (log_mem_pool*)malloc(sizeof(log_mem_pool));
+    new_pool->mem_pool = new_mem_pool;
+
+    std::mutex mtx;
+    mtx.lock();
+    new_pool->next_pool = g_logger_manager->log_mem_pool_head;
+    g_logger_manager->log_mem_pool_head = new_pool;
+    mtx.unlock();
+}
+
+HMEMORYMANAGER logger_mem_pool(void)
+{
+    static thread_local HMEMORYMANAGER mem_mgr = 0;
+
+    if (!mem_mgr)
+    {
+        mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
+
+        update_logger_mem_pool(mem_mgr);
+    }
+
+    return mem_mgr;
+}
+
 log_proc* _get_log_proc(void)
 {
     if (!s_log_proc)
@@ -666,9 +699,22 @@ log_proc* _get_log_proc(void)
 
         for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
         {
-            s_log_proc->queue[i].cmd_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
-            s_log_proc->queue[i].rcy_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
+            //s_log_proc->queue[i].cmd_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
+            //s_log_proc->queue[i].rcy_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
+
+            s_log_proc->queue[i].cmd_queue = create_loop_cache(0, sizeof(log_cmd*)*g_logger_manager->log_queue_size);
+            s_log_proc->queue[i].rcy_queue = create_loop_cache(0, sizeof(log_cmd*)*g_logger_manager->log_queue_size);
         }
+
+        s_log_proc->last_log_time = std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+#ifdef _MSC_VER
+        localtime_s(&s_log_proc->last_log_tm, &s_log_proc->last_log_time);
+#elif __GNUC__
+        localtime_r(&s_log_proc->last_log_time, &s_log_proc->last_log_tm);
+#else
+#error "unknown compiler"
+#endif
+        strftime(s_log_proc->time_str, sizeof(s_log_proc->time_str), "%Y-%m-%d %H:%M:%S", &s_log_proc->last_log_tm);
 
         s_check.m_is_use = true;
         //s_log_proc->is_run = true;
@@ -684,25 +730,21 @@ log_proc* _get_log_proc(void)
     return s_log_proc;
 }
 
-log_cmd* _get_log_cmd(log_proc* proc)
+void _free_log_cmd(log_proc* proc)
 {
-    log_cmd* cmd = 0;
-    log_cmd* last_cmd = 0;
-
     for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
     {
         for (;;)
         {
-            last_cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
+            //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
 
-            if (last_cmd)
+            //if (cmd)
+            log_cmd* cmd;
+
+            if (loop_cache_pop_data(proc->queue[i].rcy_queue, &cmd, sizeof(log_cmd*)))
             {
-                if (cmd)
-                {
-                    SMemory::Delete(cmd->fmt_args);
-                    SMemory::Delete(cmd);
-                }
-                cmd = last_cmd;
+                SMemory::Delete(cmd->fmt_args);
+                SMemory::Delete(cmd);
             }
             else
             {
@@ -710,24 +752,54 @@ log_cmd* _get_log_cmd(log_proc* proc)
             }
         }
     }
-
-    if (cmd)
-    {
-        SMemory::Delete(cmd->fmt_args);
-    }
-    else
-    {
-        cmd = logger_obj_pool<log_cmd>().New(1);
-    }
-
-    return cmd;
 }
+
+//log_cmd* _get_log_cmd(log_proc* proc)
+//{
+//    log_cmd* cmd = 0;
+//    log_cmd* last_cmd = 0;
+//
+//    for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
+//    {
+//        for (;;)
+//        {
+//            last_cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
+//
+//            if (last_cmd)
+//            {
+//                if (cmd)
+//                {
+//                    SMemory::Delete(cmd->fmt_args);
+//                    SMemory::Delete(cmd);
+//                }
+//                cmd = last_cmd;
+//            }
+//            else
+//            {
+//                break;
+//            }
+//        }
+//    }
+//
+//    if (cmd)
+//    {
+//        SMemory::Delete(cmd->fmt_args);
+//    }
+//    else
+//    {
+//        cmd = logger_obj_pool<log_cmd>()->New(1);
+//    }
+//
+//    return cmd;
+//}
 
 bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>* fmt_args, bool is_block)
 {
     log_proc* proc = _get_log_proc();
 
-    log_cmd* cmd = _get_log_cmd(proc);
+    _free_log_cmd(proc);
+
+    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
 
     cmd->option = opt_write;
 
@@ -751,8 +823,8 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>*
 #endif
 
     cmd->tpms = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-
-    if (loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+    //if (loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+    if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
         (*(logger->write_req))++;
         return true;
@@ -761,9 +833,10 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>*
     {
         if (is_block)
         {
-            while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+            //while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+            while (!loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
             {
-                SMemory::Delete(_get_log_cmd(proc));
+                _free_log_cmd(proc);
             }
 
             (*(logger->write_req))++;
@@ -790,7 +863,7 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num)
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
         g_logger_manager->log_thread_array = S_NEW(log_thread, log_thread_num);
-
+        g_logger_manager->main_log_proc = &s_log_proc;
         for (size_t i = 0; i < log_thread_num; i++)
         {
             g_logger_manager->log_thread_array[i].set_idx(i);
@@ -818,13 +891,20 @@ void uninit_logger_manager(void)
 
             for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
             {
-                destroy_loop_ptr_queue(cur_proc->queue[i].cmd_queue);
-                destroy_loop_ptr_queue(cur_proc->queue[i].rcy_queue);
+                //destroy_loop_ptr_queue(cur_proc->queue[i].cmd_queue);
+                //destroy_loop_ptr_queue(cur_proc->queue[i].rcy_queue);
+                destroy_loop_cache(cur_proc->queue[i].cmd_queue);
+                destroy_loop_cache(cur_proc->queue[i].rcy_queue);
             }
             free(cur_proc->queue);
             free(cur_proc);
             cur_proc = 0;
             
+        }
+
+        if (g_logger_manager->main_log_proc)
+        {
+            *(g_logger_manager->main_log_proc) = 0;
         }
 
         log_obj_pool* pool = g_logger_manager->log_obj_pool_head;
@@ -944,7 +1024,11 @@ void destroy_file_logger(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    log_cmd* cmd = _get_log_cmd(proc);
+    //log_cmd* cmd = _get_log_cmd(proc);
+
+    _free_log_cmd(proc);
+
+    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
 
     cmd->option = opt_close;
     cmd->fmt_args = 0;
@@ -961,8 +1045,9 @@ void destroy_file_logger(file_logger* logger)
 #endif
     }
 
-    while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+    //while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
+    while (!loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
-        SMemory::Delete(_get_log_cmd(proc));
+        _free_log_cmd(proc);
     }
 }

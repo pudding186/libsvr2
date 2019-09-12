@@ -52,6 +52,7 @@ template <class T>
 using special_decay_type = typename unwrap_refwrapper_type<typename std::decay<T>::type>::type;
 
 //////////////////////////////////////////////////////////////////////////
+
 template <typename... Args>
 struct SFormatArgs{};
 

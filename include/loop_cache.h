@@ -34,14 +34,6 @@ extern void (loop_cache_reset)(HLOOPCACHE cache, size_t size, void* data);
 
 extern void (loop_cache_reinit)(HLOOPCACHE cache);
 
-extern HLOOPPTRQUEUE (create_loop_ptr_queue)(size_t size);
-
-extern void (destroy_loop_ptr_queue)(HLOOPPTRQUEUE queue);
-
-extern bool (loop_ptr_queue_push)(HLOOPPTRQUEUE queue, void* ptr);
-
-extern void* (loop_ptr_queue_pop)(HLOOPPTRQUEUE queue);
-
 #ifdef  __cplusplus
 }
 #endif

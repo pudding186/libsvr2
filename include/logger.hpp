@@ -18,7 +18,6 @@ extern void (destroy_file_logger)(HFILELOGGER file_logger);
 }
 
 extern void (update_logger_obj_pool)(SMemory::IClassMemory* new_obj_pool);
-extern void (update_logger_mem_pool)(HMEMORYMANAGER new_mem_pool);
 
 template<typename T>
 SMemory::CClassMemory<T>* logger_obj_pool(void)
@@ -34,6 +33,8 @@ SMemory::CClassMemory<T>* logger_obj_pool(void)
 
     return obj_pool;
 }
+
+extern HMEMORYMANAGER (logger_mem_pool)(void);
 
 extern bool file_logger_async_log(HFILELOGGER file_logger, bool is_c_format, SFormatArgs<>* fmt_args, bool is_block);
 
