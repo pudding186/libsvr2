@@ -435,21 +435,26 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
         cmd->logger->file_size = ftell(cmd->logger->file);
     }
 
-    if (cur_time != m_last_log_time)
+    if (cur_time != proc->last_log_time)
     {
-        m_last_log_tm.tm_sec += (int)(cur_time - m_last_log_time);
-
-        if (m_last_log_tm.tm_sec > 59)
+        if (cur_time < proc->last_log_time)
         {
-            localtime_r(&cur_time, &m_last_log_tm);
+            CRUSH_CODE();
         }
 
-        m_last_log_time = cur_time;
-        strftime(m_time_str, sizeof(m_time_str), "%Y-%m-%d %H:%M:%S", &m_last_log_tm);
+        proc->last_log_tm.tm_sec += (int)(cur_time - proc->last_log_time);
 
-        if (m_last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        if (proc->last_log_tm.tm_sec > 59)
         {
-            cmd->logger->file_time = m_last_log_tm;
+            localtime_r(&cur_time, &proc->last_log_tm);
+        }
+
+        proc->last_log_time = cur_time;
+        strftime(proc->time_str, sizeof(proc->time_str), "%Y-%m-%d %H:%M:%S", &proc->last_log_tm);
+
+        if (proc->last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = proc->last_log_tm;
 
             if (cmd->logger->file)
             {
@@ -546,7 +551,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -574,7 +579,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_c_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -886,6 +891,11 @@ void print_thread::_proc_print_end()
             break;
         }
     }
+
+    print_cmd end_print_cmd;
+    end_print_cmd.data_len = 0;
+    end_print_cmd.lv = log_nul;
+    _check_print(&end_print_cmd);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -972,7 +982,6 @@ log_proc* _get_log_proc(void)
         strftime(s_log_proc->time_str, sizeof(s_log_proc->time_str), "%Y-%m-%d %H:%M:%S", &s_log_proc->last_log_tm);
 
         s_check.m_is_use = true;
-        //s_log_proc->is_run = true;
         s_log_proc->is_run = true;
 
         std::mutex mtx;
@@ -1070,7 +1079,7 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
 #ifdef _MSC_VER
     cmd->t_id = ::GetCurrentThreadId();
 #elif __GNUC__
-    cmd->t_id = syscall(__NR_getpid);
+    cmd->t_id = syscall(__NR_gettid);
 #else
 #error "unknown compiler"
 #endif
