@@ -172,7 +172,7 @@ typedef struct st_ptr_info
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_file_logger* HFILELOGGER;
 
-typedef enum st_file_log_level
+typedef enum e_file_logger_level
 {
     log_nul = 0x00000000,
     log_dbg = 0x00000001,
@@ -180,7 +180,7 @@ typedef enum st_file_log_level
     log_wrn = (0x00000001 << 2),
     log_cri = (0x00000001 << 3),
     log_sys = (0x00000001 << 4),
-}file_log_level;
+}file_logger_level;
 
 //////////////////////////////////////////////////////////////////////////
 typedef bool (*pfn_wfile)(const wchar_t* path, const wchar_t* name, void* user_data);

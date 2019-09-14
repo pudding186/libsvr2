@@ -63,12 +63,19 @@ typedef struct st_file_logger
 
 typedef struct st_log_cmd
 {
-    log_option      option;
-    file_logger*    logger;
-    SFormatArgs<>*  fmt_args;
-    TPMS            tpms;
-    unsigned int    t_id;
+    log_option          option;
+    file_logger*        logger;
+    file_logger_level   lv;
+    SFormatArgs<>*      fmt_args;
+    TPMS                tpms;
+    unsigned int        t_id;
 }log_cmd;
+
+typedef struct st_print_cmd
+{
+    file_logger_level   lv;
+    size_t              data_len;
+}print_cmd;
 
 typedef struct st_log_queue
 {
@@ -118,11 +125,36 @@ public:
 
     inline void set_idx(size_t idx) { m_idx = idx; }
     inline unsigned int get_proc_count(void) { return m_do_proc_count; }
+    inline std::thread& log_thread_ref(void) { return m_log_thread; }
+    inline HLOOPCACHE print_data_cache(void) { return m_print_data_cache; }
+    inline bool is_run(void) { return m_is_run; }
 protected:
 private:
     std::thread     m_log_thread;
     size_t          m_idx;
     unsigned int    m_do_proc_count;
+    HLOOPCACHE      m_print_data_cache;
+    bool            m_is_run;
+};
+
+class print_thread
+{
+public:
+    print_thread();
+    ~print_thread();
+
+    void _check_print(print_cmd* cmd);
+
+    void _print_func();
+
+    unsigned int _proc_print();
+
+    void _proc_print_end();
+    
+protected:
+private:
+    std::thread         m_print_thread;
+    file_logger_level   m_last_level;
 };
 
 typedef struct st_logger_manager
@@ -134,6 +166,8 @@ typedef struct st_logger_manager
     log_proc**          main_log_proc;
     log_obj_pool*       log_obj_pool_head;
     log_mem_pool*       log_mem_pool_head;
+    print_thread*       print_thread_pt;
+    size_t              print_cache_size;
     bool                is_run;
 }logger_manager;
 
@@ -169,13 +203,17 @@ static thread_local log_proc_check s_check;
 
 log_thread::log_thread()
 {
+    m_print_data_cache = create_loop_cache(0, g_logger_manager->print_cache_size);
     m_log_thread = std::thread(&log_thread::_log_func, this);
     m_do_proc_count = 0;
+    
 }
 
 log_thread::~log_thread()
 {
     m_log_thread.join();
+
+    destroy_loop_cache(m_print_data_cache);
 }
 
 #ifdef _MSC_VER
@@ -397,21 +435,26 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
         cmd->logger->file_size = ftell(cmd->logger->file);
     }
 
-    if (cur_time != m_last_log_time)
+    if (cur_time != proc->last_log_time)
     {
-        m_last_log_tm.tm_sec += (int)(cur_time - m_last_log_time);
-
-        if (m_last_log_tm.tm_sec > 59)
+        if (cur_time < proc->last_log_time)
         {
-            localtime_r(&cur_time, &m_last_log_tm);
+            CRUSH_CODE();
         }
 
-        m_last_log_time = cur_time;
-        strftime(m_time_str, sizeof(m_time_str), "%Y-%m-%d %H:%M:%S", &m_last_log_tm);
+        proc->last_log_tm.tm_sec += (int)(cur_time - proc->last_log_time);
 
-        if (m_last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        if (proc->last_log_tm.tm_sec > 59)
         {
-            cmd->logger->file_time = m_last_log_tm;
+            localtime_r(&cur_time, &proc->last_log_tm);
+        }
+
+        proc->last_log_time = cur_time;
+        strftime(proc->time_str, sizeof(proc->time_str), "%Y-%m-%d %H:%M:%S", &proc->last_log_tm);
+
+        if (proc->last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = proc->last_log_tm;
 
             if (cmd->logger->file)
             {
@@ -471,6 +514,32 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
 #error "unknown compiler"
 #endif
 
+const char* log_lv_to_str(file_logger_level lv)
+{
+    switch (lv)
+    {
+    case log_nul:
+        return "";
+        break;
+    case log_dbg:
+        return "[DBG]";
+        break;
+    case log_inf:
+        return "[INF]";
+        break;
+    case log_wrn:
+        return "[WRN]";
+        break;
+    case log_cri:
+        return "[CRI]";
+        break;
+    case log_sys:
+        return "[SYS]";
+        break;
+    default:
+        return "[OMG]";
+    }
+}
 
 void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 {
@@ -482,7 +551,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -491,6 +560,17 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         cmd->logger->file_size += write_size;
 
         cmd->logger->write_ack++;
+
+        print_cmd pt_cmd;
+        pt_cmd.data_len = out_prefix.size() + out_data.size();
+        pt_cmd.lv = cmd->lv;
+
+        if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd)+pt_cmd.data_len)
+        {
+            loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd));
+            loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size());
+            loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size());
+        }
     }
     break;
     case opt_write_c:
@@ -499,7 +579,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4} <{:<5}> ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id);
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_c_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -508,6 +588,17 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         cmd->logger->file_size += write_size;
 
         cmd->logger->write_ack++;
+
+        print_cmd pt_cmd;
+        pt_cmd.data_len = out_prefix.size() + out_data.size();
+        pt_cmd.lv = cmd->lv;
+
+        if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + pt_cmd.data_len)
+        {
+            loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd));
+            loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size());
+            loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size());
+        }
     }
     break;
     case opt_close:
@@ -604,6 +695,7 @@ void log_thread::_proc_log_end()
 
 void log_thread::_log_func()
 {
+    m_is_run = true;
     unsigned int cur_do_proc_count = 0;
     unsigned int run_loop_check = 0;
     unsigned int last_do_proc_count = 0;
@@ -633,7 +725,180 @@ void log_thread::_log_func()
     }
 
     _proc_log_end();
+
+    m_is_run = false;
 }
+
+//////////////////////////////////////////////////////////////////////////
+
+print_thread::print_thread()
+{
+    m_print_thread = std::thread(&print_thread::_print_func, this);
+    m_last_level = log_nul;
+}
+
+print_thread::~print_thread()
+{
+    m_print_thread.join();
+}
+
+void print_thread::_check_print(print_cmd* cmd)
+{
+    if (cmd->lv != m_last_level)
+    {
+        m_last_level = cmd->lv;
+
+        switch (m_last_level)
+        {
+        case log_sys:
+            printf("\033[1;32m");
+            break;
+        case log_cri:
+            printf("\033[1;31m");
+            break;
+        case log_wrn:
+            printf("\033[1;33m");
+            break;
+        case log_inf:
+            printf("\033[1;34m");
+            break;
+        case log_dbg:
+            printf("\033[1;37m");
+            break;
+        case log_nul:
+            printf("\033[0m");
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void print_thread::_print_func()
+{
+    while (g_logger_manager->is_run)
+    {
+        if (!_proc_print())
+        {
+#ifdef _MSC_VER
+            Sleep(10);
+#elif __GNUC__
+            usleep(10000000);
+#else
+#error "unknown compiler"
+#endif
+        }
+    }
+
+    for (size_t i = 0; i < g_logger_manager->log_thread_num;)
+    {
+        if (g_logger_manager->log_thread_array[i].is_run())
+        {
+            i = 0;
+#ifdef _MSC_VER
+            Sleep(10);
+#elif __GNUC__
+            usleep(10000000);
+#else
+#error "unknown compiler"
+#endif
+            continue;
+        }
+        else
+        {
+            i++;
+        }
+    }
+
+    _proc_print_end();
+}
+
+unsigned int print_thread::_proc_print()
+{
+    unsigned int print_count = 0;
+
+    for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
+    {
+        print_cmd cmd;
+
+        if (loop_cache_pop_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+            &cmd, sizeof(print_cmd)))
+        {
+            _check_print(&cmd);
+
+            size_t print_len = cmd.data_len;
+            char* data = 0;
+            loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+                (void**)&data, &print_len);
+            std::fwrite(data, sizeof(char), print_len, stdout);
+
+            if (cmd.data_len > print_len)
+            {
+                print_len = cmd.data_len - print_len;
+                loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+                    (void**)&data, &print_len);
+                std::fwrite(data, sizeof(char), print_len, stdout);
+            }
+
+            loop_cache_pop(g_logger_manager->log_thread_array[i].print_data_cache(),
+                cmd.data_len);
+
+            ++print_count;
+        }
+    }
+
+    return print_count;
+}
+
+void print_thread::_proc_print_end()
+{
+    for (;;)
+    {
+        bool busy = false;
+
+        for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
+        {
+            print_cmd cmd;
+
+            if (loop_cache_pop_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+                &cmd, sizeof(print_cmd)))
+            {
+                _check_print(&cmd);
+
+                size_t print_len = cmd.data_len;
+                char* data;
+                loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+                    (void**)&data, &print_len);
+                std::fwrite(data, sizeof(char), print_len, stdout);
+
+                if (cmd.data_len > print_len)
+                {
+                    print_len = cmd.data_len - print_len;
+                    loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
+                        (void**)&data, &print_len);
+                    std::fwrite(data, sizeof(char), print_len, stdout);
+                }
+
+                loop_cache_pop(g_logger_manager->log_thread_array[i].print_data_cache(),
+                    cmd.data_len);
+
+                busy = true;
+            }
+        }
+
+        if (!busy)
+        {
+            break;
+        }
+    }
+
+    print_cmd end_print_cmd;
+    end_print_cmd.data_len = 0;
+    end_print_cmd.lv = log_nul;
+    _check_print(&end_print_cmd);
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 size_t _get_idle_log_thread_idx(void)
 {
@@ -717,7 +982,6 @@ log_proc* _get_log_proc(void)
         strftime(s_log_proc->time_str, sizeof(s_log_proc->time_str), "%Y-%m-%d %H:%M:%S", &s_log_proc->last_log_tm);
 
         s_check.m_is_use = true;
-        //s_log_proc->is_run = true;
         s_log_proc->is_run = true;
 
         std::mutex mtx;
@@ -793,7 +1057,7 @@ void _free_log_cmd(log_proc* proc)
 //    return cmd;
 //}
 
-bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>* fmt_args, bool is_block)
+bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_level lv, SFormatArgs<>* fmt_args, bool is_block)
 {
     log_proc* proc = _get_log_proc();
 
@@ -807,17 +1071,15 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>*
     {
         cmd->option = opt_write_c;
     }
-    else
-    {
-        cmd->option = opt_write;
-    }
+
     cmd->fmt_args = fmt_args;
     cmd->logger = logger;
+    cmd->lv = lv;
 
 #ifdef _MSC_VER
     cmd->t_id = ::GetCurrentThreadId();
 #elif __GNUC__
-    cmd->t_id = syscall(__NR_getpid);
+    cmd->t_id = syscall(__NR_gettid);
 #else
 #error "unknown compiler"
 #endif
@@ -852,7 +1114,7 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, SFormatArgs<>*
     }
 }
 
-bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num)
+bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num, size_t print_cache_size)
 {
     if (!g_logger_manager)
     {
@@ -862,12 +1124,14 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num)
         g_logger_manager->log_obj_pool_head = 0;
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
+        g_logger_manager->print_cache_size = print_cache_size;
         g_logger_manager->log_thread_array = S_NEW(log_thread, log_thread_num);
         g_logger_manager->main_log_proc = &s_log_proc;
         for (size_t i = 0; i < log_thread_num; i++)
         {
             g_logger_manager->log_thread_array[i].set_idx(i);
         }
+        g_logger_manager->print_thread_pt = S_NEW(print_thread, 1);
     }
 
     return true;
@@ -879,8 +1143,8 @@ void uninit_logger_manager(void)
     {
         g_logger_manager->is_run = false;
 
+        S_DELETE(g_logger_manager->print_thread_pt);
         S_DELETE(g_logger_manager->log_thread_array);
-
 
         log_proc* proc = g_logger_manager->log_proc_head;
 

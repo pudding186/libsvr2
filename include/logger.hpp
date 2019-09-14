@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-extern bool (init_logger_manager)(size_t log_thread_num, size_t max_log_event_num);
+extern bool (init_logger_manager)(size_t log_thread_num, size_t max_log_event_num, size_t print_cache_size);
 
 extern void (uninit_logger_manager)(void);
 
@@ -36,21 +36,21 @@ SMemory::CClassMemory<T>* logger_obj_pool(void)
 
 extern HMEMORYMANAGER (logger_mem_pool)(void);
 
-extern bool file_logger_async_log(HFILELOGGER file_logger, bool is_c_format, SFormatArgs<>* fmt_args, bool is_block);
+extern bool file_logger_async_log(HFILELOGGER file_logger, bool is_c_format, file_logger_level lv, SFormatArgs<>* fmt_args, bool is_block);
 
 template<typename... Args>
-void file_logger_log(HFILELOGGER file_logger, const char* fmt, Args&&... args)
+void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
 {
     SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward<Args>(args)...);
 
-    file_logger_async_log(file_logger, false, fmt_args, true);
+    file_logger_async_log(file_logger, false, lv, fmt_args, true);
 }
 
 template<typename... Args>
-void file_logger_print(HFILELOGGER file_logger, const char* fmt, Args&&... args)
+void file_logger_print(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
 {
     SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward<Args>(args)...);
 
-    file_logger_async_log(file_logger, true, fmt_args, true);
+    file_logger_async_log(file_logger, true, lv, fmt_args, true);
 }
 #endif
