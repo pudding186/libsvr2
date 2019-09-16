@@ -1639,7 +1639,7 @@ bool _iocp_tcp_listener_post_accept_ex(iocp_tcp_listener* listener, struct st_io
 
     BOOL ret;
 
-    SOCKET accept_socket = WSASocket(
+    SOCKET accept_socket = WSASocketW(
         listener->listen_sockaddr.sin6_family,
         SOCK_STREAM,
         IPPROTO_TCP,
