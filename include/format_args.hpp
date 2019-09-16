@@ -254,19 +254,6 @@ void format_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &arg
     fmt::format_to(buffer, get<I>(args)...);
 }
 
-//inline void vfprintf_to_buffer(fmt::memory_buffer& buffer, fmt::basic_string_view<char> format,
-//    fmt::basic_format_args<typename fmt::printf_context<
-//    fmt::internal::basic_buffer<char>>::type> args) {
-//    fmt::printf(buffer, format, args);
-//}
-//
-//template <typename... Args>
-//inline void printf_to_buffer(fmt::memory_buffer& buffer, fmt::string_view format_str, const Args & ... args) {
-//    auto vargs = fmt::make_format_args<
-//        typename fmt::printf_context<fmt::internal::buffer>::type>(args...);
-//    vfprintf_to_buffer(buffer, format_str, vargs);
-//}
-
 inline void vprintf_to_buffer(fmt::memory_buffer& buffer, fmt::string_view format_str, fmt::printf_args args)
 {
     fmt::printf(buffer, format_str, args);
