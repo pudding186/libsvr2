@@ -16,7 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <fmt/format-inl.h>
+//#include <fmt/format-inl.h>
 
 #include "./lib_svr_common_def.h"
 #include "./lib_svr_common_def.h"
