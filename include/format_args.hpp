@@ -87,8 +87,21 @@ struct SFormatArgs<First, Rest...>
 
     typename std::enable_if <
         std::is_integral<First>::value ||
-        std::is_floating_point<First>::value ||
-        std::is_pointer<First>::value, First>::type value;
+        std::is_floating_point<First>::value, First>::type value;
+};
+
+template <typename First, typename... Rest>
+struct SFormatArgs<First*, Rest...>
+    :public SFormatArgs<Rest...>
+{
+    SFormatArgs() :value(0) {}
+    SFormatArgs(First*&& first, Rest&&... rest)
+        :value(std::forward<First*>(first)),
+        SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
+
+    size_t size() { return sizeof...(Rest); }
+
+    void* value;
 };
 
 extern HMEMORYMANAGER logger_mem_pool(void);
@@ -226,6 +239,13 @@ struct SFormatElement<0, SFormatArgs<T, Rest...>>
     typedef SFormatArgs<T, Rest...> SFormatType;
 };
 
+template <typename T, typename... Rest>
+struct SFormatElement<0, SFormatArgs<T*, Rest...>>
+{
+    typedef void* type;
+    typedef SFormatArgs<void*, Rest...> SFormatType;
+};
+
 template <typename... Rest>
 struct SFormatElement<0, SFormatArgs<std::string, Rest...>>
 {
@@ -235,6 +255,13 @@ struct SFormatElement<0, SFormatArgs<std::string, Rest...>>
 
 template <typename... Rest>
 struct SFormatElement<0, SFormatArgs<char*, Rest...>>
+{
+    typedef const char* type;
+    typedef SFormatArgs<const char*, Rest...> SFormatType;
+};
+
+template <typename... Rest>
+struct SFormatElement<0, SFormatArgs<const char*, Rest...>>
 {
     typedef const char* type;
     typedef SFormatArgs<const char*, Rest...> SFormatType;
