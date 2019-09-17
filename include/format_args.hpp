@@ -87,7 +87,8 @@ struct SFormatArgs<First, Rest...>
 
     typename std::enable_if <
         std::is_integral<First>::value ||
-        std::is_floating_point<First>::value, First>::type value;
+        std::is_floating_point<First>::value ||
+        std::is_enum<First>::value, First>::type value;
 };
 
 template <typename First, typename... Rest>
