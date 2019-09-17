@@ -68,7 +68,6 @@ typedef struct st_log_cmd
     file_logger_level   lv;
     SFormatArgs<>*      fmt_args;
     TPMS                tpms;
-    unsigned int        t_id;
 }log_cmd;
 
 typedef struct st_print_cmd
@@ -92,6 +91,7 @@ typedef struct st_log_proc
     time_t              last_log_time;
     struct tm           last_log_tm;
     char                time_str[32];
+    unsigned int        t_id;
     bool                is_run;
 }log_proc;
 
@@ -551,7 +551,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -579,7 +579,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
-        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, cmd->t_id, log_lv_to_str(cmd->lv));
+        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_c_to_buffer(out_data);
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
@@ -599,6 +599,16 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
             loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size());
             loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size());
         }
+    }
+    break;
+    case opt_flush:
+    {
+        if (cmd->logger->file)
+        {
+            fflush(cmd->logger->file);
+        }
+
+        cmd->logger->write_ack++;
     }
     break;
     case opt_close:
@@ -974,8 +984,10 @@ log_proc* _get_log_proc(void)
         s_log_proc->last_log_time = std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()));
 #ifdef _MSC_VER
         localtime_s(&s_log_proc->last_log_tm, &s_log_proc->last_log_time);
+        s_log_proc->t_id = ::GetCurrentThreadId();
 #elif __GNUC__
         localtime_r(&s_log_proc->last_log_time, &s_log_proc->last_log_tm);
+        s_log_proc->t_id = syscall(__NR_gettid);
 #else
 #error "unknown compiler"
 #endif
@@ -1075,14 +1087,6 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
     cmd->fmt_args = fmt_args;
     cmd->logger = logger;
     cmd->lv = lv;
-
-#ifdef _MSC_VER
-    cmd->t_id = ::GetCurrentThreadId();
-#elif __GNUC__
-    cmd->t_id = syscall(__NR_gettid);
-#else
-#error "unknown compiler"
-#endif
 
     cmd->tpms = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
     //if (loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
@@ -1288,8 +1292,6 @@ void destroy_file_logger(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    //log_cmd* cmd = _get_log_cmd(proc);
-
     _free_log_cmd(proc);
 
     log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
@@ -1309,9 +1311,30 @@ void destroy_file_logger(file_logger* logger)
 #endif
     }
 
-    //while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
     while (!loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
         _free_log_cmd(proc);
+    }
+}
+
+void file_logger_flush(file_logger* logger)
+{
+    log_proc* proc = _get_log_proc();
+
+    _free_log_cmd(proc);
+
+    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+
+    cmd->option = opt_flush;
+    cmd->fmt_args = 0;
+    cmd->logger = logger;
+
+    if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
+    {
+        (*(logger->write_req))++;
+    }
+    else
+    {
+        SMemory::Delete(cmd);
     }
 }
