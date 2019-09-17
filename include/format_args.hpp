@@ -85,8 +85,10 @@ struct SFormatArgs<First, Rest...>
 
     size_t size() { return sizeof...(Rest); }
 
-    typename std::enable_if <std::is_integral<typename std::remove_reference<First>::type>::value ||
-        std::is_floating_point<First>::value, First>::type value;
+    typename std::enable_if <
+        std::is_integral<First>::value ||
+        std::is_floating_point<First>::value ||
+        std::is_pointer<First>::value, First>::type value;
 };
 
 extern HMEMORYMANAGER logger_mem_pool(void);
