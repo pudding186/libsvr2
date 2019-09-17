@@ -556,6 +556,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
         write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+        write_size += std::fwrite("\n", sizeof(char), 1, cmd->logger->file);
 
         cmd->logger->file_size += write_size;
 
@@ -584,6 +585,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
         write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+        write_size += std::fwrite("\n", sizeof(char), 1, cmd->logger->file);
 
         cmd->logger->file_size += write_size;
 
