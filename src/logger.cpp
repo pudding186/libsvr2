@@ -1032,52 +1032,54 @@ void _free_log_cmd(log_proc* proc)
     }
 }
 
-//log_cmd* _get_log_cmd(log_proc* proc)
-//{
-//    log_cmd* cmd = 0;
-//    log_cmd* last_cmd = 0;
-//
-//    for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
-//    {
-//        for (;;)
-//        {
-//            last_cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
-//
-//            if (last_cmd)
-//            {
-//                if (cmd)
-//                {
-//                    SMemory::Delete(cmd->fmt_args);
-//                    SMemory::Delete(cmd);
-//                }
-//                cmd = last_cmd;
-//            }
-//            else
-//            {
-//                break;
-//            }
-//        }
-//    }
-//
-//    if (cmd)
-//    {
-//        SMemory::Delete(cmd->fmt_args);
-//    }
-//    else
-//    {
-//        cmd = logger_obj_pool<log_cmd>()->New(1);
-//    }
-//
-//    return cmd;
-//}
+log_cmd* _get_log_cmd(log_proc* proc)
+{
+    log_cmd* cmd = 0;
+    log_cmd* last_cmd = 0;
+
+    for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
+    {
+        for (;;)
+        {
+            //last_cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
+
+            //if (last_cmd)
+            if (loop_cache_pop_data(proc->queue[i].rcy_queue, &last_cmd, sizeof(log_cmd*)))
+            {
+                if (cmd)
+                {
+                    SMemory::Delete(cmd->fmt_args);
+                    SMemory::Delete(cmd);
+                }
+                cmd = last_cmd;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    if (cmd)
+    {
+        SMemory::Delete(cmd->fmt_args);
+    }
+    else
+    {
+        cmd = logger_obj_pool<log_cmd>()->New(1);
+    }
+
+    return cmd;
+}
 
 bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_level lv, SFormatArgs<>* fmt_args, bool is_block)
 {
     log_proc* proc = _get_log_proc();
 
-    _free_log_cmd(proc);
+    //_free_log_cmd(proc);
 
-    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_write;
 
@@ -1294,9 +1296,10 @@ void destroy_file_logger(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    _free_log_cmd(proc);
+    //_free_log_cmd(proc);
 
-    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_close;
     cmd->fmt_args = 0;
@@ -1323,9 +1326,10 @@ void file_logger_flush(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    _free_log_cmd(proc);
+    //_free_log_cmd(proc);
 
-    log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
+    log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_flush;
     cmd->fmt_args = 0;
