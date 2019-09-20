@@ -16,7 +16,6 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-//#include <fmt/format-inl.h>
 
 #include "./lib_svr_common_def.h"
 #include "./lib_svr_common_def.h"
@@ -78,8 +77,6 @@ typedef struct st_print_cmd
 
 typedef struct st_log_queue
 {
-    //HLOOPPTRQUEUE   cmd_queue;
-    //HLOOPPTRQUEUE   rcy_queue;
     HLOOPCACHE  cmd_queue;
     HLOOPCACHE  rcy_queue;
 }log_queue;
@@ -179,7 +176,6 @@ class log_proc_check
 public:
     log_proc_check(void)
     {
-        //m_proc = 0;
     }
 
     ~log_proc_check(void)
@@ -192,7 +188,6 @@ public:
 
     bool m_is_use;
 
-    //log_proc* m_proc;
 protected:
 private:
 };
@@ -638,16 +633,13 @@ unsigned int log_thread::_proc_log()
 
     while (proc)
     {
-        //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
         log_cmd* cmd;
 
-        //if (cmd)
         if (loop_cache_pop_data(proc->queue[m_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
         {
             _do_cmd(cmd, proc);
             ++proc_count;
 
-            //while (!loop_ptr_queue_push(proc->queue[m_idx].rcy_queue, cmd))
             while (!loop_cache_push_data(proc->queue[m_idx].rcy_queue, &cmd, sizeof(log_cmd*)))
             {
                 if (!proc->is_run)
@@ -690,9 +682,6 @@ void log_thread::_proc_log_end()
             }
         }
 
-        //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[m_idx].cmd_queue);
-
-        //if (cmd)
         log_cmd* cmd;
 
         if (loop_cache_pop_data(proc->queue[m_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
@@ -976,9 +965,6 @@ log_proc* _get_log_proc(void)
 
         for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
         {
-            //s_log_proc->queue[i].cmd_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
-            //s_log_proc->queue[i].rcy_queue = create_loop_ptr_queue(g_logger_manager->log_queue_size);
-
             s_log_proc->queue[i].cmd_queue = create_loop_cache(0, sizeof(log_cmd*)*g_logger_manager->log_queue_size);
             s_log_proc->queue[i].rcy_queue = create_loop_cache(0, sizeof(log_cmd*)*g_logger_manager->log_queue_size);
         }
@@ -1014,9 +1000,6 @@ void _free_log_cmd(log_proc* proc)
     {
         for (;;)
         {
-            //log_cmd* cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
-
-            //if (cmd)
             log_cmd* cmd;
 
             if (loop_cache_pop_data(proc->queue[i].rcy_queue, &cmd, sizeof(log_cmd*)))
@@ -1041,9 +1024,6 @@ log_cmd* _get_log_cmd(log_proc* proc)
     {
         for (;;)
         {
-            //last_cmd = (log_cmd*)loop_ptr_queue_pop(proc->queue[i].rcy_queue);
-
-            //if (last_cmd)
             if (loop_cache_pop_data(proc->queue[i].rcy_queue, &last_cmd, sizeof(log_cmd*)))
             {
                 if (cmd)
@@ -1076,9 +1056,6 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
 {
     log_proc* proc = _get_log_proc();
 
-    //_free_log_cmd(proc);
-
-    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
     log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_write;
@@ -1093,7 +1070,6 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
     cmd->lv = lv;
 
     cmd->tpms = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-    //if (loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
     if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
         (*(logger->write_req))++;
@@ -1103,7 +1079,6 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
     {
         if (is_block)
         {
-            //while (!loop_ptr_queue_push(proc->queue[logger->log_thread_idx].cmd_queue, cmd))
             while (!loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
             {
                 _free_log_cmd(proc);
@@ -1163,8 +1138,6 @@ void uninit_logger_manager(void)
 
             for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
             {
-                //destroy_loop_ptr_queue(cur_proc->queue[i].cmd_queue);
-                //destroy_loop_ptr_queue(cur_proc->queue[i].rcy_queue);
                 destroy_loop_cache(cur_proc->queue[i].cmd_queue);
                 destroy_loop_cache(cur_proc->queue[i].rcy_queue);
             }
@@ -1296,9 +1269,6 @@ void destroy_file_logger(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    //_free_log_cmd(proc);
-
-    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
     log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_close;
@@ -1326,9 +1296,6 @@ void file_logger_flush(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
 
-    //_free_log_cmd(proc);
-
-    //log_cmd* cmd = logger_obj_pool<log_cmd>()->New(1);
     log_cmd* cmd = _get_log_cmd(proc);
 
     cmd->option = opt_flush;
