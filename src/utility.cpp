@@ -10,6 +10,7 @@
 #include <endian.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <x86intrin.h>
 #else
 #error "unknown compiler"
 #endif
@@ -20,7 +21,6 @@
 
 #include "./lib_svr_common_def.h"
 #include "../include/utility.hpp"
-//#include "../include/share_memory.h"
 #include "../include/memory_pool.h"
 #include "../include/smemory.hpp"
 
@@ -29,23 +29,16 @@ class RandomNumGenarator
 public:
     RandomNumGenarator(long long lSeed1 = 0, long long lSeed2 = 0)
     {
-        srand((unsigned int)time(0));
         if (!lSeed1)
         {
-            //m_lSeed1 = __rdtsc();
-            m_lSeed1 = rand();
-            m_lSeed1 <<= 32;
-            m_lSeed1 += rand();
+            m_lSeed1 = __rdtsc();
         }
         else
             m_lSeed1 = lSeed1;
 
         if (!lSeed2)
         {
-            //m_lSeed2 = __rdtsc();
-            m_lSeed2 = rand();
-            m_lSeed2 <<= 32;
-            m_lSeed2 += rand();
+            m_lSeed2 = __rdtsc();
         }
         else
             m_lSeed2 = lSeed2;
@@ -716,18 +709,18 @@ CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPE
     m_parent_func_perf_info = mgr->m_cur_func_perf_info;
     mgr->m_cur_func_perf_info = info;
     mgr->m_func_stack->Push(info);
-    //m_cycles = __rdtsc();
+    m_cycles = __rdtsc();
 }
 
 CFuncPerformanceCheck::~CFuncPerformanceCheck(void)
 {
-    //m_cycles = __rdtsc() - m_cycles;
+    m_cycles = __rdtsc() - m_cycles;
     m_mgr->m_func_stack->Pop();
-    //m_func_perf_info->elapse_cycles += m_cycles;
-    //if (m_parent_func_perf_info)
-    //{
-    //    m_parent_func_perf_info->elapse_cycles -= m_cycles;
-    //}
+    m_func_perf_info->elapse_cycles += m_cycles;
+    if (m_parent_func_perf_info)
+    {
+        m_parent_func_perf_info->elapse_cycles -= m_cycles;
+    }
     m_mgr->m_cur_func_perf_info = m_parent_func_perf_info;
 }
 

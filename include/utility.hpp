@@ -122,10 +122,10 @@ public:
     CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr);
     ~CFuncPerformanceCheck(void);
 protected:
-    //unsigned long long m_cycles;
-    CFuncPerformanceInfo* m_parent_func_perf_info;
-    CFuncPerformanceInfo* m_func_perf_info;
-    HFUNCPERFMGR	m_mgr;
+    unsigned long long      m_cycles;
+    CFuncPerformanceInfo*   m_parent_func_perf_info;
+    CFuncPerformanceInfo*   m_func_perf_info;
+    HFUNCPERFMGR	        m_mgr;
 private:
 };
 
