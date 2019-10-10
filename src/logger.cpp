@@ -646,13 +646,7 @@ unsigned int log_thread::_proc_log()
                 {
                     break;
                 }
-#ifdef _MSC_VER
-                Sleep(1);
-#elif __GNUC__
-                usleep(1000);
-#else
-#error "unknown compiler"
-#endif
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
 
@@ -715,13 +709,7 @@ void log_thread::_log_func()
 
         if (!last_do_proc_count)
         {
-#ifdef _MSC_VER
-            Sleep(10);
-#elif __GNUC__
-            usleep(10000000);
-#else
-#error "unknown compiler"
-#endif
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
@@ -743,6 +731,39 @@ print_thread::~print_thread()
     m_print_thread.join();
 }
 
+#ifdef _MSC_VER
+void print_thread::_check_print(print_cmd* cmd)
+{
+    if (cmd->lv != m_last_level)
+    {
+        m_last_level = cmd->lv;
+
+        switch (m_last_level)
+        {
+        case log_sys:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_GREEN);
+            break;
+        case log_cri:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_RED);
+            break;
+        case log_wrn:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN);
+            break;
+        case log_inf:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_BLUE);
+            break;
+        case log_dbg:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+            break;
+        case log_nul:
+            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+            break;
+        default:
+            break;
+        }
+    }
+}
+#elif __GNUC__
 void print_thread::_check_print(print_cmd* cmd)
 {
     if (cmd->lv != m_last_level)
@@ -774,6 +795,9 @@ void print_thread::_check_print(print_cmd* cmd)
         }
     }
 }
+#else
+#error "unknown compiler"
+#endif
 
 void print_thread::_print_func()
 {
@@ -781,13 +805,7 @@ void print_thread::_print_func()
     {
         if (!_proc_print())
         {
-#ifdef _MSC_VER
-            Sleep(10);
-#elif __GNUC__
-            usleep(10000000);
-#else
-#error "unknown compiler"
-#endif
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
@@ -796,13 +814,7 @@ void print_thread::_print_func()
         if (g_logger_manager->log_thread_array[i].is_run())
         {
             i = 0;
-#ifdef _MSC_VER
-            Sleep(10);
-#elif __GNUC__
-            usleep(10000000);
-#else
-#error "unknown compiler"
-#endif
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
         else
@@ -1277,13 +1289,7 @@ void destroy_file_logger(file_logger* logger)
 
     while (logger->write_req->load() != logger->write_ack)
     {
-#ifdef _MSC_VER
-        Sleep(1);
-#elif __GNUC__
-        usleep(1000);
-#else
-#error "unknown compiler"
-#endif
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     while (!loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))

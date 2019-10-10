@@ -3,6 +3,11 @@
 #include <typeinfo>
 #include <string.h>
 #include "./smemory.hpp"
+#ifdef _MSC_VER
+#undef max
+#undef min
+#endif
+
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <fmt/printf.h>
