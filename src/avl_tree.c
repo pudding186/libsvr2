@@ -515,27 +515,53 @@ avl_node* avl_tree_insert_user(avl_tree* tree, void* key, void* user_data)
     avl_node** test = &(tree->root);
     avl_node* parent = 0;
 
-    while (*test)
+    if (tree->key_cmp)
     {
-        parent = *test;
+        while (*test)
+        {
+            parent = *test;
 
-        ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
+            ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            test = &(parent->avl_child[0]);
-        }
-        else if (cmp_ret > 0)
-        {
-            test = &(parent->avl_child[1]);
-        }
-        else
-        {
-            parent->key.v_pointer = key;
-            parent->value.v_pointer = user_data;
-            return parent;
+            if (cmp_ret < 0)
+            {
+                test = &(parent->avl_child[0]);
+            }
+            else if (cmp_ret > 0)
+            {
+                test = &(parent->avl_child[1]);
+            }
+            else
+            {
+                parent->key.v_pointer = key;
+                parent->value.v_pointer = user_data;
+                return parent;
+            }
         }
     }
+    else
+    {
+        while (*test)
+        {
+            parent = *test;
+
+            if (key < parent->key.v_pointer)
+            {
+                test = &(parent->avl_child[0]);
+            }
+            else if (key > parent->key.v_pointer)
+            {
+                test = &(parent->avl_child[1]);
+            }
+            else
+            {
+                parent->key.v_pointer = key;
+                parent->value.v_pointer = user_data;
+                return parent;
+            }
+        }
+    }
+
 
     node = (avl_node*)memory_unit_alloc(tree->node_unit);
 
@@ -554,24 +580,48 @@ bool avl_tree_try_insert_user(avl_tree* tree, void* key, void* user_data, avl_no
     avl_node** test = &(tree->root);
     avl_node* parent = 0;
 
-    while (*test)
+    if (tree->key_cmp)
     {
-        parent = *test;
+        while (*test)
+        {
+            parent = *test;
 
-        ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
+            ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            test = &(parent->avl_child[0]);
+            if (cmp_ret < 0)
+            {
+                test = &(parent->avl_child[0]);
+            }
+            else if (cmp_ret > 0)
+            {
+                test = &(parent->avl_child[1]);
+            }
+            else
+            {
+                *insert_or_exist_node = parent;
+                return false;
+            }
         }
-        else if (cmp_ret > 0)
+    }
+    else
+    {
+        while (*test)
         {
-            test = &(parent->avl_child[1]);
-        }
-        else
-        {
-            *insert_or_exist_node = parent;
-            return false;
+            parent = *test;
+
+            if (key < parent->key.v_pointer)
+            {
+                test = &(parent->avl_child[0]);
+            }
+            else if (key > parent->key.v_pointer)
+            {
+                test = &(parent->avl_child[1]);
+            }
+            else
+            {
+                *insert_or_exist_node = parent;
+                return false;
+            }
         }
     }
 
@@ -591,20 +641,39 @@ avl_node* avl_tree_find_user(avl_tree* tree, void* key)
 {
     avl_node* node = tree->root;
 
-    while (node)
+    if (tree->key_cmp)
     {
-        ptrdiff_t cmp_ret = tree->key_cmp(key, node->key.v_pointer);
+        while (node)
+        {
+            ptrdiff_t cmp_ret = tree->key_cmp(key, node->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            node = node->avl_child[0];
+            if (cmp_ret < 0)
+            {
+                node = node->avl_child[0];
+            }
+            else if (cmp_ret > 0)
+            {
+                node = node->avl_child[1];
+            }
+            else
+                return node;
         }
-        else if (cmp_ret > 0)
+    }
+    else
+    {
+        while (node)
         {
-            node = node->avl_child[1];
+            if (key < node->key.v_pointer)
+            {
+                node = node->avl_child[0];
+            }
+            else if (key > node->key.v_pointer)
+            {
+                node = node->avl_child[1];
+            }
+            else
+                return node;
         }
-        else
-            return node;
     }
 
     return 0;

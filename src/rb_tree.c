@@ -640,25 +640,50 @@ rb_node* rb_tree_insert_user(rb_tree* tree, void* key, void* user_data)
     rb_node** test = &(tree->root);
     rb_node* parent = 0;
 
-    while (*test)
+    if (tree->key_cmp)
     {
-        parent = *test;
+        while (*test)
+        {
+            parent = *test;
 
-        ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
+            ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            test = &(parent->rb_left);
+            if (cmp_ret < 0)
+            {
+                test = &(parent->rb_left);
+            }
+            else if (cmp_ret > 0)
+            {
+                test = &(parent->rb_right);
+            }
+            else
+            {
+                parent->key.v_pointer = key;
+                parent->value.v_pointer = user_data;
+                return parent;
+            }
         }
-        else if (cmp_ret > 0)
+    }
+    else
+    {
+        while (*test)
         {
-            test = &(parent->rb_right);
-        }
-        else
-        {
-            parent->key.v_pointer = key;
-            parent->value.v_pointer = user_data;
-            return parent;
+            parent = *test;
+
+            if (key < parent->key.v_pointer)
+            {
+                test = &(parent->rb_left);
+            }
+            else if (key > parent->key.v_pointer)
+            {
+                test = &(parent->rb_right);
+            }
+            else
+            {
+                parent->key.v_pointer = key;
+                parent->value.v_pointer = user_data;
+                return parent;
+            }
         }
     }
 
@@ -679,24 +704,48 @@ bool rb_tree_try_insert_user(rb_tree* tree, void* key, void* user_data, rb_node*
     rb_node** test = &(tree->root);
     rb_node* parent = 0;
 
-    while (*test)
+    if (tree->key_cmp)
     {
-        parent = *test;
+        while (*test)
+        {
+            parent = *test;
 
-        ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
+            ptrdiff_t cmp_ret = tree->key_cmp(key, parent->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            test = &(parent->rb_left);
+            if (cmp_ret < 0)
+            {
+                test = &(parent->rb_left);
+            }
+            else if (cmp_ret > 0)
+            {
+                test = &(parent->rb_right);
+            }
+            else
+            {
+                *insert_or_exist_node = parent;
+                return false;
+            }
         }
-        else if (cmp_ret > 0)
+    }
+    else
+    {
+        while (*test)
         {
-            test = &(parent->rb_right);
-        }
-        else
-        {
-            *insert_or_exist_node = parent;
-            return false;
+            parent = *test;
+
+            if (key < parent->key.v_pointer)
+            {
+                test = &(parent->rb_left);
+            }
+            else if (key > parent->key.v_pointer)
+            {
+                test = &(parent->rb_right);
+            }
+            else
+            {
+                *insert_or_exist_node = parent;
+                return false;
+            }
         }
     }
 
@@ -716,20 +765,39 @@ rb_node* rb_tree_find_user(rb_tree* tree, void* key)
 {
     rb_node* node = tree->root;
 
-    while (node)
+    if (tree->key_cmp)
     {
-        ptrdiff_t cmp_ret = tree->key_cmp(key, node->key.v_pointer);
+        while (node)
+        {
+            ptrdiff_t cmp_ret = tree->key_cmp(key, node->key.v_pointer);
 
-        if (cmp_ret < 0)
-        {
-            node = node->rb_left;
+            if (cmp_ret < 0)
+            {
+                node = node->rb_left;
+            }
+            else if (cmp_ret > 0)
+            {
+                node = node->rb_right;
+            }
+            else
+                return node;
         }
-        else if (cmp_ret > 0)
+    }
+    else
+    {
+        while (node)
         {
-            node = node->rb_right;
+            if (key < node->key.v_pointer)
+            {
+                node = node->rb_left;
+            }
+            else if (key > node->key.v_pointer)
+            {
+                node = node->rb_right;
+            }
+            else
+                return node;
         }
-        else
-            return node;
     }
 
     return 0;
