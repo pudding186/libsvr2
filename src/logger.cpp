@@ -180,9 +180,12 @@ public:
 
     ~log_proc_check(void)
     {
-        if (s_log_proc)
+        if (g_logger_manager)
         {
-            s_log_proc->is_run = false;
+            if (s_log_proc)
+            {
+                s_log_proc->is_run = false;
+            }
         }
     }
 
