@@ -476,7 +476,7 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)
         {
-            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
             err_msg = sys_error.what();
             err_msg.append("\n");
             return false;
@@ -525,7 +525,7 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
             cmd->logger->file = fopen(file_full_path, "a");
             if (!cmd->logger->file)
             {
-                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
                 err_msg = sys_error.what();
                 err_msg.append("\n");
                 return false;
@@ -554,7 +554,7 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)
         {
-            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
             err_msg = sys_error.what();
             err_msg.append("\n");
             return false;
