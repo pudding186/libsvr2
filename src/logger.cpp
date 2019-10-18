@@ -116,7 +116,7 @@ public:
 
     void _log_func();
 
-    bool _check_log(log_cmd* cmd, log_proc* proc);
+    bool _check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg);
 
     void _do_cmd(log_cmd* cmd, log_proc* proc);
 
@@ -216,6 +216,41 @@ log_thread::~log_thread()
 
 #ifdef _MSC_VER
 
+int mb_to_wc(unsigned int code_page, const char* src, int c_len, wchar_t* dst, int w_size)
+{
+    int translate_len = MultiByteToWideChar(code_page, 0, src, c_len, dst, w_size);
+
+    if (!translate_len)
+    {
+        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+        {
+            return MultiByteToWideChar(code_page, 0, src, c_len, 0, 0);
+        }
+
+        return 0;
+    }
+
+    return translate_len;
+}
+
+int wc_to_mb(unsigned int code_page, const wchar_t* src, int w_len, char* dst, int c_size)
+{
+    int translate_len = WideCharToMultiByte(code_page, 0, src, w_len, dst, c_size, 0, 0);
+
+    if (!translate_len)
+    {
+        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+        {
+            return WideCharToMultiByte(code_page, 0, src, w_len, 0, 0, 0, 0);
+        }
+
+        return 0;
+    }
+
+    return translate_len;
+}
+
+
 bool _mk_dir(const wchar_t* dir)
 {
     size_t i;
@@ -259,7 +294,7 @@ bool _mk_dir(const wchar_t* dir)
     return true;
 }
 
-bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
+bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
 {
     wchar_t file_full_path[MAX_LOG_FILE_PATH];
 
@@ -269,16 +304,23 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
     {
         localtime_s(&cmd->logger->file_time, &cur_time);
 
-        _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+        int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
             L"%ls/%ls_%04d-%02d-%02d.txt",
             cmd->logger->path, cmd->logger->name,
             cmd->logger->file_time.tm_year + 1900,
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday);
 
-        if (_wfopen_s(&cmd->logger->file, file_full_path, L"a"))
+        cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
+        if (!cmd->logger->file)
         {
-            CRUSH_CODE();
+            char sz_file_full_path[MAX_LOG_FILE_PATH];
+            int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+            sz_file_full_path[len] = 0;
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
+
             return false;
         }
 
@@ -315,16 +357,22 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
                 cmd->logger->file = 0;
             }
 
-            _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+            int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
                 L"%ls/%ls_%04d-%02d-%02d.txt",
                 cmd->logger->path, cmd->logger->name,
                 cmd->logger->file_time.tm_year + 1900,
                 cmd->logger->file_time.tm_mon + 1,
                 cmd->logger->file_time.tm_mday);
 
-            if (_wfopen_s(&cmd->logger->file, file_full_path, L"a"))
+            cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
+            if (!cmd->logger->file)
             {
-                CRUSH_CODE();
+                char sz_file_full_path[MAX_LOG_FILE_PATH];
+                int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+                sz_file_full_path[len] = 0;
+                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+                err_msg = sys_error.what();
+                err_msg.append("\n");
                 return false;
             }
 
@@ -340,7 +388,7 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
         fclose(cmd->logger->file);
         cmd->logger->file = 0;
 
-        _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+        int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
             L"%ls/%ls_%04d-%02d-%02d_%zu.txt",
             cmd->logger->path, cmd->logger->name,
             cmd->logger->file_time.tm_year + 1900,
@@ -348,9 +396,15 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
             cmd->logger->file_time.tm_mday,
             cmd->logger->file_idx);
 
-        if (_wfopen_s(&cmd->logger->file, file_full_path, L"a"))
+        cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
+        if (!cmd->logger->file)
         {
-            CRUSH_CODE();
+            char sz_file_full_path[MAX_LOG_FILE_PATH];
+            int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+            sz_file_full_path[len] = 0;
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
             return false;
         }
 
@@ -402,7 +456,7 @@ bool _mk_dir(const char* dir)
     return true;
 }
 
-bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
+bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
 {
     char file_full_path[MAX_LOG_FILE_PATH];
 
@@ -419,11 +473,12 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday);
 
-        //if (_wfopen_s(&cmd->logger->file, file_full_path, L"a"))
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)
         {
-            CRUSH_CODE();
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
             return false;
         }
 
@@ -470,7 +525,9 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
             cmd->logger->file = fopen(file_full_path, "a");
             if (!cmd->logger->file)
             {
-                CRUSH_CODE();
+                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+                err_msg = sys_error.what();
+                err_msg.append("\n");
                 return false;
             }
 
@@ -497,7 +554,9 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc)
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)
         {
-            CRUSH_CODE();
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: open file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
             return false;
         }
 
@@ -545,18 +604,32 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
     {
     case opt_write:
     {
-        _check_log(cmd, proc);
-
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
+        std::string err_msg;
         fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_to_buffer(out_data);
         out_data.push_back('\n');
 
-        size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-        write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+        if (_check_log(cmd, proc, err_msg))
+        {
+            size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
+            write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
 
-        cmd->logger->file_size += write_size;
+            cmd->logger->file_size += write_size;
+        }
+        else
+        {
+            print_cmd err_pt_cmd;
+            err_pt_cmd.data_len = err_msg.length();
+            err_pt_cmd.lv = log_cri;
+
+            if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + err_pt_cmd.data_len)
+            {
+                loop_cache_push_data(m_print_data_cache, &err_pt_cmd, sizeof(print_cmd));
+                loop_cache_push_data(m_print_data_cache, err_msg.c_str(), err_msg.length());
+            }
+        }
 
         cmd->logger->write_ack++;
 
@@ -574,18 +647,33 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
     break;
     case opt_write_c:
     {
-        _check_log(cmd, proc);
-
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
+        std::string err_msg;
         fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_c_to_buffer(out_data);
         out_data.push_back('\n');
 
-        size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-        write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+        if (_check_log(cmd, proc, err_msg))
+        {
+            size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
+            write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
 
-        cmd->logger->file_size += write_size;
+            cmd->logger->file_size += write_size;
+        }
+        else
+        {
+            print_cmd err_pt_cmd;
+            err_pt_cmd.data_len = err_msg.length();
+            err_pt_cmd.lv = log_cri;
+
+            if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + err_pt_cmd.data_len)
+            {
+                loop_cache_push_data(m_print_data_cache, &err_pt_cmd, sizeof(print_cmd));
+                loop_cache_push_data(m_print_data_cache, err_msg.c_str(), err_msg.length());
+            }
+        }
+
 
         cmd->logger->write_ack++;
 
