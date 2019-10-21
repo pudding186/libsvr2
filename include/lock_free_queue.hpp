@@ -1,4 +1,6 @@
 #pragma once
+
+#ifdef __cplusplus
 #include <atomic>
 #include <cstddef>
 
@@ -417,3 +419,14 @@ private:
     char cacheLinePad3[64];
 };
 
+extern "C" {
+#endif
+
+    HLOCKFREEPTRQUEUE (create_lock_free_ptr_queue)(size_t queue_size);
+    void (destroy_lock_free_ptr_queue)(HLOCKFREEPTRQUEUE ptr_queue);
+    bool (lock_free_ptr_queue_push)(HLOCKFREEPTRQUEUE ptr_queue, void* ptr);
+    void* (lock_free_ptr_queue_pop)(HLOCKFREEPTRQUEUE ptr_queue);
+
+#ifdef __cplusplus
+}
+#endif

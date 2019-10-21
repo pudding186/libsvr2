@@ -192,14 +192,6 @@ typedef struct st_loop_cache
     size_t  size;
 }loop_cache;
 
-typedef struct st_loop_ptr_queue 
-{
-    void** ptr_array;
-    size_t head;
-    size_t tail;
-    size_t size;
-}loop_ptr_queue;
-
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_json_node
 {
