@@ -3,6 +3,7 @@
 #ifdef __cplusplus
 #include <atomic>
 #include <cstddef>
+#include <new>
 
 template <typename T, bool multi_productor = true, bool multi_consumer = true>
 class LockFreeLoopQueue
