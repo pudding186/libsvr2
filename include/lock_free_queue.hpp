@@ -1,5 +1,5 @@
 #pragma once
-
+#include "./lib_svr_def.h"
 #ifdef __cplusplus
 #include <atomic>
 #include <cstddef>
