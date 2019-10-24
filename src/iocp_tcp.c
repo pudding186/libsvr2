@@ -10,6 +10,7 @@
 #include "../include/rb_tree.h"
 #include "../include/net_tcp.h"
 #include "../include/ssl_tcp.h"
+#include "../include/lock_free_queue.hpp"
 
 #define MAX_BACKLOG     256
 #define MAX_ADDR_SIZE   ((sizeof(struct sockaddr_in6)+16)*2)
@@ -218,12 +219,14 @@ typedef struct st_iocp_tcp_manager
     LPFN_GETACCEPTEXSOCKADDRS   func_getacceptexsockaddrs;
 
     CRITICAL_SECTION            evt_lock;
-    CRITICAL_SECTION            socket_lock;
+    CRITICAL_SECTION            mem_lock;
 
     HLOOPCACHE                  evt_queue;
     HTIMERMANAGER               timer_mgr;
 
-    HMEMORYUNIT                 socket_pool;
+    //HMEMORYUNIT                 socket_pool;
+    iocp_tcp_socket*            socket_array;
+    HLOCKFREEPTRQUEUE           socket_pool;
     HRBTREE                     memory_mgr;
 
     unsigned int                max_socket_num;
@@ -238,74 +241,144 @@ typedef struct st_iocp_tcp_manager
 void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_size)
 {
     HMEMORYUNIT unit;
-    HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+    HRBNODE mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
 
-    if (!memory_node)
+    if (!mem_node)
     {
-        unit = create_memory_unit(buffer_size);
-
-        if (!unit)
+        EnterCriticalSection(&mgr->mem_lock);
+        mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+        if (!mem_node)
         {
-            return 0;
+            HLOCKFREEPTRQUEUE unit_queue = create_lock_free_ptr_queue(1);
+            unit = create_memory_unit(buffer_size);
+
+            lock_free_ptr_queue_push(unit_queue, unit);
+
+            mem_node = rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit_queue);
         }
-
-        rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit);
+        LeaveCriticalSection(&mgr->mem_lock);
     }
-    else
+
+    unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
+    while (!unit)
     {
-        unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
+        unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
     }
 
-    return memory_unit_alloc(unit);
+    void* buffer = memory_unit_alloc(unit);
+
+    lock_free_ptr_queue_push((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node), unit);
+
+    return buffer;
 }
 
 void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned int buffer_size)
 {
-    HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+    HRBNODE mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+    HMEMORYUNIT unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
+    while (!unit)
+    {
+        unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
+    }
 
-    HMEMORYUNIT check_unit = rb_node_value_user(memory_node);
-
-    if (!memory_unit_check(check_unit, mem))
+    if (!memory_unit_check(unit, mem))
     {
         CRUSH_CODE();
     }
 
-    memory_unit_free(check_unit, mem);
+    memory_unit_free(unit, mem);
+
+    lock_free_ptr_queue_push((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node), unit);
 }
 
-iocp_ssl_data* _iocp_ssl_data_alloc(iocp_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
 {
-    iocp_ssl_data* data;
-    EnterCriticalSection(&mgr->socket_lock);
-    data = _iocp_tcp_manager_alloc_memory(mgr, sizeof(iocp_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
-    LeaveCriticalSection(&mgr->socket_lock);
+    sock_ptr->user_data = 0;
+    sock_ptr->state = SOCKET_STATE_NONE;
 
-    data->ssl_state = SSL_UN_HAND_SHAKE;
+    sock_ptr->recv_req = 0;
+    sock_ptr->recv_ack = 0;
 
-    data->ssl_recv_buf = ((char*)data) + sizeof(iocp_ssl_data);
-    data->ssl_send_buf = ((char*)data) + sizeof(iocp_ssl_data) + ssl_recv_cache_size;
+    sock_ptr->send_req = 0;
+    sock_ptr->send_ack = 0;
 
-    data->ssl_recv_buf_size = ssl_recv_cache_size;
-    data->ssl_send_buf_size = ssl_send_cache_size;
+    sock_ptr->data_need_send = 0;
+    sock_ptr->data_has_send = 0;
 
-    data->ssl_read_length = 0;
-    data->ssl_write_length = 0;
+    sock_ptr->data_has_recv = 0;
 
-    data->ssl = 0;
-    data->bio[BIO_RECV] = 0;
-    data->bio[BIO_SEND] = 0;
+    sock_ptr->data_delay_send_size = 0;
 
-    InitializeCriticalSection(&data->ssl_lock);
+    //sock_ptr->local_addr_info = 0;AF_INET6
+    //sock_ptr->peer_addr_info = 0;
+    memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
+    memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
 
-    return data;
+    sock_ptr->timer_send = 0;
+    sock_ptr->timer_close = 0;
 }
 
-void _iocp_ssl_data_free(iocp_tcp_manager* mgr, iocp_ssl_data* data)
+iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
 {
-    DeleteCriticalSection(&data->ssl_lock);
-    EnterCriticalSection(&mgr->socket_lock);
-    _iocp_tcp_manager_free_memory(mgr, data, sizeof(iocp_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
-    LeaveCriticalSection(&mgr->socket_lock);
+    if (recv_buf_size < 1024)
+    {
+        recv_buf_size = 1024;
+    }
+
+    if (send_buf_size < 1024)
+    {
+        send_buf_size = 1024;
+    }
+
+    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)lock_free_ptr_queue_pop(mgr->socket_pool);
+
+    if (sock_ptr)
+    {
+        if (sock_ptr->mgr != mgr)
+        {
+            CRUSH_CODE();
+        }
+
+        _iocp_tcp_socket_reset(sock_ptr);
+
+        if (!sock_ptr->recv_loop_cache || !sock_ptr->send_loop_cache)
+        {
+            if (sock_ptr->send_loop_cache || sock_ptr->recv_loop_cache)
+            {
+                CRUSH_CODE();
+            }
+
+            sock_ptr->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
+            sock_ptr->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
+        }
+        else
+        {
+            if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
+            {
+                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
+                loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
+            }
+
+            if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
+            {
+                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
+                loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
+            }
+
+            loop_cache_reinit(sock_ptr->recv_loop_cache);
+            loop_cache_reinit(sock_ptr->send_loop_cache);
+        }
+    }
+
+    return sock_ptr;
+}
+
+void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_ptr)
+{
+    if (sock_ptr)
+    {
+        lock_free_ptr_queue_push(mgr->socket_pool, sock_ptr);
+    }
 }
 
 bool _init_server_ssl_data(iocp_tcp_listener* listener, iocp_ssl_data* data)
@@ -382,33 +455,6 @@ void _uninit_ssl_data(iocp_ssl_data* data)
 
 //////////////////////////////////////////////////////////////////////////
 
-void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
-{
-    sock_ptr->user_data = 0;
-    sock_ptr->state = SOCKET_STATE_NONE;
-
-    sock_ptr->recv_req = 0;
-    sock_ptr->recv_ack = 0;
-
-    sock_ptr->send_req = 0;
-    sock_ptr->send_ack = 0;
-
-    sock_ptr->data_need_send = 0;
-    sock_ptr->data_has_send = 0;
-
-    sock_ptr->data_has_recv = 0;
-
-    sock_ptr->data_delay_send_size = 0;
-
-    //sock_ptr->local_addr_info = 0;AF_INET6
-    //sock_ptr->peer_addr_info = 0;
-    memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
-    memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
-
-    sock_ptr->timer_send = 0;
-    sock_ptr->timer_close = 0;
-}
-
 bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* sock_ptr)
 {
     if (CreateIoCompletionPort((HANDLE)sock_ptr->tcp_socket, sock_ptr->mgr->iocp_port, (ULONG_PTR)sock_ptr, 0))
@@ -417,83 +463,6 @@ bool _iocp_tcp_socket_bind_iocp_port(iocp_tcp_socket* sock_ptr)
     }
 
     return false;
-}
-
-iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
-{
-    iocp_tcp_socket* sock_ptr = 0;
-
-    if (recv_buf_size < 1024)
-    {
-        recv_buf_size = 1024;
-    }
-
-    if (send_buf_size < 1024)
-    {
-        send_buf_size = 1024;
-    }
-
-    EnterCriticalSection(&mgr->socket_lock);
-    sock_ptr = memory_unit_alloc(mgr->socket_pool);
-
-    if (sock_ptr)
-    {
-        if (sock_ptr->mgr != mgr)
-        {
-            CRUSH_CODE();
-        }
-
-        _iocp_tcp_socket_reset(sock_ptr);
-
-        if (!sock_ptr->recv_loop_cache)
-        {
-            if (sock_ptr->send_loop_cache)
-            {
-                CRUSH_CODE();
-            }
-
-            sock_ptr->recv_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size), recv_buf_size);
-            sock_ptr->send_loop_cache = create_loop_cache(_iocp_tcp_manager_alloc_memory(mgr, send_buf_size), send_buf_size);
-        }
-        else
-        {
-            if ((unsigned int)loop_cache_size(sock_ptr->recv_loop_cache) != recv_buf_size)
-            {
-                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->recv_loop_cache), (unsigned int)loop_cache_size(sock_ptr->recv_loop_cache));
-                loop_cache_reset(sock_ptr->recv_loop_cache, recv_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, recv_buf_size));
-            }
-
-            if ((unsigned int)loop_cache_size(sock_ptr->send_loop_cache) != send_buf_size)
-            {
-                _iocp_tcp_manager_free_memory(mgr, loop_cache_get_cache(sock_ptr->send_loop_cache), (unsigned int)loop_cache_size(sock_ptr->send_loop_cache));
-                loop_cache_reset(sock_ptr->send_loop_cache, send_buf_size, (char*)_iocp_tcp_manager_alloc_memory(mgr, send_buf_size));
-            }
-        }
-
-        LeaveCriticalSection(&mgr->socket_lock);
-
-        loop_cache_reinit(sock_ptr->recv_loop_cache);
-        loop_cache_reinit(sock_ptr->send_loop_cache);
-
-        return sock_ptr;
-    }
-    else
-    {
-        LeaveCriticalSection(&mgr->socket_lock);
-        return 0;
-    }
-}
-
-void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_ptr)
-{
-    if (sock_ptr->ssl_data)
-    {
-        _uninit_ssl_data(sock_ptr->ssl_data);
-        _iocp_ssl_data_free(mgr, sock_ptr->ssl_data);
-    }
-    EnterCriticalSection(&mgr->socket_lock);
-    memory_unit_free(mgr->socket_pool, sock_ptr);
-    LeaveCriticalSection(&mgr->socket_lock);
 }
 
 #define EVENT_LOCK EnterCriticalSection(&sock_ptr->mgr->evt_lock)
@@ -1220,88 +1189,6 @@ bool _iocp_tcp_socket_post_connect_req(iocp_tcp_socket* sock_ptr)
     return false;
 }
 
-//bool _iocp_tcp_connector_connect(iocp_tcp_socket* socket_ptr, 
-//    const char * ip,
-//    unsigned short port,
-//    bool reuse_addr,
-//    const char * bind_ip,
-//    unsigned short bind_port)
-//{
-//    struct addrinfo hints;
-//    struct addrinfo* result = 0;
-//    char sz_port[64];
-//
-//    ZeroMemory(&hints, sizeof(struct addrinfo));
-//    hints.ai_family = AF_UNSPEC;
-//    hints.ai_socktype = SOCK_STREAM;
-//    hints.ai_protocol = 0;
-//
-//    if (bind_ip)
-//    {
-//        hints.ai_flags = AI_PASSIVE;
-//
-//        _itoa_s(bind_port, sz_port, sizeof(sz_port), 10);
-//
-//        if (getaddrinfo(bind_ip, sz_port, &hints, &result))
-//        {
-//            if (result)
-//            {
-//                freeaddrinfo(result);
-//            }
-//
-//            return false;
-//        }
-//        else
-//        {
-//            memcpy(&socket_ptr->local_sockaddr,
-//                result->ai_addr,
-//                min(sizeof(socket_ptr->local_sockaddr), result->ai_addrlen));
-//            freeaddrinfo(result);
-//            result = 0;
-//        }
-//    }
-//
-//    {
-//        hints.ai_flags = 0;
-//        _itoa_s(port, sz_port, sizeof(sz_port), 10);
-//
-//        if (getaddrinfo(ip, sz_port, &hints, &result))
-//        {
-//            if (result)
-//            {
-//                freeaddrinfo(result);
-//            }
-//
-//            return false;
-//        }
-//        else
-//        {
-//            memcpy(&socket_ptr->peer_sockaddr,
-//                result->ai_addr,
-//                min(sizeof(socket_ptr->peer_sockaddr), result->ai_addrlen));
-//            freeaddrinfo(result);
-//            result = 0;
-//        }
-//    }
-//
-//    if (socket_ptr->local_sockaddr.sin6_family)
-//    {
-//        if (socket_ptr->local_sockaddr.sin6_family != socket_ptr->peer_sockaddr.sin6_family)
-//        {
-//            return false;
-//        }
-//    }
-//
-//    socket_ptr->state = SOCKET_STATE_CONNECT;
-//
-//    if (!_iocp_tcp_socket_post_connect_req(socket_ptr, reuse_addr))
-//    {
-//        return false;
-//    }
-//
-//    return true;
-//}
-
 void _iocp_tcp_socket_connect_ex(iocp_tcp_socket* socket_ptr)
 {
     ++socket_ptr->recv_ack;
@@ -1776,22 +1663,22 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
 
     if (listener->svr_ssl_ctx)
     {
-        sock_ptr->ssl_data = _iocp_ssl_data_alloc(listener->mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
-        if (!sock_ptr->ssl_data)
-        {
-			CRUSH_CODE();
-        }
+   //     sock_ptr->ssl_data = _iocp_ssl_data_alloc(listener->mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+   //     if (!sock_ptr->ssl_data)
+   //     {
+			//CRUSH_CODE();
+   //     }
 
-        if (!_init_server_ssl_data(listener, sock_ptr->ssl_data))
-        {
-            _iocp_tcp_socket_close(sock_ptr, error_ssl);
-            return;
-        }
+   //     if (!_init_server_ssl_data(listener, sock_ptr->ssl_data))
+   //     {
+   //         _iocp_tcp_socket_close(sock_ptr, error_ssl);
+   //         return;
+   //     }
 
-        if (!_iocp_ssl_socket_post_recv(sock_ptr))
-        {
-            _iocp_tcp_socket_close(sock_ptr, error_system);
-        }
+   //     if (!_iocp_ssl_socket_post_recv(sock_ptr))
+   //     {
+   //         _iocp_tcp_socket_close(sock_ptr, error_system);
+   //     }
     }
     else
     {
@@ -2424,16 +2311,36 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
 
     if (mgr->memory_mgr)
     {
-        HRBNODE memory_node = rb_first(mgr->memory_mgr);
-        while (memory_node)
+        HRBNODE mem_node = rb_first(mgr->memory_mgr);
+        while (mem_node)
         {
-            destroy_memory_unit((HMEMORYUNIT)rb_node_value_user(memory_node));
-            memory_node = rb_next(memory_node);
+            HLOCKFREEPTRQUEUE unit_queue = (HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node);
+            HMEMORYUNIT unit = lock_free_ptr_queue_pop(unit_queue);
+            while (!unit)
+            {
+                unit = lock_free_ptr_queue_pop(unit_queue);
+            }
+
+            destroy_memory_unit(unit);
+            destroy_lock_free_ptr_queue(unit_queue);
+
+            mem_node = rb_next(mem_node);
         }
 
         destroy_memory_unit(rb_node_unit(mgr->memory_mgr));
         destroy_memory_unit(rb_tree_unit(mgr->memory_mgr));
         mgr->memory_mgr = 0;
+
+        //HRBNODE memory_node = rb_first(mgr->memory_mgr);
+        //while (memory_node)
+        //{
+        //    destroy_memory_unit((HMEMORYUNIT)rb_node_value_user(memory_node));
+        //    memory_node = rb_next(memory_node);
+        //}
+
+        //destroy_memory_unit(rb_node_unit(mgr->memory_mgr));
+        //destroy_memory_unit(rb_tree_unit(mgr->memory_mgr));
+        //mgr->memory_mgr = 0;
     }
 
     if (mgr->timer_mgr)
@@ -2444,8 +2351,15 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
 
     if (mgr->socket_pool)
     {
-        destroy_memory_unit(mgr->socket_pool);
+        //destroy_memory_unit(mgr->socket_pool);
+        destroy_lock_free_ptr_queue(mgr->socket_pool);
         mgr->socket_pool = 0;
+    }
+
+    if (mgr->socket_array)
+    {
+        free(mgr->socket_array);
+        mgr->socket_array = 0;
     }
 
     if (mgr->iocp_port)
@@ -2457,7 +2371,7 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
     WSACleanup();
 
     DeleteCriticalSection(&mgr->evt_lock);
-    DeleteCriticalSection(&mgr->socket_lock);
+    DeleteCriticalSection(&mgr->mem_lock);
 
     free(mgr);
 }
@@ -2468,9 +2382,9 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
 {
     WORD version_requested;
     WSADATA wsa_data;
-    unsigned int i;
+    //unsigned int i;
 
-    iocp_tcp_socket** arry_socket_ptr = 0;
+    //iocp_tcp_socket** arry_socket_ptr = 0;
 
     iocp_tcp_manager* mgr = (iocp_tcp_manager*)malloc(sizeof(struct st_iocp_tcp_manager));
 
@@ -2485,7 +2399,7 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
     mgr->def_parse_packet = func_parse_packet;
 
     InitializeCriticalSection(&mgr->evt_lock);
-    InitializeCriticalSection(&mgr->socket_lock);
+    InitializeCriticalSection(&mgr->mem_lock);
 
     version_requested = MAKEWORD(2, 2);
 
@@ -2506,38 +2420,19 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
         goto ERROR_DEAL;
     }
 
-    mgr->socket_pool = create_memory_unit(sizeof(struct st_iocp_tcp_socket));
-    if (!mgr->socket_pool)
+    mgr->socket_array = (iocp_tcp_socket*)malloc(sizeof(struct st_iocp_tcp_socket)*mgr->max_socket_num);
+    mgr->socket_pool = create_lock_free_ptr_queue(mgr->max_socket_num);
+
+    for (unsigned int i = 0; i < mgr->max_socket_num; i++)
     {
-        goto ERROR_DEAL;
+        mgr->socket_array[i].mgr = mgr;
+        mgr->socket_array[i].recv_loop_cache = 0;
+        mgr->socket_array[i].send_loop_cache = 0;
+        mgr->socket_array[i].iocp_recv_data.pt.sock_ptr = &mgr->socket_array[i];
+        mgr->socket_array[i].iocp_send_data.pt.sock_ptr = &mgr->socket_array[i];
+
+        lock_free_ptr_queue_push(mgr->socket_pool, &mgr->socket_array[i]);
     }
-    else
-    {
-        memory_unit_set_grow_count(mgr->socket_pool, mgr->max_socket_num);
-    }
-
-    arry_socket_ptr = (iocp_tcp_socket**)malloc(sizeof(iocp_tcp_socket*)*max_socket_num);
-
-    for (i = 0; i < max_socket_num; i++)
-    {
-        arry_socket_ptr[i] = memory_unit_alloc(mgr->socket_pool);
-
-        arry_socket_ptr[i]->mgr = mgr;
-        arry_socket_ptr[i]->recv_loop_cache = 0;
-        arry_socket_ptr[i]->send_loop_cache = 0;
-        arry_socket_ptr[i]->iocp_recv_data.pt.sock_ptr = arry_socket_ptr[i];
-        arry_socket_ptr[i]->iocp_send_data.pt.sock_ptr = arry_socket_ptr[i];
-    }
-
-    memory_unit_set_grow_count(mgr->socket_pool, 0);
-
-    for (i = 0; i < max_socket_num; i++)
-    {
-        memory_unit_free(mgr->socket_pool, arry_socket_ptr[i]);
-    }
-
-    free(arry_socket_ptr);
-    arry_socket_ptr = 0;
 
     mgr->evt_queue = create_loop_cache(0, mgr->max_socket_num * 5 * sizeof(struct st_net_event));
     if (!mgr->evt_queue)
@@ -2719,14 +2614,14 @@ iocp_tcp_socket* net_ssl_connect(
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet)
 {
-    iocp_tcp_socket* socket_ptr = _iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
+    iocp_tcp_socket* socket_ptr = 0;//_iocp_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
 
     if (!socket_ptr)
     {
         return 0;
     }
 
-    socket_ptr->ssl_data = _iocp_ssl_data_alloc(mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+    socket_ptr->ssl_data = 0;// _iocp_ssl_data_alloc(mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
     if (!socket_ptr->ssl_data)
     {
         _iocp_tcp_manager_free_socket(mgr, socket_ptr);
