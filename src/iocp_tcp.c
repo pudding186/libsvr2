@@ -2000,7 +2000,10 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
         {
             if (loop_cache_free_size(sock_ptr->recv_loop_cache))
             {
-                _iocp_tcp_socket_post_recv_req(sock_ptr);
+                if (_iocp_tcp_socket_post_recv_req(sock_ptr))
+                {
+                    _iocp_tcp_socket_close(sock_ptr, error_system);
+                }
             }
             else
             {
