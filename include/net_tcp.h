@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-extern HNETMANAGER(create_net_tcp)(
+extern HTCPMANAGER (create_net_tcp)(
 	pfn_on_establish func_on_establish,
 	pfn_on_terminate func_on_terminate,
 	pfn_on_error func_on_error,
@@ -27,10 +27,10 @@ extern HNETMANAGER(create_net_tcp)(
 	unsigned int max_accept_ex_num
 	);
 
-extern void (destroy_net_tcp)(HNETMANAGER mgr);
+extern void (destroy_net_tcp)(HTCPMANAGER mgr);
 
 extern HSESSION(net_tcp_connect)(
-	HNETMANAGER mgr,
+    HTCPMANAGER mgr,
 	const char* ip,
 	unsigned short port,
 	unsigned int recv_buf_size,
@@ -45,7 +45,7 @@ extern HSESSION(net_tcp_connect)(
 	pfn_parse_packet func_parse_packet);
 
 extern HLISTENER(net_tcp_listen)(
-	HNETMANAGER mgr,
+    HTCPMANAGER mgr,
 	const char * ip,
 	unsigned short port,
 	unsigned int recv_buf_size,
@@ -63,7 +63,7 @@ extern void (net_tcp_close_session)(HSESSION session);
 
 extern void (net_tcp_close_listener)(HLISTENER listener);
 
-extern bool (net_tcp_run)(HNETMANAGER mgr, unsigned int run_time);
+extern bool (net_tcp_run)(HTCPMANAGER mgr, unsigned int run_time);
 
 #ifdef _MSC_VER
 extern SOCKET (net_tcp_session_socket)(HSESSION session);

@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-extern HWSMANAGER(create_ws_manager)(HNETMANAGER net_mgr,
+extern HWSMANAGER(create_ws_manager)(HTCPMANAGER net_mgr,
         pfn_on_open func_on_open,
         pfn_on_close func_on_close,
         pfn_on_fail func_on_fail,

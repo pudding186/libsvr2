@@ -17,7 +17,7 @@ extern SSL_CTX* create_client_ssl_ctx(void);
 extern void destroy_ssl_ctx(SSL_CTX* ssl_ctx);
 
 
-extern HLISTENER(net_ssl_listen)(HNETMANAGER mgr,
+extern HLISTENER(net_ssl_listen)(HTCPMANAGER mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,
@@ -30,7 +30,7 @@ extern HLISTENER(net_ssl_listen)(HNETMANAGER mgr,
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet);
 
-extern HSESSION(net_ssl_connect)(HNETMANAGER mgr,
+extern HSESSION(net_ssl_connect)(HTCPMANAGER mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,

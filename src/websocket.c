@@ -56,7 +56,7 @@ typedef enum e_extension_options
 
 typedef struct st_ws_manager
 {
-    HNETMANAGER         net_mgr;
+    HTCPMANAGER         net_mgr;
 
     pfn_on_open         func_on_open;
     pfn_on_close        func_on_close;
@@ -1463,7 +1463,7 @@ void _ws_on_recv(HSESSION session, const char* data, const unsigned int len)
     }
 }
 
-ws_manager* create_ws_manager(HNETMANAGER net_mgr,
+ws_manager* create_ws_manager(HTCPMANAGER net_mgr,
     pfn_on_open func_on_open,
     pfn_on_close func_on_close,
     pfn_on_fail func_on_fail,
