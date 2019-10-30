@@ -25,6 +25,7 @@
 #define SOCKET_STATE_TERMINATE  5
 #define SOCKET_STATE_DELETE     6
 #define SOCKET_STATE_ACCEPT     7
+#define SOCKET_STATE_CLOSE      8
 
 #define IOCP_OPT_RECV           0
 #define IOCP_OPT_SEND           1
@@ -32,6 +33,7 @@
 #define IOCP_OPT_CONNECT        3
 #define IOCP_OPT_CONNECT_REQ    4
 #define IOCP_OPT_ACCEPT_REQ     5
+#define IOCP_OPT_CLOSE_REQ      6
 
 #define NET_EVENT_ESTABLISH     1
 #define NET_EVENT_TERMINATE     2
@@ -197,6 +199,8 @@ typedef struct st_iocp_tcp_socket
     pfn_on_terminate            on_terminate;
     pfn_on_error                on_error;
     pfn_on_recv                 on_recv;
+    net_tcp_error               error;
+    int                         err_code;
     struct st_iocp_tcp_manager* mgr;
     //struct st_iocp_ssl_data*    ssl_data;
 }iocp_tcp_socket;
@@ -633,47 +637,97 @@ void _push_recv_active_event(iocp_tcp_socket* sock_ptr)
     }
 }
 
-void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error)
+void _iocp_tcp_socket_on_close(iocp_tcp_socket* sock_ptr)
+{
+    switch (sock_ptr->error)
+    {
+    case error_system:
+    {
+        sock_ptr->state = SOCKET_STATE_DELETE;
+        if (sock_ptr->tcp_socket != INVALID_SOCKET)
+        {
+            closesocket(sock_ptr->tcp_socket);
+            sock_ptr->tcp_socket = INVALID_SOCKET;
+        }
+
+        _push_system_error_event(sock_ptr, sock_ptr->err_code);
+    }
+    break;
+    case error_send_overflow:
+    case error_recv_overflow:
+    case error_packet:
+    {
+        _push_module_error_event(sock_ptr, sock_ptr->error);
+    }
+    break;
+    case error_ok:
+    {
+        _push_terminate_event(sock_ptr);
+    }
+    break;
+    default:
+    {
+        CRUSH_CODE();
+    }
+    }
+}
+
+void _mod_timer_close(iocp_tcp_socket* sock_ptr, unsigned int elapse)
+{
+    if (sock_ptr->timer_send)
+    {
+        timer_del(sock_ptr->timer_send);
+        sock_ptr->timer_send = 0;
+    }
+
+    if (sock_ptr->timer_close)
+    {
+        timer_mod(sock_ptr->timer_close, elapse, -1, sock_ptr);
+        return;
+    }
+
+    sock_ptr->timer_close = timer_add(sock_ptr->mgr->timer_mgr, elapse, -1, sock_ptr);
+
+    if (!sock_ptr->timer_close)
+    {
+        CRUSH_CODE();
+    }
+}
+
+void _iocp_tcp_socket_close(iocp_tcp_socket* sock_ptr, net_tcp_error error, int err_code, bool is_iocp_thread)
 {
     if (SOCKET_STATE_ESTABLISH == InterlockedCompareExchange(&sock_ptr->state, SOCKET_STATE_TERMINATE, SOCKET_STATE_ESTABLISH))
     {
-        switch (error)
-        {
-        case error_system:
-        {
-            sock_ptr->state = SOCKET_STATE_DELETE;
-            if (sock_ptr->tcp_socket != INVALID_SOCKET)
-            {
-                closesocket(sock_ptr->tcp_socket);
-                sock_ptr->tcp_socket = INVALID_SOCKET;
-            }
+        sock_ptr->error = error;
+        sock_ptr->err_code = err_code;
 
-            _push_system_error_event(sock_ptr, WSAGetLastError());
-        }
-        break;
-        case error_send_overflow:
-        case error_recv_overflow:
-        case error_packet:
+        if (is_iocp_thread)
         {
-            _push_module_error_event(sock_ptr, error);
+            _iocp_tcp_socket_on_close(sock_ptr);
         }
-        break;
-        case error_ssl:
+        else
         {
-            CRUSH_CODE();
-        }
-        break;
-        case error_ok:
-        {
-            _push_terminate_event(sock_ptr);
-        }
-        break;
-        default:
-        {
-            CRUSH_CODE();
-        }
+            sock_ptr->state = SOCKET_STATE_CLOSE;
+            _mod_timer_close(sock_ptr, 1);
         }
     }
+}
+
+bool _iocp_tcp_socket_post_close_req(iocp_tcp_socket* sock_ptr)
+{
+    ZeroMemory(&sock_ptr->iocp_send_data.over_lapped, sizeof(sock_ptr->iocp_send_data.over_lapped));
+
+    ++sock_ptr->send_req;
+
+    sock_ptr->iocp_send_data.operation = IOCP_OPT_CLOSE_REQ;
+
+    if (PostQueuedCompletionStatus(sock_ptr->mgr->iocp_port, 0, (ULONG_PTR)sock_ptr, &sock_ptr->iocp_send_data.over_lapped))
+    {
+        return true;
+    }
+
+    --sock_ptr->send_req;
+    return false;
 }
 
 bool _iocp_tcp_socket_post_recv_req(iocp_tcp_socket* sock_ptr)
@@ -1043,7 +1097,7 @@ void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     ++sock_ptr->recv_ack;
     if (!ret)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
         return;
     }
 
@@ -1056,7 +1110,7 @@ void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     {
     case 0:
     {
-        _iocp_tcp_socket_close(sock_ptr, error_ok);
+        _iocp_tcp_socket_close(sock_ptr, error_ok, 0, true);
         return;
     }
     break;
@@ -1081,7 +1135,7 @@ void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
     {
         if (!_iocp_tcp_socket_post_recv(sock_ptr))
         {
-            _iocp_tcp_socket_close(sock_ptr, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
         }
     }
     else
@@ -1097,13 +1151,14 @@ void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
 
     if (!ret)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
 
         InterlockedIncrement(&sock_ptr->send_ack);
         return;
     }
 
     if ((sock_ptr->state != SOCKET_STATE_ESTABLISH) &&
+        (sock_ptr->state != SOCKET_STATE_CLOSE) &&
         (sock_ptr->state != SOCKET_STATE_TERMINATE))
     {
         InterlockedIncrement(&sock_ptr->send_ack);
@@ -1112,7 +1167,7 @@ void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
 
     if (0 == trans_byte)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+        _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
 
         InterlockedIncrement(&sock_ptr->send_ack);
         return;
@@ -1142,7 +1197,7 @@ void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
 
         if (!_iocp_tcp_socket_post_send(sock_ptr))
         {
-            _iocp_tcp_socket_close(sock_ptr, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
         }
     }
 
@@ -1417,7 +1472,7 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
 
     if (!_iocp_tcp_socket_post_recv(sock_ptr))
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
     }
 
     return;
@@ -1429,28 +1484,6 @@ ERROR_DEAL:
     sock_ptr->tcp_socket = INVALID_SOCKET;
 
     _push_connect_fail_event(sock_ptr, WSAGetLastError());
-}
-
-void _mod_timer_close(iocp_tcp_socket* sock_ptr, unsigned int elapse)
-{
-    if (sock_ptr->timer_send)
-    {
-        timer_del(sock_ptr->timer_send);
-        sock_ptr->timer_send = 0;
-    }
-
-    if (sock_ptr->timer_close)
-    {
-        timer_mod(sock_ptr->timer_close, elapse, -1, sock_ptr);
-        return;
-    }
-
-    sock_ptr->timer_close = timer_add(sock_ptr->mgr->timer_mgr, elapse, -1, sock_ptr);
-
-    if (!sock_ptr->timer_close)
-    {
-        CRUSH_CODE();
-    }
 }
 
 void _mod_timer_send(iocp_tcp_socket* sock_ptr, unsigned int elapse)
@@ -1625,7 +1658,7 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
 
     if (!_iocp_tcp_socket_post_recv(sock_ptr))
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
     }
 }
 
@@ -1850,7 +1883,7 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
             {
                 if (pkg_len > sock_ptr->data_has_recv)
                 {
-                    _iocp_tcp_socket_close(sock_ptr, error_packet);
+                    _iocp_tcp_socket_close(sock_ptr, error_packet, 0, false);
                     break;
                 }
 
@@ -1927,12 +1960,12 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
             {
                 if (!_iocp_tcp_socket_post_recv_req(sock_ptr))
                 {
-                    _iocp_tcp_socket_close(sock_ptr, error_system);
+                    _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), false);
                 }
             }
             else
             {
-                _iocp_tcp_socket_close(sock_ptr, error_recv_overflow);
+                _iocp_tcp_socket_close(sock_ptr, error_recv_overflow, 0, false);
             }
         }
     }
@@ -1993,13 +2026,23 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         }
         break;
         case IOCP_OPT_CONNECT_REQ:
+        {
             _iocp_tcp_socket_connect_ex(iocp_data_ptr->pt.sock_ptr);
-            break;
+        }
+        break;
         case IOCP_OPT_CONNECT:
+        {
             _iocp_tcp_socket_on_connect(iocp_data_ptr->pt.sock_ptr, ret);
-            break;
+        }
+        break;
         case IOCP_OPT_ACCEPT_REQ:
             break;
+        case IOCP_OPT_CLOSE_REQ:
+        {
+            iocp_data_ptr->pt.sock_ptr->send_ack++;
+            _iocp_tcp_socket_on_close(iocp_data_ptr->pt.sock_ptr);
+        }
+        break;
         }
     }
 }
@@ -2079,7 +2122,7 @@ void _iocp_tcp_socket_on_timer_send(iocp_tcp_socket* sock_ptr)
             {
                 if (!_iocp_tcp_socket_post_send_req(sock_ptr))
                 {
-                    _iocp_tcp_socket_close(sock_ptr, error_system);
+                    _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), false);
                 }
             }
         }
@@ -2090,22 +2133,52 @@ void _iocp_tcp_socket_on_timer_close(iocp_tcp_socket* sock_ptr)
 {
     switch (sock_ptr->state)
     {
-    case SOCKET_STATE_TERMINATE:
+    case SOCKET_STATE_CLOSE:
     {
-        if (sock_ptr->data_need_send != sock_ptr->data_has_send)
+        if (sock_ptr->error == error_ok)
         {
-            if (sock_ptr->send_req == sock_ptr->send_ack)
+            if (sock_ptr->data_need_send != sock_ptr->data_has_send)
             {
-                if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+                if (sock_ptr->send_req == sock_ptr->send_ack)
                 {
-                    sock_ptr->state = SOCKET_STATE_DELETE;
+                    if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+                    {
+                        sock_ptr->data_need_send = sock_ptr->data_has_send;
+                    }
                 }
-            }
 
-            return;
+                return;
+            }
         }
 
-        shutdown(sock_ptr->tcp_socket, SD_RECEIVE);
+        if (sock_ptr->send_req == sock_ptr->send_ack)
+        {
+            if (_iocp_tcp_socket_post_close_req(sock_ptr))
+            {
+                sock_ptr->state = SOCKET_STATE_TERMINATE;
+                timer_del(sock_ptr->timer_close);
+                sock_ptr->timer_close = 0;
+            }
+        }
+    }
+    break;
+    case SOCKET_STATE_TERMINATE:
+    {
+        if (sock_ptr->error == error_ok)
+        {
+            if (sock_ptr->data_need_send != sock_ptr->data_has_send)
+            {
+                if (sock_ptr->send_req == sock_ptr->send_ack)
+                {
+                    if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+                    {
+                        sock_ptr->state = SOCKET_STATE_DELETE;
+                    }
+                }
+
+                return;
+            }
+        }
 
         sock_ptr->state = SOCKET_STATE_DELETE;
     }
@@ -2642,7 +2715,7 @@ bool net_tcp_send(iocp_tcp_socket* sock_ptr, const void* data, unsigned int len)
 
     if (!loop_cache_push_data(sock_ptr->send_loop_cache, data, len))
     {
-        _iocp_tcp_socket_close(sock_ptr, error_send_overflow);
+        _iocp_tcp_socket_close(sock_ptr, error_send_overflow, 0, false);
         return false;
     }
 
@@ -2657,7 +2730,7 @@ bool net_tcp_send(iocp_tcp_socket* sock_ptr, const void* data, unsigned int len)
     {
         if (!_iocp_tcp_socket_post_send_req(sock_ptr))
         {
-            _iocp_tcp_socket_close(sock_ptr, error_system);
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), false);
             return false;
         }
     }
@@ -2667,7 +2740,7 @@ bool net_tcp_send(iocp_tcp_socket* sock_ptr, const void* data, unsigned int len)
 
 void net_tcp_close_session(iocp_tcp_socket* sock_ptr)
 {
-    _iocp_tcp_socket_close(sock_ptr, error_ok);
+    _iocp_tcp_socket_close(sock_ptr, error_ok, 0, false);
 }
 
 bool net_tcp_run(iocp_tcp_manager* mgr, unsigned int run_time)
