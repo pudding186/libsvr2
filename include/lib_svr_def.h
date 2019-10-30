@@ -40,7 +40,7 @@ typedef struct st_iocp_tcp_manager*     HTCPMANAGER;
 #elif __GNUC__
 typedef struct st_epoll_tcp_socket*      HSESSION;
 typedef struct st_epoll_tcp_listener*    HLISTENER;
-typedef struct st_epoll_tcp_manager*     HNETMANAGER;
+typedef struct st_epoll_tcp_manager*     HTCPMANAGER;
 #else
 #error "unknown compiler"
 #endif
