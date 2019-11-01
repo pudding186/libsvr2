@@ -96,21 +96,6 @@ typedef struct st_ws_listener*  HWSLISTENER;
 typedef struct st_ws_manager*   HWSMANAGER;
 typedef void*                   HSSLCTX;
 
-//typedef enum e_web_socket_error
-//{
-//    error_web_socket_http       = -6,
-//    error_web_socket_packet     = -5,
-//    error_web_socket_tcp        = -4,
-//    error_web_socket_connect    = -3,
-//    error_web_socket_upgrade    = -2,
-//    error_web_socket_ok         = 0,
-//}web_socket_error;
-//
-//typedef enum e_message_type
-//{
-//    message_text = 1,
-//    message_binary = 2,
-//}message_type;
 typedef enum e_ws_error
 {
     ws_error_ok = 0,
@@ -134,7 +119,28 @@ typedef void (*pfn_on_close)(HWSSESSION ws_session, unsigned short status_code);
 typedef void (*pfn_on_fail)(HWSSESSION ws_session, ws_error error, int error_code);
 typedef void (*pfn_on_message)(HWSSESSION ws_session, ws_op_code code, const char* data, const unsigned int len);
 
+//////////////////////////////////////////////////////////////////////////
+#ifdef _MSC_VER
+typedef struct st_iocp_kcp_udp_socket*      HKCPSESSION;
+typedef struct st_iocp_kcp_udp_listener*    HKCPLISTENER;
+typedef struct st_iocp_kcp_udp_manager*     HKCPMANAGER;
+#elif __GNUC__
 
+#else
+#error "unknown compiler"
+#endif
+
+
+typedef enum e_net_kcp_error
+{
+
+}net_kcp_error;
+
+typedef unsigned int(*pfn_parse_kcp_packet)(HKCPSESSION session, const char* data, const unsigned int len);
+typedef void(*pfn_on_connect)(HKCPLISTENER kcp_listener, HKCPSESSION kcp_session);
+typedef void(*pfn_on_disconnect)(HKCPSESSION kcp_session);
+typedef void(*pfn_on_wrong)(HKCPSESSION kcp_session, net_kcp_error error, int error_code);
+typedef void(*pfn_on_data)(HKCPSESSION kcp_session, const char* data, const unsigned int len);
 
 //////////////////////////////////////////////////////////////////////////
 typedef enum e_json_value_type
