@@ -238,7 +238,7 @@ typedef struct st_epoll_tcp_socket
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
     struct st_epoll_tcp_listener*   listener;
-	struct st_epoll_ssl_data*		ssl_data;
+	struct st_epoll_ssl_data*		ssl_data_ptr;
 
     HLOOPCACHE                      recv_loop_cache;
     HLOOPCACHE                      send_loop_cache;
@@ -385,7 +385,7 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->need_recv_active = false;
 
     sock_ptr->user_data = 0;
-	//sock_ptr->ssl_data = 0;
+    sock_ptr->ssl_data_ptr = 0;
 }
 
 bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
@@ -493,7 +493,7 @@ void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* da
     _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_data.ssl_recv_buf_size + data->ssl_data.ssl_send_buf_size);
 }
 
-epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size, SSL_CTX* ssl_ctx_data)
+epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
 {
     epoll_ssl_data* data_ptr = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
 
@@ -1118,6 +1118,10 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
             {
                 timer_del(sock_ptr->timer_close);
                 sock_ptr->timer_close = 0;
+                if (sock_ptr->ssl_data_ptr)
+                {
+                    _epoll_tcp_manager_free_ssl_data(sock_ptr->mgr, sock_ptr->ssl_data_ptr);
+                }
                 _epoll_tcp_manager_free_socket(sock_ptr->mgr, sock_ptr);
             }
         }
@@ -1198,25 +1202,27 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
         CRUSH_CODE();
     }
 
-	//if (sock_ptr->ssl_data)
-	//{
-	//	if (!_init_server_ssl_data(sock_ptr->listener, sock_ptr->ssl_data))
-	//	{
-	//		close(sock_ptr->sock_fd);
-	//		sock_ptr->sock_fd = -1;
-	//		sock_ptr->state = SOCKET_STATE_DELETE;
-	//		_epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
-	//		return;
-	//	}
-	//}
-
 	if (_epoll_tcp_socket_proc_add(proc, sock_ptr))
 	{
+        sock_ptr->state = SOCKET_STATE_ESTABLISH;
 
-		sock_ptr->state = SOCKET_STATE_ESTABLISH;
-		_epoll_tcp_socket_get_sockaddr(sock_ptr);
+        if (sock_ptr->ssl_data_ptr)
+        {
+            if (!init_server_ssl_data(&sock_ptr->ssl_data_ptr->ssl_data.core, sock_ptr->listener->svr_ssl_ctx))
+            {
+                close(sock_ptr->sock_fd);
+                sock_ptr->sock_fd = -1;
+                sock_ptr->state = SOCKET_STATE_DELETE;
+                _epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
+                return;
+            }
+        }
+        else
+        {
+            _epoll_tcp_socket_get_sockaddr(sock_ptr);
 
-        _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+            _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+        }
 	}
 	else
 	{
@@ -1435,6 +1441,11 @@ ERROR_DEAL:
 
 void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
+    if (sock_ptr->ssl_data_ptr)
+    {
+        uninit_ssl_data(sock_ptr->ssl_data_ptr->ssl_data.core);
+    }
+
     if (sock_ptr->sock_fd != -1)
     {
         _epoll_tcp_socket_proc_del(proc, sock_ptr);
@@ -2114,11 +2125,11 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 
             if (listener->svr_ssl_ctx)
             {
-                sock_ptr->ssl_data = _epoll_tcp_manager_alloc_ssl_data()
+                sock_ptr->ssl_data_ptr = _epoll_tcp_manager_alloc_ssl_data(listener->mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
             }
             else
             {
-                sock_ptr->ssl_data = 0;
+                sock_ptr->ssl_data_ptr = 0;
             }
 
 			_epoll_tcp_proc_push_req_accept(sock_ptr->proc, sock_ptr);
