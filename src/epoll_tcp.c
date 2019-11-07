@@ -491,7 +491,7 @@ extern void uninit_ssl_data(net_ssl_core* core);
 void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
 {
     uninit_ssl_data(&data->ssl_data.core);
-    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size)
+    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_data->ssl_recv_buf_size + data->ssl_data->ssl_send_buf_size);
 }
 
 epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size, SSL_CTX* ssl_ctx_data)
