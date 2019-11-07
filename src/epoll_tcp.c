@@ -485,8 +485,8 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
     memory_unit_free(check_unit, mem);
 }
 
-extern bool init_ssl_data(net_ssl_data* data, SSL_CTX* ssl_ctx_data);
-extern void uninit_ssl_data(net_ssl_data* data);
+extern bool init_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data);
+extern void uninit_ssl_data(net_ssl_core* core);
 
 epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size, SSL_CTX* ssl_ctx_data)
 {
@@ -503,11 +503,11 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
     data_ptr->ssl_data.ssl_read_length = 0;
     data_ptr->ssl_data.ssl_write_length = 0;
 
-    data_ptr->ssl_data.ssl = 0;
-    data_ptr->ssl_data.bio[BIO_RECV] = 0;
-    data_ptr->ssl_data.bio[BIO_SEND] = 0;
+    data_ptr->ssl_data.core.ssl = 0;
+    data_ptr->ssl_data.core.bio[BIO_RECV] = 0;
+    data_ptr->ssl_data.core.bio[BIO_SEND] = 0;
 
-    if (init_ssl_data(data_ptr->ssl_data, ssl_ctx_data))
+    if (init_ssl_data(&data_ptr->ssl_data.core, ssl_ctx_data))
     {
         return data_ptr;
     }
@@ -519,7 +519,7 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
 
 void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
 {
-    uninit_ssl_data(data->ssl_data);
+    uninit_ssl_data(&data->ssl_data.core);
     _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size)
 }
 
