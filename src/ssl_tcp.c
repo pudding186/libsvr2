@@ -193,7 +193,7 @@ void destroy_ssl_ctx(SSL_CTX* ssl_ctx)
     }
 }
 
-bool init_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
+bool init_server_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
 {
     core->ssl = SSL_new(ssl_ctx_data);
     if (!core->ssl)
@@ -211,6 +211,32 @@ bool init_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
     }
 
     SSL_set_bio(core->ssl, core->bio[BIO_RECV], core->bio[BIO_SEND]);
+
+    SSL_set_accept_state(core->ssl);
+
+    return true;
+}
+
+bool init_client_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
+{
+    core->ssl = SSL_new(ssl_ctx_data);
+    if (!core->ssl)
+    {
+        return false;
+    }
+
+    core->bio[BIO_RECV] = BIO_new(BIO_s_mem());
+    core->bio[BIO_SEND] = BIO_new(BIO_s_mem());
+
+    if ((!core->bio[BIO_RECV]) ||
+        (!core->bio[BIO_SEND]))
+    {
+        return false;
+    }
+
+    SSL_set_bio(core->ssl, core->bio[BIO_RECV], core->bio[BIO_SEND]);
+
+    SSL_set_connect_state(core->ssl);
 
     return true;
 }

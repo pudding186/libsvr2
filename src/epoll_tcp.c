@@ -195,7 +195,6 @@ typedef struct st_net_request
 
 typedef struct st_epoll_tcp_listener
 {
-    /* data */
     void*                           user_data;
     pfn_parse_packet                pkg_parser;
     pfn_on_establish                on_establish;
@@ -205,7 +204,7 @@ typedef struct st_epoll_tcp_listener
 
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
-	//SSL_CTX*						svr_ssl_ctx;
+	SSL_CTX*						svr_ssl_ctx;
 
     int                             sock_fd;
     long                            state;
@@ -239,7 +238,7 @@ typedef struct st_epoll_tcp_socket
     struct st_epoll_tcp_manager*    mgr;
     struct st_epoll_tcp_proc*       proc;
     struct st_epoll_tcp_listener*   listener;
-	//struct st_epoll_ssl_data*		ssl_data;
+	struct st_epoll_ssl_data*		ssl_data;
 
     HLOOPCACHE                      recv_loop_cache;
     HLOOPCACHE                      send_loop_cache;
@@ -490,7 +489,7 @@ extern void uninit_ssl_data(net_ssl_core* core);
 
 void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
 {
-    uninit_ssl_data(&data->ssl_data.core);
+    //uninit_ssl_data(&data->ssl_data.core);
     _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_data.ssl_recv_buf_size + data->ssl_data.ssl_send_buf_size);
 }
 
@@ -513,12 +512,12 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
     data_ptr->ssl_data.core.bio[BIO_RECV] = 0;
     data_ptr->ssl_data.core.bio[BIO_SEND] = 0;
 
-    if (init_ssl_data(&data_ptr->ssl_data.core, ssl_ctx_data))
-    {
-        return data_ptr;
-    }
+    //if (init_ssl_data(&data_ptr->ssl_data.core, ssl_ctx_data))
+    //{
+    //    return data_ptr;
+    //}
 
-    _epoll_tcp_manager_free_ssl_data(mgr, data_ptr);
+    //_epoll_tcp_manager_free_ssl_data(mgr, data_ptr);
 
     return 0;
 }
@@ -2113,6 +2112,15 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 
 			sock_ptr->listener = listener;
 
+            if (listener->svr_ssl_ctx)
+            {
+                sock_ptr->ssl_data = _epoll_tcp_manager_alloc_ssl_data()
+            }
+            else
+            {
+                sock_ptr->ssl_data = 0;
+            }
+
 			_epoll_tcp_proc_push_req_accept(sock_ptr->proc, sock_ptr);
 		}
 		else
@@ -2567,7 +2575,87 @@ epoll_tcp_listener* net_tcp_listen(
 
     listener->user_data = 0;
     listener->mgr = mgr;
-	//listener->svr_ssl_ctx = 0;
+	listener->svr_ssl_ctx = 0;
+
+    if (func_on_establish)
+    {
+        listener->on_establish = func_on_establish;
+    }
+    else
+    {
+        listener->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        listener->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        listener->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        listener->on_error = func_on_error;
+    }
+    else
+    {
+        listener->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        listener->on_recv = func_on_recv;
+    }
+    else
+    {
+        listener->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        listener->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        listener->pkg_parser = mgr->def_parse_packet;
+    }
+
+    if (!_epoll_tcp_listener_listen(listener, ip, port, reuse_addr))
+    {
+        free(listener);
+        return 0;
+    }
+
+    return listener;
+}
+
+epoll_tcp_listener* net_ssl_listen(
+    epoll_tcp_manager* mgr,
+    const char* ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    SSL_CTX* svr_ssl_ctx,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
+    epoll_tcp_listener* listener = (epoll_tcp_listener*)malloc(sizeof(epoll_tcp_listener));
+
+    listener->recv_buf_size = recv_buf_size;
+    listener->send_buf_size = send_buf_size;
+
+    listener->accept_pop = 0;
+    listener->accept_push = 0;
+
+    listener->user_data = 0;
+    listener->mgr = mgr;
+    listener->svr_ssl_ctx = svr_ssl_ctx;
 
     if (func_on_establish)
     {
