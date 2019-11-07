@@ -499,8 +499,8 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
 
     data->ssl_state = SSL_UN_HAND_SHAKE;
 
-    data->ssl_recv_buf = ((char*)data) + sizeof(iocp_ssl_data);
-    data->ssl_send_buf = ((char*)data) + sizeof(iocp_ssl_data) + ssl_recv_cache_size;
+    data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
+    data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
 
     data->ssl_recv_buf_size = ssl_recv_cache_size;
     data->ssl_send_buf_size = ssl_send_cache_size;
