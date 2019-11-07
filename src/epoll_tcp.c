@@ -488,6 +488,12 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
 extern bool init_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data);
 extern void uninit_ssl_data(net_ssl_core* core);
 
+void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
+{
+    uninit_ssl_data(&data->ssl_data.core);
+    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size)
+}
+
 epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size, SSL_CTX* ssl_ctx_data)
 {
     epoll_ssl_data* data_ptr = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
@@ -516,13 +522,6 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
 
     return 0;
 }
-
-void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
-{
-    uninit_ssl_data(&data->ssl_data.core);
-    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size)
-}
-
 
 epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
 {
