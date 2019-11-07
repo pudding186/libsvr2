@@ -493,6 +493,28 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
     memory_unit_free(check_unit, mem);
 }
 
+epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+{
+    epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+
+    data->ssl_state = SSL_UN_HAND_SHAKE;
+
+    data->ssl_recv_buf = ((char*)data) + sizeof(iocp_ssl_data);
+    data->ssl_send_buf = ((char*)data) + sizeof(iocp_ssl_data) + ssl_recv_cache_size;
+
+    data->ssl_recv_buf_size = ssl_recv_cache_size;
+    data->ssl_send_buf_size = ssl_send_cache_size;
+
+    data->ssl_read_length = 0;
+    data->ssl_write_length = 0;
+
+    data->ssl = 0;
+    data->bio[BIO_RECV] = 0;
+    data->bio[BIO_SEND] = 0;
+
+    return data;
+}
+
 
 epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
 {
