@@ -218,15 +218,7 @@ typedef struct st_epoll_tcp_listener
 
 typedef struct st_epoll_ssl_data
 {
-	SSL*                ssl;
-	BIO*                bio[2];
-	char*               ssl_recv_buf;
-	unsigned int        ssl_recv_buf_size;
-	char*               ssl_send_buf;
-	unsigned int        ssl_send_buf_size;
-	unsigned int        ssl_read_length;
-	unsigned int        ssl_write_length;
-	unsigned int        ssl_state;
+    net_ssl_data            ssl_data;
 	union
 	{
 		epoll_tcp_listener* ssl_listener;
@@ -493,26 +485,42 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
     memory_unit_free(check_unit, mem);
 }
 
-epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+extern bool init_ssl_data(net_ssl_data* data, SSL_CTX* ssl_ctx_data);
+extern void uninit_ssl_data(net_ssl_data* data);
+
+epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size, SSL_CTX* ssl_ctx_data)
 {
-    epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+    epoll_ssl_data* data_ptr = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
 
-    data->ssl_state = SSL_UN_HAND_SHAKE;
+    data_ptr->ssl_data.ssl_state = SSL_UN_HAND_SHAKE;
 
-    data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
-    data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
+    data_ptr->ssl_data.ssl_recv_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data);
+    data_ptr->ssl_data.ssl_send_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
 
-    data->ssl_recv_buf_size = ssl_recv_cache_size;
-    data->ssl_send_buf_size = ssl_send_cache_size;
+    data_ptr->ssl_data.ssl_recv_buf_size = ssl_recv_cache_size;
+    data_ptr->ssl_data.ssl_send_buf_size = ssl_send_cache_size;
 
-    data->ssl_read_length = 0;
-    data->ssl_write_length = 0;
+    data_ptr->ssl_data.ssl_read_length = 0;
+    data_ptr->ssl_data.ssl_write_length = 0;
 
-    data->ssl = 0;
-    data->bio[BIO_RECV] = 0;
-    data->bio[BIO_SEND] = 0;
+    data_ptr->ssl_data.ssl = 0;
+    data_ptr->ssl_data.bio[BIO_RECV] = 0;
+    data_ptr->ssl_data.bio[BIO_SEND] = 0;
 
-    return data;
+    if (init_ssl_data(data_ptr->ssl_data, ssl_ctx_data))
+    {
+        return data_ptr;
+    }
+
+    _epoll_tcp_manager_free_ssl_data(mgr, data_ptr);
+
+    return 0;
+}
+
+void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
+{
+    uninit_ssl_data(data->ssl_data);
+    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size)
 }
 
 
@@ -587,32 +595,32 @@ bool _epoll_tcp_manager_is_socket(epoll_tcp_manager* mgr, void* ptr)
 	return memory_unit_check(mgr->socket_pool, ptr);
 }
 
-epoll_ssl_data* _epoll_ssl_data_alloc(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
-{
-	epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
-
-	data->ssl_state = SSL_UN_HAND_SHAKE;
-
-	data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
-	data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
-
-	data->ssl_recv_buf_size = ssl_recv_cache_size;
-	data->ssl_send_buf_size = ssl_send_cache_size;
-
-	data->ssl_read_length = 0;
-	data->ssl_write_length = 0;
-
-	data->ssl = 0;
-	data->bio[BIO_RECV] = 0;
-	data->bio[BIO_SEND] = 0;
-
-	return data;
-}
-
-void _epoll_ssl_data_free(epoll_tcp_manager* mgr, epoll_ssl_data* data)
-{
-	_epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
-}
+//epoll_ssl_data* _epoll_ssl_data_alloc(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+//{
+//	epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
+//
+//	data->ssl_state = SSL_UN_HAND_SHAKE;
+//
+//	data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
+//	data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
+//
+//	data->ssl_recv_buf_size = ssl_recv_cache_size;
+//	data->ssl_send_buf_size = ssl_send_cache_size;
+//
+//	data->ssl_read_length = 0;
+//	data->ssl_write_length = 0;
+//
+//	data->ssl = 0;
+//	data->bio[BIO_RECV] = 0;
+//	data->bio[BIO_SEND] = 0;
+//
+//	return data;
+//}
+//
+//void _epoll_ssl_data_free(epoll_tcp_manager* mgr, epoll_ssl_data* data)
+//{
+//	_epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
+//}
 
 //bool _init_server_ssl_data(epoll_tcp_listener* listener, epoll_ssl_data* data)
 //{

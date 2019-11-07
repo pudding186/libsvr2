@@ -1,6 +1,10 @@
 #pragma once
 #include "../include/lib_svr_def.h"
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509v3.h>
+
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -230,6 +234,24 @@ typedef struct st_json_struct
 
 #define SSL_UN_HAND_SHAKE       0
 #define SSL_HAND_SHAKE          1
+
+typedef struct st_net_ssl_core
+{
+    SSL*                ssl;
+    BIO*                bio[2];
+}net_ssl_core;
+
+typedef struct st_net_ssl_data
+{
+    net_ssl_core        core;
+    char*               ssl_recv_buf;
+    unsigned int        ssl_recv_buf_size;
+    char*               ssl_send_buf;
+    unsigned int        ssl_send_buf_size;
+    unsigned int        ssl_read_length;
+    unsigned int        ssl_write_length;
+    unsigned int        ssl_state;
+}net_ssl_data;
 
 //////////////////////////////////////////////////////////////////////////
 
