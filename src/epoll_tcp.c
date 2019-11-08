@@ -1694,8 +1694,8 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     {
         bio_ret = BIO_read(
             sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND], 
-            sock_ptr->ssl_data->ssl_send_buf, 
-            sock_ptr->ssl_data->ssl_send_buf_size);
+            sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf,
+            sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size);
 
         if (bio_ret > 0)
         {
