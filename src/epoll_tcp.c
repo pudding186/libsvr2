@@ -1514,124 +1514,59 @@ void _epoll_tcp_socket_close(epoll_tcp_socket* sock_ptr, net_tcp_error error, in
     }
 }
 
-//void _epoll_tcp_ssl_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
-//{
-	//if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
-	//{
-	//	return;
-	//}
+void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
+        sock_ptr->state != SOCKET_STATE_TERMINATE)
+    {
+        return;
+    }
 
-	//int bio_ret;
-	//int ssl_ret;
-	//unsigned int decrypt_len = 0;
-	//int data_recv = 0;
+    size_t send_len = 0;
+    char* send_ptr = 0;
 
-	//bool need_close = false;
-	//bool need_recv_activate = false;
+    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
 
-	//for (;;)
-	//{
-	//	data_recv = recv(sock_ptr->sock_fd, sock_ptr->ssl_data.ssl_recv_buf, sock_ptr->ssl_data->ssl_recv_buf_size, 0);
+    while (send_len)
+    {
+        int data_send = send(sock_ptr->sock_fd, send_ptr, send_len, 0);
 
-	//	if (data_recv > 0)
-	//	{
-	//		bio_ret = BIO_write(sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data.ssl_recv_buf, data_recv);
+        if (data_send > 0)
+        {
+            sock_ptr->data_has_send += data_send;
+            loop_cache_pop(sock_ptr->send_loop_cache, data_send);
+        }
+        else if (data_send < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            else if (errno == EAGAIN ||
+                errno == EWOULDBLOCK)
+            {
+                sock_ptr->need_send_active = false;
+                return;
+            }
+            else
+            {
+                _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
+                return;
+            }
+        }
+        else
+        {
+            CRUSH_CODE();
+        }
 
-	//		if (bio_ret <= 0)
-	//		{
-	//			if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, bio_ret)))
-	//			{
-	//				_epoll_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
-	//				return;
-	//			}
-	//			need_recv_activate = true;
-	//			break;
-	//		}
-	//		else
-	//		{
-	//			if (bio_ret != data_recv)
-	//			{
-	//				CRUSH_CODE();
-	//			}
-	//		}
-	//	}
-	//	else if (data_recv < 0)
-	//	{
-	//		if (errno == EINTR)
-	//		{
-	//			continue;
-	//		}
-	//		else if (errno == EAGAIN ||
-	//			errno == EWOULDBLOCK)
-	//		{
-	//			break;
-	//		}
-	//		else
-	//		{
-	//			_epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
-	//			return;
-	//		}
-	//	}
-	//	else
-	//	{
-	//		need_close = true;
-	//		break;
-	//	}
-	//}
+        send_len = 0;
+        send_ptr = 0;
 
-	//for (;;)
-	//{
-	//	char* free_data_ptr = 0;
-	//	size_t free_data_len = 0;
-	//	loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_ptr, &free_data_len);
+        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+    }
 
-	//	if (free_data_len)
-	//	{
-	//		ssl_ret = SSL_read(sock_ptr->ssl_data->ssl, free_data_ptr, (int)free_data_len);
-
-	//		if (ssl_ret > 0)
-	//		{
-	//			if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
-	//			{
-	//				CRUSH_CODE();
-	//			}
-	//			decrypt_len += ssl_ret;
-	//		}
-	//		else
-	//		{
-	//			if (_is_ssl_error(SSL_get_error(sock_ptr->ssl_data->ssl, ssl_ret)))
-	//			{
-	//				_epoll_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
-	//				return;
-	//			}
-	//			break;
-	//		}
-	//	}
-	//	else
-	//	{
-	//		break;
-	//	}
-	//}
-
-	//if (sock_ptr->ssl_data->ssl_state == SSL_UN_HAND_SHAKE)
-	//{
-	//	if (sock_ptr->send_req == sock_ptr->send_ack)
-	//	{
-	//		_epoll_tcp_socket_on_send(proc, req->sock_ptr);
-	//	}
-
-	//	if (SSL_is_init_finished(sock_ptr->ssl_data->ssl))
-	//	{
-	//		sock_ptr->ssl_data->ssl_state = SSL_HAND_SHAKE;
-	//		_epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
-	//	}
-	//}
-	//else
-	//{
-	//	_epoll_tcp_proc_push_evt_data(proc, sock_ptr, decrypt_len);
-	//}
-
-//}
+    sock_ptr->need_send_active = true;
+}
 
 void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
@@ -1708,6 +1643,11 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 
     sock_ptr->need_send_active = true;
     _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
+}
+
+void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+
 }
 
 void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
@@ -1855,66 +1795,6 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     {
         _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
     }
-}
-
-
-void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
-{
-    if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
-        sock_ptr->state != SOCKET_STATE_TERMINATE)
-    {
-        return;
-    }
-
-    size_t send_len = 0;
-    char* send_ptr = 0;
-
-    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
-
-    while (send_len)
-    {
-        int data_send = send(sock_ptr->sock_fd, send_ptr, send_len, 0);
-
-        if (data_send > 0)
-        {
-            sock_ptr->data_has_send += data_send;
-            loop_cache_pop(sock_ptr->send_loop_cache, data_send);
-        }
-        else if (data_send < 0)
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            else if (errno == EAGAIN ||
-                errno == EWOULDBLOCK)
-            {
-                sock_ptr->need_send_active = false;
-                return;
-            }
-            else
-            {
-                _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
-                return;
-            }
-        }
-        else
-        {
-            CRUSH_CODE();
-        }
-
-        send_len = 0;
-        send_ptr = 0;
-
-        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
-    }
-
-    sock_ptr->need_send_active = true;
-}
-
-void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
-{
-
 }
 
 void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
