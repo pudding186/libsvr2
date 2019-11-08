@@ -261,6 +261,21 @@ void uninit_ssl_data(net_ssl_core* core)
     }
 }
 
+bool is_ssl_error(int ssl_error)
+{
+    switch (ssl_error)
+    {
+    case SSL_ERROR_NONE:
+    case SSL_ERROR_WANT_READ:
+    case SSL_ERROR_WANT_WRITE:
+    case SSL_ERROR_WANT_CONNECT:
+    case SSL_ERROR_WANT_ACCEPT:
+        return false;
+
+    default: return true;
+    }
+}
+
 #endif
 
 
