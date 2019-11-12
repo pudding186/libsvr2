@@ -1640,7 +1640,7 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
     }
 
-    sock_ptr->need_send_active = true;
+    sock_ptr->need_recv_active = true;
     _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
 }
 
@@ -1649,6 +1649,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     int bio_ret;
     int ssl_ret;
 
+    net_tcp_error error_type = error_none;
     int error_code;
 
     if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
@@ -1657,14 +1658,15 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         return;
     }
 
-    size_t send_len = 0;
-    char* send_ptr = 0;
 
-    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+    char* data_ptr = 0;
+    size_t data_len = 0;
 
-    while (send_len)
+    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
+
+    while (data_len)
     {
-        ssl_ret = SSL_write(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, send_ptr, (int)send_len);
+        ssl_ret = SSL_write(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, data_ptr, (int)data_len);
 
         if (ssl_ret > 0)
         {
@@ -1672,89 +1674,67 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             {
                 CRUSH_CODE();
             }
-
-            send_ptr = 0;
-            send_len = 0;
-
-            loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
         }
         else
         {
             error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
-                _epoll_tcp_socket_close(sock_ptr, error_ssl, error_code, true);
-                return;
+                error_type = error_ssl;
             }
             break;
         }
+
+        data_ptr = 0;
+        data_len = 0;
+        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
     }
 
-    if (BIO_pending(sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND]))
+
+    for (;;)
     {
-        bio_ret = BIO_read(
-            sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND], 
-            sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf,
-            sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size);
-
-        if (bio_ret > 0)
+        if (BIO_pending(sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND]))
         {
-            //sock_ptr->ssl_data_ptr->ssl_data.ssl_write_length += bio_ret;
-        }
-        else
-        {
-            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, bio_ret);
+            bio_ret = BIO_read(
+                sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND],
+                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf,
+                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size);
 
-            if (is_ssl_error(error_code))
+            if (bio_ret > 0)
             {
-                _epoll_tcp_socket_close(sock_ptr, error_ssl, error_code, true);
-                return;
+                int data_send = send(sock_ptr->sock_fd, sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf, bio_ret);
+
+                if (data_send > 0)
+                {
+                }
+                else if (data_send < 0)
+                {
+                }
+                else
+                {
+
+                }
+            }
+            else
+            {
             }
         }
-    }
-
-    int data_send = send(sock_ptr->sock_fd, sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf, bio_ret, 0);
-
-    if (data_send > 0)
-    {
-
-    }
-    else if (data_send < 0)
-    {
-        if (errno == EINTR)
-        {
-            continue;
-        }
-        else if (errno == EAGAIN ||
-            errno == EWOULDBLOCK)
-        {
-            sock_ptr->need_send_active = false;
-            return;
-        }
         else
         {
-            _epoll_tcp_socket_close(sock_ptr, error_system, errno, true);
-            return;
+            break;
         }
     }
-    else
-    {
-        CRUSH_CODE();
-    }
-
-
-
 }
 
 void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
     int bio_ret;
     int ssl_ret;
-    unsigned int data_push_len = 0;
+
+    net_tcp_error error_type = error_none;
     int error_code;
-    net_tcp_error err;
-    bool need_close = false;
-    
+
+    unsigned int decrypt_data_push_len = 0;
 
     if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
     {
@@ -1784,7 +1764,16 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             {
                 error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, bio_ret);
 
-                CRUSH_CODE();
+                if (is_ssl_error(error_code))
+                {
+                    error_type = error_ssl;
+                }
+                else
+                {
+                    sock_ptr->need_recv_active = true;
+                }
+
+                break;
             }
             else
             {
@@ -1792,45 +1781,6 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
                 {
                     CRUSH_CODE();
                 }
-            }
-
-            char* free_data_ptr = 0;
-            size_t free_data_len = 0;
-
-            loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
-
-            while (free_data_len)
-            {
-                ssl_ret = SSL_read(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, free_data_ptr, (int)free_data_len);
-                if (ssl_ret > 0)
-                {
-                    if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
-                    {
-                        CRUSH_CODE();
-                    }
-                    data_push_len += ssl_ret;
-                }
-                else
-                {
-                    error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, ssl_ret);
-                    if (is_ssl_error(error_code))
-                    {
-                        err = error_ssl;
-                        need_close = true;
-                    }
-                    break;
-                }
-
-                free_data_ptr = 0;
-                free_data_len = 0;
-
-                loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
-            }
-
-            if (!free_data_len)
-            {
-                sock_ptr->need_recv_active = true;
-                break;
             }
         }
         else if (data_recv < 0)
@@ -1846,28 +1796,65 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             }
             else
             {
-                err = error_system;
+                error_type = error_system;
                 error_code = errno;
-                need_close = true;
-
                 break;
             }
         }
         else
         {
-            err = error_ok;
+            error_type = error_ok;
             error_code = 0;
-            need_close = true;
-
             break;
         }
     }
 
+    char* free_data_ptr = 0;
+    size_t free_data_len = 0;
+
+    loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+
+    while (free_data_len)
+    {
+        ssl_ret = SSL_read(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, free_data_ptr, (int)free_data_len);
+        if (ssl_ret > 0)
+        {
+            if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
+            {
+                CRUSH_CODE();
+            }
+
+            decrypt_data_push_len += ssl_ret;
+        }
+        else
+        {
+            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, ssl_ret);
+
+            if (is_ssl_error(error_code))
+            {
+                error_type = error_ssl;
+            }
+
+            break;
+        }
+
+
+        free_data_ptr = 0;
+        free_data_len = 0;
+        loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+    }
+
+    if (error_type != error_none)
+    {
+        _epoll_tcp_socket_close(sock_ptr, error_type, error_code, true);
+        return;
+    }
+
     if (sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE)
     {
-        if (data_push_len)
+        if (decrypt_data_push_len)
         {
-            _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
+            _epoll_tcp_proc_push_evt_data(proc, sock_ptr, decrypt_data_push_len);
         }
     }
     else
@@ -1881,10 +1868,9 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
     }
 
-    if (need_close)
+    if (!free_data_len)
     {
-        _epoll_tcp_socket_close(sock_ptr, err, error_code, true);
-        return;
+        sock_ptr->need_recv_active = true;
     }
 
     if (sock_ptr->need_recv_active)
