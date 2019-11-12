@@ -219,11 +219,6 @@ typedef struct st_epoll_tcp_listener
 typedef struct st_epoll_ssl_data
 {
     net_ssl_data            ssl_data;
-	union
-	{
-		epoll_tcp_listener* ssl_listener;
-		SSL_CTX*            ssl_ctx_client;
-	}ssl_pt;
 }epoll_ssl_data;
 
 typedef struct st_epoll_tcp_socket
@@ -588,108 +583,6 @@ bool _epoll_tcp_manager_is_socket(epoll_tcp_manager* mgr, void* ptr)
 {
 	return memory_unit_check(mgr->socket_pool, ptr);
 }
-
-//epoll_ssl_data* _epoll_ssl_data_alloc(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
-//{
-//	epoll_ssl_data* data = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
-//
-//	data->ssl_state = SSL_UN_HAND_SHAKE;
-//
-//	data->ssl_recv_buf = ((char*)data) + sizeof(epoll_ssl_data);
-//	data->ssl_send_buf = ((char*)data) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
-//
-//	data->ssl_recv_buf_size = ssl_recv_cache_size;
-//	data->ssl_send_buf_size = ssl_send_cache_size;
-//
-//	data->ssl_read_length = 0;
-//	data->ssl_write_length = 0;
-//
-//	data->ssl = 0;
-//	data->bio[BIO_RECV] = 0;
-//	data->bio[BIO_SEND] = 0;
-//
-//	return data;
-//}
-//
-//void _epoll_ssl_data_free(epoll_tcp_manager* mgr, epoll_ssl_data* data)
-//{
-//	_epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
-//}
-
-//bool _init_server_ssl_data(epoll_tcp_listener* listener, epoll_ssl_data* data)
-//{
-//	data->ssl_pt.ssl_listener = listener;
-//
-//	data->ssl = SSL_new(listener->svr_ssl_ctx);
-//	if (!data->ssl)
-//	{
-//		return false;
-//	}
-//
-//	data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
-//	data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
-//
-//	if ((!data->bio[BIO_RECV]) ||
-//		(!data->bio[BIO_SEND]))
-//	{
-//		return false;
-//	}
-//
-//	SSL_set_bio(data->ssl, data->bio[BIO_RECV], data->bio[BIO_SEND]);
-//
-//	SSL_set_accept_state(data->ssl);
-//
-//	return true;
-//}
-//
-//bool _init_client_ssl_data(epoll_tcp_socket* sock_ptr)
-//{
-//	sock_ptr->ssl_data->ssl = SSL_new(sock_ptr->ssl_data->ssl_pt.ssl_ctx_client);
-//	sock_ptr->ssl_data->ssl_pt.ssl_ctx_client = 0;
-//
-//	if (!sock_ptr->ssl_data->ssl)
-//	{
-//		return false;
-//	}
-//
-//	sock_ptr->ssl_data->bio[BIO_RECV] = BIO_new(BIO_s_mem());
-//	sock_ptr->ssl_data->bio[BIO_SEND] = BIO_new(BIO_s_mem());
-//
-//	if ((!sock_ptr->ssl_data->bio[BIO_RECV]) ||
-//		(!sock_ptr->ssl_data->bio[BIO_SEND]))
-//	{
-//		return false;
-//	}
-//
-//	SSL_set_bio(sock_ptr->ssl_data->ssl, sock_ptr->ssl_data->bio[BIO_RECV], sock_ptr->ssl_data->bio[BIO_SEND]);
-//
-//	SSL_set_connect_state(sock_ptr->ssl_data->ssl);
-//
-//	return true;
-//}
-//
-//void _uninit_ssl_data(epoll_ssl_data* data)
-//{
-//	if (data->ssl)
-//	{
-//		SSL_free(data->ssl);
-//		data->ssl = 0;
-//	}
-//	else
-//	{
-//		if (data->bio[BIO_RECV])
-//		{
-//			BIO_free(data->bio[BIO_RECV]);
-//			data->bio[BIO_RECV] = 0;
-//		}
-//
-//		if (data->bio[BIO_SEND])
-//		{
-//			BIO_free(data->bio[BIO_SEND]);
-//			data->bio[BIO_SEND] = 0;
-//		}
-//	}
-//}
 
 bool _is_ssl_error(int ssl_error)
 {
