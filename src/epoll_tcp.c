@@ -1690,15 +1690,15 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
     }
 
-
+    unsigned int data_left = 0;
     for (;;)
     {
         if (BIO_pending(sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND]))
         {
             bio_ret = BIO_read(
                 sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND],
-                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf,
-                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size);
+                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf + data_left,
+                sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size - data_left);
 
             if (bio_ret > 0)
             {
@@ -1706,13 +1706,31 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
                 if (data_send > 0)
                 {
+                    data_left += (bio_ret - data_send);
                 }
                 else if (data_send < 0)
                 {
+                    if (errno == EINTR)
+                    {
+                        data_left += bio_ret;
+                        continue;
+                    }
+                    else if (errno == EAGAIN ||
+                        errno == EWOULDBLOCK)
+                    {
+                        sock_ptr->need_send_active = false;
+                        return;
+                    }
+                    else
+                    {
+                        error_type = error_system;
+                        error_code = errno;
+                        break;
+                    }
                 }
                 else
                 {
-
+                    CRUSH_CODE();
                 }
             }
             else
