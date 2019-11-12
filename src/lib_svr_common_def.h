@@ -248,7 +248,7 @@ typedef struct st_net_ssl_data
     unsigned int        ssl_recv_buf_size;
     char*               ssl_send_buf;
     unsigned int        ssl_send_buf_size;
-    unsigned int        bio_read_length;
+    unsigned int        bio_read_left;
     unsigned int        ssl_state;
 }net_ssl_data;
 
