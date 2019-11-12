@@ -277,7 +277,6 @@ typedef struct st_epoll_tcp_proc
     HLOOPCACHE                      list_net_evt;
 
     HTIMERMANAGER                   timer_mgr;
-    //pfn_do_net_evt                  do_net_evt;
 
     struct st_epoll_tcp_manager*    mgr;
 
@@ -504,14 +503,7 @@ epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsign
     data_ptr->ssl_data.core.bio[BIO_RECV] = 0;
     data_ptr->ssl_data.core.bio[BIO_SEND] = 0;
 
-    //if (init_ssl_data(&data_ptr->ssl_data.core, ssl_ctx_data))
-    //{
-    //    return data_ptr;
-    //}
-
-    //_epoll_tcp_manager_free_ssl_data(mgr, data_ptr);
-
-    return 0;
+    return data_ptr;
 }
 
 epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsigned int recv_buf_size, unsigned int send_buf_size)
