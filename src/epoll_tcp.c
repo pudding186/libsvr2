@@ -40,6 +40,7 @@
 #define NET_EVENT_ACCEPT        9
 #define NET_EVENT_CLOSE         10
 #define NET_EVENT_ACCEPT_FAIL   11
+#define NET_EVENT_SSL_ESTABLISH 12
 
 
 #define NET_REQUEST_CONNECT         11
@@ -486,7 +487,6 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
 
 void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
 {
-    //uninit_ssl_data(&data->ssl_data.core);
     _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_data.ssl_recv_buf_size + data->ssl_data.ssl_send_buf_size);
 }
 
@@ -720,6 +720,25 @@ void _epoll_tcp_proc_push_evt_establish(epoll_tcp_proc* proc, epoll_tcp_listener
 
     evt->sock_ptr = sock_ptr;
     evt->type = NET_EVENT_ESTABLISH;
+    evt->evt.evt_establish.listener = listener;
+
+    loop_cache_push(proc->list_net_evt, evt_len);
+}
+
+void _epoll_tcp_proc_push_evt_ssl_establish(epoll_tcp_proc* proc, epoll_tcp_listener* listener, epoll_tcp_socket* sock_ptr)
+{
+    net_event* evt;
+    size_t evt_len = sizeof(net_event);
+
+    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+
+    if (evt_len != sizeof(net_event))
+    {
+        CRUSH_CODE();
+    }
+
+    evt->sock_ptr = sock_ptr;
+    evt->type = NET_EVENT_SSL_ESTABLISH;
     evt->evt.evt_establish.listener = listener;
 
     loop_cache_push(proc->list_net_evt, evt_len);
@@ -1216,12 +1235,10 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
                 return;
             }
         }
-        else
-        {
-            _epoll_tcp_socket_get_sockaddr(sock_ptr);
 
-            _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
-        }
+        _epoll_tcp_socket_get_sockaddr(sock_ptr);
+
+        _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
 	}
 	else
 	{
@@ -1900,7 +1917,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->ssl_data.core.ssl))
         {
             sock_ptr->ssl_data_ptr->ssl_data.ssl_state = SSL_HAND_SHAKE;
-            _epoll_tcp_proc_push_evt_establish(proc, sock_ptr->listener, sock_ptr);
+            _epoll_tcp_proc_push_evt_ssl_establish(proc, sock_ptr->listener, sock_ptr);
         }
     }
 
@@ -2044,7 +2061,6 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 
 	while (req_len == sizeof(net_request))
 	{
-		//proc->do_proc_count++;
 		do_req_count++;
 
 		switch (req->type)
@@ -2052,7 +2068,15 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 		case NET_REQUEST_SEND:
 		{
 			req->sock_ptr->send_ack++;
-			_epoll_tcp_socket_on_send(proc, req->sock_ptr);
+
+            if (req->sock_ptr->ssl_data_ptr)
+            {
+                _epoll_tcp_socket_on_ssl_send(proc, req->sock_ptr);
+            }
+            else
+            {
+                _epoll_tcp_socket_on_send(proc, req->sock_ptr);
+            }
 		}
 		break;
 		case NET_REQUEST_ACCEPT:
@@ -2218,28 +2242,62 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 	case NET_EVENT_ESTABLISH:
 	{
 		_epoll_tcp_socket_mod_timer_send(sock_ptr, DELAY_SEND_CHECK);
-		sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
+
+        if (!sock_ptr->ssl_data_ptr)
+        {
+            sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
+        }
 	}
 	break;
+    case NET_EVENT_SSL_ESTABLISH:
+    {
+        if (!sock_ptr->ssl_data_ptr)
+        {
+            CRUSH_CODE();
+        }
+
+        sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
+    }
+    break;
 	case NET_EVENT_MODULE_ERROR:
 	{
-		sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
-		sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
 		_epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
 	}
 	break;
 	case NET_EVENT_SYSTEM_ERROR:
 	{
-		sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
-		sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
 		_epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
 	}
 	break;
+    case NET_EVENT_SSL_ERROR:
+    {
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(sock_ptr, error_ssl, evt->evt.evt_system_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
+        }
+
+        _epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
+    }
+    break;
 	case NET_EVENT_TERMINATE:
 	{
-		sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
 		_epoll_tcp_socket_mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
 	}
