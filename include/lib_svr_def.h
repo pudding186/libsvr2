@@ -54,6 +54,7 @@ typedef enum e_net_tcp_error
     error_recv_overflow = -2,
     error_packet        = -1,
     error_ok            = 0,
+    error_none          = 1,
 }net_tcp_error;
 
 typedef struct st_ip_info
