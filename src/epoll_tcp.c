@@ -2728,7 +2728,99 @@ epoll_tcp_socket* net_ssl_connect(
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet)
 {
-    return 0;
+    epoll_tcp_socket* sock_ptr = _epoll_tcp_manager_alloc_socket(mgr, recv_buf_size, send_buf_size);
+
+    if (!sock_ptr)
+    {
+        return 0;
+    }
+
+    sock_ptr->ssl_data_ptr = _epoll_tcp_manager_alloc_ssl_data(mgr, DEF_SSL_RECV_CACHE_SIZE, DEF_SSL_SEND_CACHE_SIZE);
+
+    if (func_on_establish)
+    {
+        sock_ptr->on_establish = func_on_establish;
+    }
+    else
+    {
+        sock_ptr->on_establish = mgr->def_on_establish;
+    }
+
+    if (func_on_terminate)
+    {
+        sock_ptr->on_terminate = func_on_terminate;
+    }
+    else
+    {
+        sock_ptr->on_terminate = mgr->def_on_terminate;
+    }
+
+    if (func_on_error)
+    {
+        sock_ptr->on_error = func_on_error;
+    }
+    else
+    {
+        sock_ptr->on_error = mgr->def_on_error;
+    }
+
+    if (func_on_recv)
+    {
+        sock_ptr->on_recv = func_on_recv;
+    }
+    else
+    {
+        sock_ptr->on_recv = mgr->def_on_recv;
+    }
+
+    if (func_parse_packet)
+    {
+        sock_ptr->pkg_parser = func_parse_packet;
+    }
+    else
+    {
+        sock_ptr->pkg_parser = mgr->def_parse_packet;
+    }
+
+    sock_ptr->proc = _get_idle_net_proc(mgr);
+    sock_ptr->listener = 0;
+    sock_ptr->state = SOCKET_STATE_CONNECT;
+
+    size_t ip_len = 0;
+    size_t bind_ip_len = 0;
+
+    if (ip)
+    {
+        ip_len = strlen(ip) + 1;
+    }
+
+    if (bind_ip)
+    {
+        bind_ip_len = strlen(bind_ip) + 1;
+    }
+
+    if (ip_len >= MAX_IP_LEN ||
+        ip_len == 0 ||
+        bind_ip_len + 1 >= MAX_IP_LEN)
+    {
+        return false;
+    }
+
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &port, sizeof(port));
+    loop_cache_push_data(sock_ptr->recv_loop_cache, ip, ip_len);
+
+    loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_ip_len, sizeof(bind_ip_len));
+    if (bind_ip_len)
+    {
+        loop_cache_push_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
+        loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
+        loop_cache_push_data(sock_ptr->recv_loop_cache, bind_ip, bind_ip_len);
+    }
+
+    _epoll_tcp_proc_push_req_ssl_connect(sock_ptr->proc, sock_ptr, cli_ssl_ctx);
+
+    return sock_ptr;
 }
 
 epoll_tcp_listener* net_tcp_listen(
