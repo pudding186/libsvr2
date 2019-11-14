@@ -1164,6 +1164,14 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 
 void _epoll_tcp_socket_on_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
 {
+    if (!init_client_ssl_data(&sock_ptr->ssl_data_ptr->ssl_data.core, ssl_ctx_data))
+    {
+        sock_ptr->state = SOCKET_STATE_DELETE;
+
+        _epoll_tcp_proc_push_evt_connect_fail(proc, sock_ptr, errno);
+
+        return;
+    }
 }
 
 void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
