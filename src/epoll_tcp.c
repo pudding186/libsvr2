@@ -2731,7 +2731,6 @@ epoll_tcp_socket* net_ssl_connect(
     return 0;
 }
 
-
 epoll_tcp_listener* net_tcp_listen(
     epoll_tcp_manager* mgr,
     const char * ip,
