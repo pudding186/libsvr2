@@ -866,7 +866,7 @@ void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* so
     loop_cache_push(proc->list_net_req, req_len);
 }
 
-void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
+void _epoll_tcp_proc_push_req_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
 {
     net_request* req;
     size_t req_len = sizeof(net_request);
