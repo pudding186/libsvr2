@@ -53,6 +53,7 @@
 #define NET_REQUEST_CLOSE_LISTENER  17
 #define NET_REQUEST_TERMINATE       18
 #define NET_REQUEST_CLOSE_SOCKET    19
+#define NET_REQUEST_SSL_CONNECT     20
 
 
 #define PROC_NONE               0
@@ -158,6 +159,11 @@ typedef struct st_request_connect
 
 }request_connect;
 
+typedef struct st_request_ssl_connect
+{
+    SSL_CTX* ssl_ctx_data;
+}request_ssl_connect;
+
 typedef struct st_request_send
 {
 
@@ -192,6 +198,7 @@ typedef struct st_net_request
         request_close_listener  req_close_listener;
         request_terminate       req_terminate;
         request_recv_activate   req_recv_activate;
+        request_ssl_connect     req_ssl_connect;
     }req;
 }net_request;
 
@@ -859,6 +866,26 @@ void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* so
     loop_cache_push(proc->list_net_req, req_len);
 }
 
+void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
+{
+    net_request* req;
+    size_t req_len = sizeof(net_request);
+
+    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+
+    if (req_len != sizeof(net_request))
+    {
+        CRUSH_CODE();
+    }
+
+    req->sock_ptr = sock_ptr;
+    req->type = NET_REQUEST_SSL_CONNECT;
+
+    req->req.req_ssl_connect.ssl_ctx_data = ssl_ctx_data;
+
+    loop_cache_push(proc->list_net_req, req_len);
+}
+
 void _epoll_tcp_proc_push_req_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
     net_request* req;
@@ -1133,6 +1160,10 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 		sock_ptr->state = SOCKET_STATE_DELETE;
 		_epoll_tcp_proc_push_evt_accept_fail(proc, sock_ptr);
 	}
+}
+
+void _epoll_tcp_socket_on_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
+{
 }
 
 void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
@@ -1987,6 +2018,11 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 			_epoll_tcp_socket_on_connect(proc, req->sock_ptr);
 		}
 		break;
+        case NET_REQUEST_SSL_CONNECT:
+        {
+            _epoll_tcp_socket_on_ssl_connect(proc, req->sock_ptr, req->req.req_ssl_connect.ssl_ctx_data);
+        }
+        break;
 		case NET_REQUEST_RECV_ACTIVATE:
 		{
             req->sock_ptr->need_recv_active = false;
@@ -2676,6 +2712,25 @@ epoll_tcp_socket* net_tcp_connect(
     return sock_ptr;
 }
 
+epoll_tcp_socket* net_ssl_connect(
+    epoll_tcp_manager* mgr,
+    const char* ip,
+    unsigned short port,
+    unsigned int recv_buf_size,
+    unsigned int send_buf_size,
+    bool reuse_addr,
+    const char* bind_ip,
+    unsigned short bind_port,
+    SSL_CTX* cli_ssl_ctx,
+    pfn_on_establish func_on_establish,
+    pfn_on_terminate func_on_terminate,
+    pfn_on_error func_on_error,
+    pfn_on_recv func_on_recv,
+    pfn_parse_packet func_parse_packet)
+{
+    return 0;
+}
+
 epoll_tcp_listener* net_tcp_listen(
     epoll_tcp_manager* mgr,
     const char * ip,
@@ -3119,25 +3174,6 @@ void net_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size,
 {
     sock_ptr->data_delay_send_size = pkg_size;
     _epoll_tcp_socket_mod_timer_send(sock_ptr, delay_time);
-}
-
-epoll_tcp_socket* net_ssl_connect(
-	epoll_tcp_manager* mgr,
-	const char* ip,
-	unsigned short port,
-	unsigned int recv_buf_size,
-	unsigned int send_buf_size,
-	bool reuse_addr,
-	const char* bind_ip,
-	unsigned short bind_port,
-	SSL_CTX* cli_ssl_ctx,
-	pfn_on_establish func_on_establish,
-	pfn_on_terminate func_on_terminate,
-	pfn_on_error func_on_error,
-	pfn_on_recv func_on_recv,
-	pfn_parse_packet func_parse_packet)
-{
-	return 0;
 }
 
 #endif
