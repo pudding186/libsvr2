@@ -134,26 +134,17 @@ typedef struct st_iocp_tcp_listener
     void*                       user_data;
     struct st_iocp_tcp_manager* mgr;
     struct sockaddr_in6         listen_sockaddr;
-    //SSL_CTX*                    svr_ssl_ctx;
+    SSL_CTX*                    svr_ssl_ctx;
 }iocp_tcp_listener;
 
 typedef struct st_iocp_ssl_data
 {
-    SSL*                ssl;
-    BIO*                bio[2];
+    net_ssl_core        core;
     char*               ssl_recv_buf;
     unsigned int        ssl_recv_buf_size;
     char*               ssl_send_buf;
     unsigned int        ssl_send_buf_size;
-    unsigned int        ssl_read_length;
-    unsigned int        ssl_write_length;
     unsigned int        ssl_state;
-    union
-    {
-        iocp_tcp_listener*  ssl_listener;
-        SSL_CTX*            ssl_ctx_client;
-    }ssl_pt;
-
     CRITICAL_SECTION    ssl_lock;
 }iocp_ssl_data;
 
@@ -202,7 +193,7 @@ typedef struct st_iocp_tcp_socket
     net_tcp_error               error;
     int                         err_code;
     struct st_iocp_tcp_manager* mgr;
-    //struct st_iocp_ssl_data*    ssl_data;
+    struct st_iocp_ssl_data*    ssl_data_ptr;
 }iocp_tcp_socket;
 
 typedef struct st_iocp_tcp_manager
@@ -293,6 +284,16 @@ void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned in
     memory_unit_free(unit, mem);
 
     lock_free_ptr_queue_push((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node), unit);
+}
+
+void _iocp_tcp_manager_free_ssl_data(iocp_tcp_manager* mgr, iocp_ssl_data* data)
+{
+    _iocp_tcp_manager_free_memory(mgr, data, sizeof(iocp_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
+}
+
+iocp_ssl_data* _iocp_tcp_manager_alloc_ssl_data(iocp_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
+{
+
 }
 
 void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
@@ -437,25 +438,25 @@ void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_
 //    return true;
 //}
 
-void _uninit_ssl_data(iocp_ssl_data* data)
-{
-    if (data->ssl)
-    {
-        SSL_free(data->ssl);
-    }
-    else
-    {
-        if (data->bio[BIO_RECV])
-        {
-            BIO_free(data->bio[BIO_RECV]);
-        }
-
-        if (data->bio[BIO_SEND])
-        {
-            BIO_free(data->bio[BIO_SEND]);
-        }
-    }
-}
+//void _uninit_ssl_data(iocp_ssl_data* data)
+//{
+//    if (data->ssl)
+//    {
+//        SSL_free(data->ssl);
+//    }
+//    else
+//    {
+//        if (data->bio[BIO_RECV])
+//        {
+//            BIO_free(data->bio[BIO_RECV]);
+//        }
+//
+//        if (data->bio[BIO_SEND])
+//        {
+//            BIO_free(data->bio[BIO_SEND]);
+//        }
+//    }
+//}
 
 //////////////////////////////////////////////////////////////////////////
 

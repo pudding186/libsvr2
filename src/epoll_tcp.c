@@ -226,7 +226,13 @@ typedef struct st_epoll_tcp_listener
 
 typedef struct st_epoll_ssl_data
 {
-    net_ssl_data            ssl_data;
+    net_ssl_core    core;
+    char*           ssl_recv_buf;
+    unsigned int    ssl_recv_buf_size;
+    char*           ssl_send_buf;
+    unsigned int    ssl_send_buf_size;
+    unsigned int    bio_read_left;
+    unsigned int    ssl_state;
 }epoll_ssl_data;
 
 typedef struct st_epoll_tcp_socket
@@ -489,26 +495,26 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
 
 void _epoll_tcp_manager_free_ssl_data(epoll_tcp_manager* mgr, epoll_ssl_data* data)
 {
-    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_data.ssl_recv_buf_size + data->ssl_data.ssl_send_buf_size);
+    _epoll_tcp_manager_free_memory(mgr, data, sizeof(epoll_ssl_data) + data->ssl_recv_buf_size + data->ssl_send_buf_size);
 }
 
 epoll_ssl_data* _epoll_tcp_manager_alloc_ssl_data(epoll_tcp_manager* mgr, unsigned int ssl_recv_cache_size, unsigned int ssl_send_cache_size)
 {
     epoll_ssl_data* data_ptr = _epoll_tcp_manager_alloc_memory(mgr, sizeof(epoll_ssl_data) + ssl_recv_cache_size + ssl_send_cache_size);
 
-    data_ptr->ssl_data.ssl_state = SSL_UN_HAND_SHAKE;
+    data_ptr->ssl_state = SSL_UN_HAND_SHAKE;
 
-    data_ptr->ssl_data.ssl_recv_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data);
-    data_ptr->ssl_data.ssl_send_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
+    data_ptr->ssl_recv_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data);
+    data_ptr->ssl_send_buf = ((char*)data_ptr) + sizeof(epoll_ssl_data) + ssl_recv_cache_size;
 
-    data_ptr->ssl_data.ssl_recv_buf_size = ssl_recv_cache_size;
-    data_ptr->ssl_data.ssl_send_buf_size = ssl_send_cache_size;
+    data_ptr->ssl_recv_buf_size = ssl_recv_cache_size;
+    data_ptr->ssl_send_buf_size = ssl_send_cache_size;
 
-    data_ptr->ssl_data.bio_read_left = 0;
+    data_ptr->bio_read_left = 0;
 
-    data_ptr->ssl_data.core.ssl = 0;
-    data_ptr->ssl_data.core.bio[BIO_RECV] = 0;
-    data_ptr->ssl_data.core.bio[BIO_SEND] = 0;
+    data_ptr->core.ssl = 0;
+    data_ptr->core.bio[BIO_RECV] = 0;
+    data_ptr->core.bio[BIO_SEND] = 0;
 
     return data_ptr;
 }
@@ -1139,7 +1145,7 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 
         if (sock_ptr->ssl_data_ptr)
         {
-            if (!init_server_ssl_data(&sock_ptr->ssl_data_ptr->ssl_data.core, sock_ptr->listener->svr_ssl_ctx))
+            if (!init_server_ssl_data(&sock_ptr->ssl_data_ptr->core, sock_ptr->listener->svr_ssl_ctx))
             {
                 close(sock_ptr->sock_fd);
                 sock_ptr->sock_fd = -1;
@@ -1370,7 +1376,7 @@ ERROR_DEAL:
 
 void _epoll_tcp_socket_on_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
 {
-    if (!init_client_ssl_data(&sock_ptr->ssl_data_ptr->ssl_data.core, ssl_ctx_data))
+    if (!init_client_ssl_data(&sock_ptr->ssl_data_ptr->core, ssl_ctx_data))
     {
         sock_ptr->state = SOCKET_STATE_DELETE;
 
@@ -1386,7 +1392,7 @@ void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr
 {
     if (sock_ptr->ssl_data_ptr)
     {
-        uninit_ssl_data(&sock_ptr->ssl_data_ptr->ssl_data.core);
+        uninit_ssl_data(&sock_ptr->ssl_data_ptr->core);
     }
 
     if (sock_ptr->sock_fd != -1)
@@ -1610,7 +1616,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
     while (data_len)
     {
-        ssl_ret = SSL_write(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, data_ptr, (int)data_len);
+        ssl_ret = SSL_write(sock_ptr->ssl_data_ptr->core.ssl, data_ptr, (int)data_len);
 
         if (ssl_ret > 0)
         {
@@ -1621,7 +1627,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
         else
         {
-            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, ssl_ret);
+            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
                 error_type = error_ssl;
@@ -1636,24 +1642,24 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
     for (;;)
     {
-        if (sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size - sock_ptr->ssl_data_ptr->ssl_data.bio_read_left > 0)
+        if (sock_ptr->ssl_data_ptr->ssl_send_buf_size - sock_ptr->ssl_data_ptr->bio_read_left > 0)
         {
-            if (BIO_pending(sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND]))
+            if (BIO_pending(sock_ptr->ssl_data_ptr->core.bio[BIO_SEND]))
             {
                 bio_ret = BIO_read(
-                    sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_SEND],
-                    sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf +
-                    sock_ptr->ssl_data_ptr->ssl_data.bio_read_left,
-                    sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf_size -
-                    sock_ptr->ssl_data_ptr->ssl_data.bio_read_left);
+                    sock_ptr->ssl_data_ptr->core.bio[BIO_SEND],
+                    sock_ptr->ssl_data_ptr->ssl_send_buf +
+                    sock_ptr->ssl_data_ptr->bio_read_left,
+                    sock_ptr->ssl_data_ptr->ssl_send_buf_size -
+                    sock_ptr->ssl_data_ptr->bio_read_left);
 
                 if (bio_ret > 0)
                 {
-                    sock_ptr->ssl_data_ptr->ssl_data.bio_read_left += bio_ret;
+                    sock_ptr->ssl_data_ptr->bio_read_left += bio_ret;
                 }
                 else
                 {
-                    error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, bio_ret);
+                    error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
 
                     if (is_ssl_error(error_code))
                     {
@@ -1665,13 +1671,13 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
         sock_ptr->need_send_active = true;
 
-        if (sock_ptr->ssl_data_ptr->ssl_data.bio_read_left > 0)
+        if (sock_ptr->ssl_data_ptr->bio_read_left > 0)
         {
-            int data_send = send(sock_ptr->sock_fd, sock_ptr->ssl_data_ptr->ssl_data.ssl_send_buf, sock_ptr->ssl_data_ptr->ssl_data.bio_read_left, 0);
+            int data_send = send(sock_ptr->sock_fd, sock_ptr->ssl_data_ptr->ssl_send_buf, sock_ptr->ssl_data_ptr->bio_read_left, 0);
 
             if (data_send > 0)
             {
-                sock_ptr->ssl_data_ptr->ssl_data.bio_read_left -= data_send;
+                sock_ptr->ssl_data_ptr->bio_read_left -= data_send;
             }
             else if (data_send < 0)
             {
@@ -1730,19 +1736,19 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     {
         int data_recv = recv(
             sock_ptr->sock_fd,
-            sock_ptr->ssl_data_ptr->ssl_data.ssl_recv_buf,
-            sock_ptr->ssl_data_ptr->ssl_data.ssl_recv_buf_size, 0);
+            sock_ptr->ssl_data_ptr->ssl_recv_buf,
+            sock_ptr->ssl_data_ptr->ssl_recv_buf_size, 0);
 
         if (data_recv > 0)
         {
             bio_ret = BIO_write(
-                sock_ptr->ssl_data_ptr->ssl_data.core.bio[BIO_RECV],
-                sock_ptr->ssl_data_ptr->ssl_data.ssl_recv_buf,
+                sock_ptr->ssl_data_ptr->core.bio[BIO_RECV],
+                sock_ptr->ssl_data_ptr->ssl_recv_buf,
                 data_recv);
 
             if (bio_ret <= 0)
             {
-                error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, bio_ret);
+                error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
 
                 if (is_ssl_error(error_code))
                 {
@@ -1796,7 +1802,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
     while (free_data_len)
     {
-        ssl_ret = SSL_read(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, free_data_ptr, (int)free_data_len);
+        ssl_ret = SSL_read(sock_ptr->ssl_data_ptr->core.ssl, free_data_ptr, (int)free_data_len);
         if (ssl_ret > 0)
         {
             if (!loop_cache_push(sock_ptr->recv_loop_cache, ssl_ret))
@@ -1808,7 +1814,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
         else
         {
-            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->ssl_data.core.ssl, ssl_ret);
+            error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
 
             if (is_ssl_error(error_code))
             {
@@ -1830,7 +1836,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         return;
     }
 
-    if (sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE)
+    if (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE)
     {
         if (decrypt_data_push_len)
         {
@@ -1841,9 +1847,9 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     {
         _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
 
-        if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->ssl_data.core.ssl))
+        if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->core.ssl))
         {
-            sock_ptr->ssl_data_ptr->ssl_data.ssl_state = SSL_HAND_SHAKE;
+            sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _epoll_tcp_proc_push_evt_ssl_establish(proc, sock_ptr->listener, sock_ptr);
         }
     }
@@ -2193,7 +2199,7 @@ bool _do_net_evt(epoll_tcp_proc* proc)
     break;
 	case NET_EVENT_MODULE_ERROR:
 	{
-        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
         {
             sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
             sock_ptr->on_terminate(sock_ptr);
@@ -2204,7 +2210,7 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 	break;
 	case NET_EVENT_SYSTEM_ERROR:
 	{
-        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
         {
             sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
             sock_ptr->on_terminate(sock_ptr);
@@ -2215,7 +2221,7 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 	break;
     case NET_EVENT_SSL_ERROR:
     {
-        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
         {
             sock_ptr->on_error(sock_ptr, error_ssl, evt->evt.evt_system_error.err_code);
             sock_ptr->on_terminate(sock_ptr);
@@ -2226,7 +2232,7 @@ bool _do_net_evt(epoll_tcp_proc* proc)
     break;
 	case NET_EVENT_TERMINATE:
 	{
-        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_data.ssl_state == SSL_HAND_SHAKE))
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr && sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
         {
             sock_ptr->on_terminate(sock_ptr);
         }
