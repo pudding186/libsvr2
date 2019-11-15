@@ -241,17 +241,6 @@ typedef struct st_net_ssl_core
     BIO*                bio[2];
 }net_ssl_core;
 
-typedef struct st_net_ssl_data
-{
-    net_ssl_core        core;
-    char*               ssl_recv_buf;
-    unsigned int        ssl_recv_buf_size;
-    char*               ssl_send_buf;
-    unsigned int        ssl_send_buf_size;
-    unsigned int        bio_read_left;
-    unsigned int        ssl_state;
-}net_ssl_data;
-
 //////////////////////////////////////////////////////////////////////////
 
 extern ptrdiff_t trace_info_cmp(void* info1, void* info2);
