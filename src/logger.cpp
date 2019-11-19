@@ -330,16 +330,24 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
         cmd->logger->file_size = ftell(cmd->logger->file);
     }
 
-    if (cur_time != proc->last_log_time)
+    long long time_del = cur_time - proc->last_log_time;
+
+    if (time_del)
     {
-        if (cur_time < proc->last_log_time)
+        if (time_del < 60 && time_del > -60)
         {
-            CRUSH_CODE();
+            int new_sec = proc->last_log_tm.tm_sec + (int)time_del;
+
+            if (new_sec >= 0 && new_sec <= 59)
+            {
+                proc->last_log_tm.tm_sec = new_sec;
+            }
+            else
+            {
+                localtime_s(&proc->last_log_tm, &cur_time);
+            }
         }
-
-        proc->last_log_tm.tm_sec += (int)(cur_time - proc->last_log_time);
-
-        if (proc->last_log_tm.tm_sec > 59)
+        else
         {
             localtime_s(&proc->last_log_tm, &cur_time);
         }
@@ -488,16 +496,24 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
         cmd->logger->file_size = ftell(cmd->logger->file);
     }
 
-    if (cur_time != proc->last_log_time)
+    long long time_del = cur_time - proc->last_log_time;
+
+    if (time_del)
     {
-        if (cur_time < proc->last_log_time)
+        if (time_del < 60 && time_del > -60)
         {
-            CRUSH_CODE();
+            int new_sec = proc->last_log_tm.tm_sec + (int)time_del;
+
+            if (new_sec >= 0 && new_sec <= 59)
+            {
+                proc->last_log_tm.tm_sec = new_sec;
+            }
+            else
+            {
+                localtime_r(&cur_time, &proc->last_log_tm);
+            }
         }
-
-        proc->last_log_tm.tm_sec += (int)(cur_time - proc->last_log_time);
-
-        if (proc->last_log_tm.tm_sec > 59)
+        else
         {
             localtime_r(&cur_time, &proc->last_log_tm);
         }
