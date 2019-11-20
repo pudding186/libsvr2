@@ -642,6 +642,10 @@ void _iocp_tcp_socket_on_close_req(iocp_tcp_socket* sock_ptr)
     if (sock_ptr->ssl_data_ptr)
     {
         uninit_iocp_ssl_data(sock_ptr->ssl_data_ptr);
+
+        if (sock_ptr->ssl_data_ptr->ssl_pt.)
+        {
+        }
     }
 
     switch (sock_ptr->error)
@@ -1461,8 +1465,7 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
     {
         if (!init_iocp_client_ssl_data(sock_ptr->ssl_data_ptr, sock_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx))
         {
-            uninit_iocp_ssl_data(sock_ptr->ssl_data_ptr);
-            goto ERROR_DEAL;
+            _iocp_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
         }
         else
         {
@@ -1954,24 +1957,33 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     break;
     case NET_EVENT_MODULE_ERROR:
     {
-        sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
-        sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(sock_ptr, evt->evt.evt_module_error.err_code, 0);
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
         _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SSL_ERROR:
     {
-        sock_ptr->on_error(sock_ptr, error_ssl, evt->evt.evt_ssl_error.err_code);
-        sock_ptr->on_terminate(sock_ptr);
+        if (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE)
+        {
+            sock_ptr->on_error(sock_ptr, error_ssl, evt->evt.evt_ssl_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
         _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
     break;
     case NET_EVENT_SYSTEM_ERROR:
     {
-        sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
-        sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_error(sock_ptr, error_system, evt->evt.evt_system_error.err_code);
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
         _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
