@@ -1624,6 +1624,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             {
                 CRUSH_CODE();
             }
+            sock_ptr->data_has_send += ssl_ret;
         }
         else
         {
@@ -1639,6 +1640,8 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         data_len = 0;
         loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
     }
+
+    sock_ptr->need_send_active = true;
 
     for (;;)
     {
@@ -1659,17 +1662,16 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
                 }
                 else
                 {
-                    error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
+                    //error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
 
-                    if (is_ssl_error(error_code))
-                    {
-                        error_type = error_ssl;
-                    }
+                    //if (is_ssl_error(error_code))
+                    //{
+                    //    error_type = error_ssl;
+                    //}
+                    CRUSH_CODE();
                 }
             }
         }
-
-        sock_ptr->need_send_active = true;
 
         if (sock_ptr->ssl_data_ptr->bio_read_left > 0)
         {
@@ -1678,6 +1680,14 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             if (data_send > 0)
             {
                 sock_ptr->ssl_data_ptr->bio_read_left -= data_send;
+
+                if (sock_ptr->ssl_data_ptr->bio_read_left > 0)
+                {
+                    memcpy(
+                        sock_ptr->ssl_data_ptr->ssl_send_buf,
+                        sock_ptr->ssl_data_ptr->ssl_send_buf + data_send,
+                        sock_ptr->ssl_data_ptr->bio_read_left);
+                }
             }
             else if (data_send < 0)
             {
@@ -1748,18 +1758,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
             if (bio_ret <= 0)
             {
-                error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
-
-                if (is_ssl_error(error_code))
-                {
-                    error_type = error_ssl;
-                }
-                else
-                {
-                    sock_ptr->need_recv_active = true;
-                }
-
-                break;
+                CRUSH_CODE();
             }
             else
             {
@@ -1845,12 +1844,14 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     }
     else
     {
-        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
-
         if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->core.ssl))
         {
             sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _epoll_tcp_proc_push_evt_ssl_establish(proc, sock_ptr->listener, sock_ptr);
+        }
+        else
+        {
+            _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
         }
     }
 
@@ -2696,19 +2697,12 @@ epoll_tcp_socket* net_tcp_connect(
 
 	if (ip)
 	{
-		ip_len = strlen(ip) + 1;
+        ip_len = min((strlen(ip) + 1), (MAX_IP_LEN-1));
 	}
 
 	if (bind_ip)
 	{
-		bind_ip_len = strlen(bind_ip) + 1;
-	}
-
-	if (ip_len >= MAX_IP_LEN ||
-		ip_len == 0 ||
-		bind_ip_len + 1 >= MAX_IP_LEN)
-	{
-		return false;
+        bind_ip_len = min((strlen(bind_ip) + 1), (MAX_IP_LEN - 1));
 	}
 
 	loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
@@ -2807,19 +2801,12 @@ epoll_tcp_socket* net_ssl_connect(
 
     if (ip)
     {
-        ip_len = strlen(ip) + 1;
+        ip_len = min((strlen(ip) + 1), (MAX_IP_LEN - 1));
     }
 
     if (bind_ip)
     {
-        bind_ip_len = strlen(bind_ip) + 1;
-    }
-
-    if (ip_len >= MAX_IP_LEN ||
-        ip_len == 0 ||
-        bind_ip_len + 1 >= MAX_IP_LEN)
-    {
-        return false;
+        bind_ip_len = min((strlen(bind_ip) + 1), (MAX_IP_LEN - 1));
     }
 
     loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
