@@ -54,11 +54,6 @@ typedef struct st_event_establish
     struct st_iocp_tcp_listener* listener;
 }event_establish;
 
-typedef struct st_event_ssl_establish
-{
-    struct st_iocp_tcp_listener* listener;
-}event_ssl_establish;
-
 typedef struct st_evt_data
 {
     unsigned int data_len;
@@ -102,7 +97,6 @@ typedef struct st_net_event
         struct st_event_module_error    evt_module_error;
         struct st_event_terminate       evt_terminate;
         struct st_event_connect_fail    evt_connect_fail;
-        struct st_event_ssl_establish   evt_ssl_establish;
     }evt;
 }net_event;
 
@@ -510,7 +504,7 @@ void _push_ssl_establish_event(iocp_tcp_socket* sock_ptr)
 
     evt->socket_ptr = sock_ptr;
     evt->type = NET_EVENT_SSL_ESTABLISH;
-    evt->evt.evt_ssl_establish.listener = sock_ptr->ssl_data_ptr->ssl_pt.ssl_listener;
+    evt->evt.evt_establish.listener = sock_ptr->ssl_data_ptr->ssl_pt.ssl_listener;
 
     loop_cache_push(sock_ptr->mgr->evt_queue, evt_len);
     EVENT_UNLOCK;
@@ -1943,6 +1937,18 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     case NET_EVENT_ESTABLISH:
     {
         _mod_timer_send(sock_ptr, DELAY_SEND_CHECK);
+        if (!sock_ptr->ssl_data_ptr)
+        {
+            sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
+        }
+    }
+    break;
+    case NET_EVENT_SSL_ESTABLISH:
+    {
+        if (!sock_ptr->ssl_data_ptr)
+        {
+            CRUSH_CODE();
+        }
         sock_ptr->on_establish(evt->evt.evt_establish.listener, sock_ptr);
     }
     break;
@@ -2043,12 +2049,26 @@ unsigned WINAPI _iocp_thread_func(LPVOID param)
         {
         case IOCP_OPT_RECV:
         {
-            _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            if (iocp_data_ptr->pt.sock_ptr->ssl_data_ptr)
+            {
+                _iocp_tcp_socket_on_ssl_recv(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+            else
+            {
+                _iocp_tcp_socket_on_recv(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
         }
         break;
         case IOCP_OPT_SEND:
         {
-            _iocp_tcp_socket_on_send(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            if (iocp_data_ptr->pt.sock_ptr->ssl_data_ptr)
+            {
+                _iocp_tcp_socket_on_ssl_send(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
+            else
+            {
+                _iocp_tcp_socket_on_send(iocp_data_ptr->pt.sock_ptr, ret, byte_transferred);
+            }
         }
         break;
         case IOCP_OPT_ACCEPT:
