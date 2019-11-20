@@ -1,3 +1,5 @@
+#include "./lib_svr_common_def.h"
+
 #ifdef _MSC_VER
 #include <intrin.h>
 #include <windows.h>
@@ -19,7 +21,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include "./lib_svr_common_def.h"
 #include "../include/utility.hpp"
 #include "../include/memory_pool.h"
 #include "../include/smemory.hpp"

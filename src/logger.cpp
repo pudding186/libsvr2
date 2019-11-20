@@ -1,3 +1,5 @@
+#include "./lib_svr_common_def.h"
+
 #ifdef _MSC_VER
 #include <windows.h>
 #undef max
@@ -17,8 +19,6 @@
 #include <mutex>
 #include <atomic>
 
-#include "./lib_svr_common_def.h"
-#include "./lib_svr_common_def.h"
 #include "../include/utility.hpp"
 #include "../include/memory_pool.h"
 #include "../include/loop_cache.h"

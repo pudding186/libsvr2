@@ -643,8 +643,13 @@ void _iocp_tcp_socket_on_close_req(iocp_tcp_socket* sock_ptr)
     {
         uninit_iocp_ssl_data(sock_ptr->ssl_data_ptr);
 
-        if (sock_ptr->ssl_data_ptr->ssl_pt.)
+        if (!sock_ptr->ssl_data_ptr->ssl_pt.ssl_listener)
         {
+            if (sock_ptr->ssl_data_ptr->ssl_state == SSL_UN_HAND_SHAKE)
+            {
+                _push_connect_fail_event(sock_ptr, sock_ptr->err_code);
+                return;
+            }
         }
     }
 
@@ -1463,7 +1468,9 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
 
     if (sock_ptr->ssl_data_ptr)
     {
-        if (!init_iocp_client_ssl_data(sock_ptr->ssl_data_ptr, sock_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx))
+        SSL_CTX* client_ssl_ctx = sock_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx;
+        sock_ptr->ssl_data_ptr->ssl_pt.ssl_listener = 0;
+        if (!init_iocp_client_ssl_data(sock_ptr->ssl_data_ptr, client_ssl_ctx))
         {
             _iocp_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
         }
