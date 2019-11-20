@@ -1,5 +1,4 @@
-//#include <windows.h>
-//#include <process.h>
+#include "./lib_svr_common_def.h"
 
 #ifdef _MSC_VER
 #include <windows.h>
@@ -12,68 +11,14 @@
 
 #include <stdio.h>
 #include <time.h>
-#include "./lib_svr_common_def.h"
+
 #include "../include/memory_pool.h"
 #include "../include/timer.h"
 
-
-
-//bool                    g_local_time_thread_run = false;
-//bool                    g_local_time_run = false;
-//volatile unsigned int   g_local_tick = 0;
-//volatile time_t         g_local_time = 0;
-//HANDLE                  g_local_time_thread = 0;
 long                    g_time_zone = 0;
-
-//unsigned _stdcall local_time_proc(void* param)
-//{
-//    unsigned last_tick = 0;
-//
-//    bool* local_time_thread_run = (bool*)param;
-//
-//    while (g_local_time_run)
-//    {
-//        g_local_tick = timeGetTime();
-//
-//        if (g_local_tick - last_tick > 1000)
-//        {
-//            last_tick = g_local_tick;
-//            g_local_time = time(0);
-//        }
-//
-//        timeBeginPeriod(1);
-//        Sleep(1);
-//        *local_time_thread_run = true;
-//        timeEndPeriod(1);
-//    }
-//
-//    *local_time_thread_run = false;
-//
-//    return 0;
-//}
 
 bool init_local_time(void)
 {
-    //unsigned thread_id = 0;
-
-    //if (g_local_time_thread)
-    //{
-    //    return true;
-    //}
-
-    //g_local_tick = timeGetTime();
-    //g_local_time = time(0);
-    //g_local_time_run = true;
-
-    //g_local_time_thread = (HANDLE)_beginthreadex(0, 0, local_time_proc, &g_local_time_thread_run, 0, &thread_id);
-
-    //if (!g_local_time_thread)
-    //{
-    //    return false;
-    //}
-
-    //Sleep(10);
-
 #ifdef _MSC_VER
     _tzset();
     _get_timezone(&g_time_zone);
@@ -89,28 +34,11 @@ bool init_local_time(void)
 
 void uninit_local_time(void)
 {
-    //if (g_local_time_thread)
-    //{
-    //    g_local_time_run = false;
 
-    //    WaitForSingleObject(g_local_time_thread, INFINITE);
-
-    //    if (g_local_time_thread)
-    //    {
-    //        CloseHandle(g_local_time_thread);
-    //        g_local_time_thread = 0;
-    //    }
-    //}
 }
 
 unsigned int get_tick(void)
 {
-    //if (g_local_time_thread_run)
-    //{
-    //    return g_local_tick;
-    //}
-
-    //return timeGetTime();
 
 #ifdef _MSC_VER
     return timeGetTime();
