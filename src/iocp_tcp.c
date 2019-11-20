@@ -1978,7 +1978,10 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     break;
     case NET_EVENT_TERMINATE:
     {
-        sock_ptr->on_terminate(sock_ptr);
+        if ((!sock_ptr->ssl_data_ptr) || (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE))
+        {
+            sock_ptr->on_terminate(sock_ptr);
+        }
 
         _mod_timer_close(sock_ptr, DELAY_CLOSE_SOCKET);
     }
