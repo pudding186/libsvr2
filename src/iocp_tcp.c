@@ -928,12 +928,6 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
         loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
     }
 
-    if (!free_data_len)
-    {
-        _push_recv_active_event(sock_ptr);
-        return;
-    }
-
     if (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE)
     {
         if (decrypt_data_push_len)
@@ -961,9 +955,16 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
         }
     }
 
-    if (!_iocp_tcp_socket_post_ssl_recv(sock_ptr))
+    if (free_data_len)
     {
-        _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
+        if (!_iocp_tcp_socket_post_ssl_recv(sock_ptr))
+        {
+            _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
+        }
+    }
+    else
+    {
+        _push_recv_active_event(sock_ptr);
     }
 }
 
@@ -981,8 +982,7 @@ void _iocp_tcp_socket_on_ssl_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
     }
 
     if ((sock_ptr->state != SOCKET_STATE_ESTABLISH) &&
-        (sock_ptr->state != SOCKET_STATE_CLOSE) &&
-        (sock_ptr->state != SOCKET_STATE_TERMINATE))
+        (sock_ptr->state != SOCKET_STATE_CLOSE))
     {
         InterlockedIncrement(&sock_ptr->send_ack);
         return;
@@ -1476,7 +1476,6 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
         }
         else
         {
-            sock_ptr->ssl_data_ptr->ssl_pt.ssl_listener = 0;
             if (!_iocp_tcp_socket_post_ssl_recv(sock_ptr))
             {
                 _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
