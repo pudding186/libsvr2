@@ -1631,6 +1631,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
+                error_code = ERR_get_error();
                 error_type = error_ssl;
             }
             break;
@@ -1662,12 +1663,6 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
                 }
                 else
                 {
-                    //error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, bio_ret);
-
-                    //if (is_ssl_error(error_code))
-                    //{
-                    //    error_type = error_ssl;
-                    //}
                     CRUSH_CODE();
                 }
             }
@@ -1817,6 +1812,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
             if (is_ssl_error(error_code))
             {
+                error_code = ERR_get_error();
                 error_type = error_ssl;
             }
 
@@ -1858,10 +1854,6 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     if (!free_data_len)
     {
         sock_ptr->need_recv_active = true;
-    }
-
-    if (sock_ptr->need_recv_active)
-    {
         _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
     }
 }

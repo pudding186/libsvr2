@@ -917,7 +917,7 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
             int error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
-                _iocp_tcp_socket_close(sock_ptr, error_ssl, error_code, true);
+                _iocp_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
                 return;
             }
             break;
@@ -1026,7 +1026,7 @@ void _iocp_tcp_socket_on_ssl_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
 
             if (is_ssl_error(error_code))
             {
-                _iocp_tcp_socket_close(sock_ptr, error_ssl, error_code, true);
+                _iocp_tcp_socket_close(sock_ptr, error_ssl, ERR_get_error(), true);
                 InterlockedIncrement(&sock_ptr->send_ack);
                 return;
             }
