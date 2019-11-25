@@ -1,3 +1,7 @@
 build/
 lib/
 test/
+.vs/
+output/
+*.vcxproj.*
+*.vcxproj
