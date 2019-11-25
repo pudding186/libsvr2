@@ -1840,14 +1840,12 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     }
     else
     {
+        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
+
         if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->core.ssl))
         {
             sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _epoll_tcp_proc_push_evt_ssl_establish(proc, sock_ptr->listener, sock_ptr);
-        }
-        else
-        {
-            _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
         }
     }
 
