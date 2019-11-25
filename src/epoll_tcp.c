@@ -1708,6 +1708,10 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
                 CRUSH_CODE();
             }
         }
+        else
+        {
+            break;
+        }
     }
 
     if (error_type != error_none)
