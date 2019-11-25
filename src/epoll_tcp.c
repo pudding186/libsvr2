@@ -1731,6 +1731,8 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
     unsigned int decrypt_data_push_len = 0;
 
+    bool recv_need_reactive = true;
+
     if (sock_ptr->state != SOCKET_STATE_ESTABLISH)
     {
         return;
@@ -1776,6 +1778,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             else if (errno == EAGAIN ||
                 errno == EWOULDBLOCK)
             {
+                recv_need_reactive = false;
                 break;
             }
             else
@@ -1853,7 +1856,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
     }
 
-    if (!free_data_len)
+    if (!free_data_len || recv_need_reactive)
     {
         sock_ptr->need_recv_active = true;
         _epoll_tcp_proc_push_evt_recv_activate(proc, sock_ptr);
