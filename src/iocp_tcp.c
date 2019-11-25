@@ -937,21 +937,19 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
     }
     else
     {
+        if (sock_ptr->send_req == sock_ptr->send_ack)
+        {
+            if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+            {
+                _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
+                return;
+            }
+        }
+
         if (SSL_is_init_finished(sock_ptr->ssl_data_ptr->core.ssl))
         {
             sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _push_ssl_establish_event(sock_ptr);
-        }
-        else
-        {
-            if (sock_ptr->send_req == sock_ptr->send_ack)
-            {
-                if (!_iocp_tcp_socket_post_send_req(sock_ptr))
-                {
-                    _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
-                    return;
-                }
-            }
         }
     }
 
