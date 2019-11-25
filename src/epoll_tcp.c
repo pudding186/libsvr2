@@ -2685,15 +2685,29 @@ epoll_tcp_socket* net_tcp_connect(
 	size_t ip_len = 0;
 	size_t bind_ip_len = 0;
 
-	if (ip)
-	{
-        ip_len = min((strlen(ip) + 1), (MAX_IP_LEN-1));
-	}
+    if (ip)
+    {
+        if ((strlen(ip) + 1) > (MAX_IP_LEN - 1))
+        {
+            ip_len = (MAX_IP_LEN - 1);
+        }
+        else
+        {
+            ip_len = (strlen(ip) + 1);
+        }
+    }
 
-	if (bind_ip)
-	{
-        bind_ip_len = min((strlen(bind_ip) + 1), (MAX_IP_LEN - 1));
-	}
+    if (bind_ip)
+    {
+        if ((strlen(bind_ip) + 1) > (MAX_IP_LEN - 1))
+        {
+            ip_len = (MAX_IP_LEN - 1);
+        }
+        else
+        {
+            ip_len = (strlen(bind_ip) + 1);
+        }
+    }
 
 	loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
 	loop_cache_push_data(sock_ptr->recv_loop_cache, &port, sizeof(port));
@@ -2791,12 +2805,26 @@ epoll_tcp_socket* net_ssl_connect(
 
     if (ip)
     {
-        ip_len = min((strlen(ip) + 1), (MAX_IP_LEN - 1));
+        if ((strlen(ip) + 1) > (MAX_IP_LEN - 1))
+        {
+            ip_len = (MAX_IP_LEN - 1);
+        }
+        else
+        {
+            ip_len = (strlen(ip) + 1);
+        }
     }
 
     if (bind_ip)
     {
-        bind_ip_len = min((strlen(bind_ip) + 1), (MAX_IP_LEN - 1));
+        if ((strlen(bind_ip) + 1) > (MAX_IP_LEN - 1))
+        {
+            ip_len = (MAX_IP_LEN - 1);
+        }
+        else
+        {
+            ip_len = (strlen(bind_ip) + 1);
+        }
     }
 
     loop_cache_push_data(sock_ptr->recv_loop_cache, &ip_len, sizeof(ip_len));
