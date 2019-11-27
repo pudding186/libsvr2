@@ -1730,7 +1730,7 @@ void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_p
 
     if (sock_ptr->ssl_data_ptr)
     {
-        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
+        _epoll_tcp_socket_on_ssl_recv(proc, sock_ptr);
     }
 }
 
