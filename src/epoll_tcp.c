@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "./lib_svr_common_def.h"
 #include "../include/utility.hpp"
 #include "../include/loop_cache.h"
