@@ -1474,7 +1474,7 @@ void _iocp_tcp_socket_on_connect(iocp_tcp_socket* sock_ptr, BOOL ret)
         }
         else
         {
-            if (!_iocp_tcp_socket_post_ssl_recv(sock_ptr))
+            if (!_iocp_tcp_socket_post_recv_req(sock_ptr))
             {
                 _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
             }
