@@ -1169,18 +1169,6 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 	}
 }
 
-void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
-{
-    sock_ptr->state = SOCKET_STATE_ESTABLISH;
-    _epoll_tcp_socket_get_sockaddr(sock_ptr);
-    _epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
-
-    if (sock_ptr->ssl_data_ptr)
-    {
-        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
-    }
-}
-
 void _epoll_tcp_socket_on_connect_req(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
     int local_sockaddr_len = sizeof(struct sockaddr_in);
@@ -1731,6 +1719,18 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     {
         _epoll_tcp_socket_close(sock_ptr, error_type, error_code, true);
         return;
+    }
+}
+
+void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
+    sock_ptr->state = SOCKET_STATE_ESTABLISH;
+    _epoll_tcp_socket_get_sockaddr(sock_ptr);
+    _epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
+
+    if (sock_ptr->ssl_data_ptr)
+    {
+        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
     }
 }
 
