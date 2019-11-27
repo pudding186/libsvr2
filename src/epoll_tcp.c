@@ -1171,6 +1171,18 @@ void _epoll_tcp_socket_on_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_pt
 
 void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
+    sock_ptr->state = SOCKET_STATE_ESTABLISH;
+    _epoll_tcp_socket_get_sockaddr(sock_ptr);
+    _epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
+
+    if (sock_ptr->ssl_data_ptr)
+    {
+        _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
+    }
+}
+
+void _epoll_tcp_socket_on_connect_req(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
+{
     int local_sockaddr_len = sizeof(struct sockaddr_in);
     int peer_sockaddr_len = sizeof(struct sockaddr_in);
 
@@ -1375,7 +1387,7 @@ ERROR_DEAL:
     _epoll_tcp_proc_push_evt_connect_fail(proc, sock_ptr, errno);
 }
 
-void _epoll_tcp_socket_on_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
+void _epoll_tcp_socket_on_ssl_connect_req(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
 {
     if (!init_client_ssl_data(&sock_ptr->ssl_data_ptr->core, ssl_ctx_data))
     {
@@ -1386,7 +1398,7 @@ void _epoll_tcp_socket_on_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* so
         return;
     }
 
-    _epoll_tcp_socket_on_connect(proc, sock_ptr);
+    _epoll_tcp_socket_on_connect_req(proc, sock_ptr);
 }
 
 void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
@@ -1945,9 +1957,7 @@ unsigned int _do_epoll_evt(epoll_tcp_proc* proc, int time_out)
 			
 			if (sock_ptr->state == SOCKET_STATE_CONNECT)
 			{
-				sock_ptr->state = SOCKET_STATE_ESTABLISH;
-				_epoll_tcp_socket_get_sockaddr(sock_ptr);
-				_epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
+                _epoll_tcp_socket_on_connect(proc, sock_ptr);
 			}
 			else
 			{
@@ -2030,12 +2040,12 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 		break;
 		case NET_REQUEST_CONNECT:
 		{
-			_epoll_tcp_socket_on_connect(proc, req->sock_ptr);
+			_epoll_tcp_socket_on_connect_req(proc, req->sock_ptr);
 		}
 		break;
         case NET_REQUEST_SSL_CONNECT:
         {
-            _epoll_tcp_socket_on_ssl_connect(proc, req->sock_ptr, req->req.req_ssl_connect.ssl_ctx_data);
+            _epoll_tcp_socket_on_ssl_connect_req(proc, req->sock_ptr, req->req.req_ssl_connect.ssl_ctx_data);
         }
         break;
 		case NET_REQUEST_RECV_ACTIVATE:
