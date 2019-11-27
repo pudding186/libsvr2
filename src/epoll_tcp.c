@@ -2733,6 +2733,8 @@ epoll_tcp_socket* net_tcp_connect(
     return sock_ptr;
 }
 
+extern SSL_CTX* def_client_ssl_ctx;
+
 epoll_tcp_socket* net_ssl_connect(
     epoll_tcp_manager* mgr,
     const char* ip,
@@ -2844,6 +2846,11 @@ epoll_tcp_socket* net_ssl_connect(
         loop_cache_push_data(sock_ptr->recv_loop_cache, &reuse_addr, sizeof(reuse_addr));
         loop_cache_push_data(sock_ptr->recv_loop_cache, &bind_port, sizeof(bind_port));
         loop_cache_push_data(sock_ptr->recv_loop_cache, bind_ip, bind_ip_len);
+    }
+
+    if (!cli_ssl_ctx)
+    {
+        cli_ssl_ctx = def_client_ssl_ctx;
     }
 
     _epoll_tcp_proc_push_req_ssl_connect(sock_ptr->proc, sock_ptr, cli_ssl_ctx);

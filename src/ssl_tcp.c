@@ -12,6 +12,7 @@ struct CRYPTO_dynlock_value
 
 int ssl_locks_num = 0;
 CRITICAL_SECTION* ssl_locks_arry = 0;
+SSL_CTX* def_client_ssl_ctx = 0;
 
 void ssl_lock_callback(int mode, int n, const char *file, int line)
 {
@@ -77,6 +78,12 @@ void ssl_tcp_init(void)
 
 	SSL_load_error_strings();
 	SSL_library_init();
+
+    if (!def_client_ssl_ctx)
+    {
+        def_client_ssl_ctx = SSL_CTX_new(SSLv23_method());
+        SSL_CTX_set_verify(def_client_ssl_ctx, SSL_VERIFY_NONE, 0);
+    }
 }
 #elif __GNUC__
 #include <pthread.h>
@@ -144,6 +151,12 @@ void ssl_tcp_init(void)
 
 	SSL_load_error_strings();
 	SSL_library_init();
+
+    if (!def_client_ssl_ctx)
+    {
+        def_client_ssl_ctx = SSL_CTX_new(SSLv23_method());
+        SSL_CTX_set_verify(def_client_ssl_ctx, SSL_VERIFY_NONE, 0);
+    }
 }
 
 #else

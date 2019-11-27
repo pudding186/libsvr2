@@ -19,22 +19,10 @@ extern HWSLISTENER(ws_listen)(HWSMANAGER mgr,
     const char* ip,
     unsigned short port,
     unsigned int recv_buf_size,
-    unsigned int send_buf_size);
-
-extern HWSSESSION ws_connect(HWSMANAGER ws_mgr, 
-    const char* uri, 
-    const char* extra_headers, 
-    unsigned int recv_buf_size, 
-    unsigned int send_buf_size);
-
-extern HWSLISTENER(wss_listen)(HWSMANAGER mgr,
-    const char* ip,
-    unsigned short port,
-    unsigned int recv_buf_size,
     unsigned int send_buf_size,
     SSL_CTX* svr_ssl_ctx);
 
-extern HWSSESSION wss_connect(HWSMANAGER ws_mgr,
+extern HWSSESSION ws_connect(HWSMANAGER ws_mgr,
     const char* uri,
     const char* extra_headers,
     unsigned int recv_buf_size,

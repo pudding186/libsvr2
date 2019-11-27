@@ -1522,59 +1522,42 @@ void destroy_ws_manager(ws_manager* ws_mgr)
     free(ws_mgr);
 }
 
-
 ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
-    unsigned int recv_buf_size, unsigned int send_buf_size)
-{
-    ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
-
-    listener->listener = net_tcp_listen(
-        mgr->net_mgr,
-        ip,
-        port,
-        recv_buf_size,
-        send_buf_size,
-        true,
-        _ws_on_establish,
-        _ws_on_terminate,
-        _ws_on_error,
-        _ws_on_recv,
-        _ws_parser_packet);
-
-    if (!listener->listener)
-    {
-        free(listener);
-        return 0;
-    }
-    else
-    {
-        net_tcp_set_listener_data(listener->listener, listener);
-    }
-
-
-    listener->mgr = mgr;
-
-    return listener;
-}
-
-ws_listener* wss_listen(ws_manager* mgr, const char* ip, unsigned short port,
     unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* svr_ssl_ctx)
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
 
-    listener->listener = net_ssl_listen(
-        mgr->net_mgr,
-        ip,
-        port,
-        recv_buf_size,
-        send_buf_size,
-        true,
-        svr_ssl_ctx,
-        _ws_on_establish,
-        _ws_on_terminate,
-        _ws_on_error,
-        _ws_on_recv,
-        _ws_parser_packet);
+    if (svr_ssl_ctx)
+    {
+        listener->listener = net_ssl_listen(
+            mgr->net_mgr,
+            ip,
+            port,
+            recv_buf_size,
+            send_buf_size,
+            true,
+            svr_ssl_ctx,
+            _ws_on_establish,
+            _ws_on_terminate,
+            _ws_on_error,
+            _ws_on_recv,
+            _ws_parser_packet);
+    }
+    else
+    {
+        listener->listener = net_tcp_listen(
+            mgr->net_mgr,
+            ip,
+            port,
+            recv_buf_size,
+            send_buf_size,
+            true,
+            _ws_on_establish,
+            _ws_on_terminate,
+            _ws_on_error,
+            _ws_on_recv,
+            _ws_parser_packet);
+    }
 
     if (!listener->listener)
     {
@@ -1749,15 +1732,16 @@ bool _parser_uri(const char* uri, bool* is_secure, mem_seg* host_name_seg, mem_s
                                              memcpy(ws_session->fragment_data + copy_length, (data), (size));\
                                              copy_length += (size);\
                                          }
-                                            
 
-ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size)
+ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* cli_ssl_ctx)
 {
     mem_seg host_name_seg;
     mem_seg path_seg;
     char host_name[256];
     int port;
     bool is_secure;
+
+    HSESSION session = 0;
 
     if (!_parser_uri(uri, &is_secure, &host_name_seg, &path_seg, &port))
     {
@@ -1774,19 +1758,39 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
         host_name[host_name_seg.mem_size] = 0;
     }
 
-    HSESSION session = net_tcp_connect(
-        ws_mgr->net_mgr, host_name,
-        (unsigned short)port,
-        recv_buf_size,
-        send_buf_size,
-        false,
-        0,
-        0,
-        _ws_on_establish,
-        _ws_on_terminate,
-        _ws_on_error,
-        _ws_on_recv,
-        _ws_parser_packet);
+    if (is_secure)
+    {
+        session = net_ssl_connect(
+            ws_mgr->net_mgr, host_name,
+            (unsigned short)port,
+            recv_buf_size,
+            send_buf_size,
+            false,
+            0,
+            0,
+            cli_ssl_ctx,
+            _ws_on_establish,
+            _ws_on_terminate,
+            _ws_on_error,
+            _ws_on_recv,
+            _ws_parser_packet);
+    }
+    else
+    {
+        session = net_tcp_connect(
+            ws_mgr->net_mgr, host_name,
+            (unsigned short)port,
+            recv_buf_size,
+            send_buf_size,
+            false,
+            0,
+            0,
+            _ws_on_establish,
+            _ws_on_terminate,
+            _ws_on_error,
+            _ws_on_recv,
+            _ws_parser_packet);
+    }
 
     if (!session)
     {
@@ -1804,104 +1808,6 @@ ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_hea
     ws_session->extension_options = 0;
     ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
     ws_session->fragment_data = libsvr_memory_manager_alloc(MAX_HTTP_REQUEST_SIZE);
-    //ws_session->fragment_data = malloc(MAX_HTTP_REQUEST_SIZE);
-    ws_session->fragment_size = MAX_HTTP_REQUEST_SIZE;
-    {
-        size_t copy_length = 0;
-        size_t extra_headers_length = strlen(extra_headers);
-        
-        char sz_port[16] = { 0 };
-		ulltostr(port, sz_port, sizeof(sz_port), 10);
-        size_t port_length = strlen(sz_port);
-
-        const char* tmp_data =
-            " HTTP/1.1\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n"
-            "Host: ";
-
-        const char* tmp_data1 =
-            "\r\n"
-            "Sec-WebSocket-Version: 13\r\n";
-
-
-        _append_http_request("GET /", 5);
-        _append_http_request(path_seg.mem, path_seg.mem_size);
-        _append_http_request(tmp_data, 103);
-        _append_http_request(host_name_seg.mem, host_name_seg.mem_size);
-        _append_http_request(":", 1);
-        _append_http_request(sz_port, port_length);
-        _append_http_request(tmp_data1, 29);
-        _append_http_request(extra_headers, extra_headers_length);
-        _append_http_request("\r\n", 2);
-
-        ws_session->fragment_size = (unsigned int)copy_length;
-    }
-
-    net_tcp_set_session_data(ws_session->session, ws_session);
-
-    return ws_session;
-FAIL:
-    _ws_free_socket(ws_mgr, ws_session);
-    return 0;
-}
-
-ws_socket* wss_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* cli_ssl_ctx)
-{
-    mem_seg host_name_seg;
-    mem_seg path_seg;
-    char host_name[256];
-    int port;
-    bool is_secure;
-
-    if (!_parser_uri(uri, &is_secure, &host_name_seg, &path_seg, &port))
-    {
-        return 0;
-    }
-
-    if (sizeof(host_name) <= host_name_seg.mem_size)
-    {
-        return 0;
-    }
-    else
-    {
-        memcpy(host_name, host_name_seg.mem, host_name_seg.mem_size);
-        host_name[host_name_seg.mem_size] = 0;
-    }
-
-    HSESSION session = net_ssl_connect(
-        ws_mgr->net_mgr, host_name,
-        (unsigned short)port,
-        recv_buf_size,
-        send_buf_size,
-        false,
-        0,
-        0,
-        cli_ssl_ctx,
-        _ws_on_establish,
-        _ws_on_terminate,
-        _ws_on_error,
-        _ws_on_recv,
-        _ws_parser_packet);
-
-    if (!session)
-    {
-        return 0;
-    }
-
-    ws_socket* ws_session = _ws_alloc_socket(ws_mgr);
-
-    ws_session->session = session;
-    ws_session->listener = 0;
-    ws_session->state = ws_client_tcp;
-    ws_session->mgr = ws_mgr;
-    ws_session->error_type = ws_error_ok;
-    ws_session->error_code = 0;
-    ws_session->extension_options = 0;
-    ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
-    ws_session->fragment_data = libsvr_memory_manager_alloc(MAX_HTTP_REQUEST_SIZE);
-    //ws_session->fragment_data = malloc(MAX_HTTP_REQUEST_SIZE);
     ws_session->fragment_size = MAX_HTTP_REQUEST_SIZE;
     {
         size_t copy_length = 0;

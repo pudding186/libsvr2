@@ -2620,6 +2620,8 @@ iocp_tcp_socket* net_tcp_connect(
     return socket_ptr;
 }
 
+extern SSL_CTX* def_client_ssl_ctx;
+
 iocp_tcp_socket* net_ssl_connect(
     iocp_tcp_manager* mgr,
     const char* ip,
@@ -2657,7 +2659,15 @@ iocp_tcp_socket* net_ssl_connect(
     }
     else
     {
-        socket_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx = cli_ssl_ctx;
+        if (cli_ssl_ctx)
+        {
+            socket_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx = cli_ssl_ctx;
+        }
+        else
+        {
+            socket_ptr->ssl_data_ptr->ssl_pt.ssl_client_ctx = def_client_ssl_ctx;
+        }
+        
     }
 
     if (func_on_establish)
