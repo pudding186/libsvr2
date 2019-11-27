@@ -2326,6 +2326,21 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 
 void* _epoll_tcp_net_proc_func(void* arg)
 {
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
+    sigset_t new_set, old_set;
+    sigemptyset(&new_set);
+    sigemptyset(&old_set);
+    sigaddset(&new_set, SIGHUP);
+    sigaddset(&new_set, SIGINT);
+    sigaddset(&new_set, SIGQUIT);
+    sigaddset(&new_set, SIGTERM);
+    sigaddset(&new_set, SIGUSR1);
+    sigaddset(&new_set, SIGUSR2);
+    sigaddset(&new_set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &new_set, &old_set);
+
 	epoll_tcp_proc* proc = (epoll_tcp_proc*)arg;
 
 	unsigned int cur_do_proc_count = 0;
