@@ -3,6 +3,8 @@
 
 #if OPENSSL_VERSION_NUMBER > 0x1000000fL
 
+SSL_CTX* def_client_ssl_ctx = 0;
+int ssl_locks_num = 0;
 
 #ifdef _MSC_VER
 struct CRYPTO_dynlock_value
@@ -10,9 +12,8 @@ struct CRYPTO_dynlock_value
 	CRITICAL_SECTION lock;
 };
 
-int ssl_locks_num = 0;
+
 CRITICAL_SECTION* ssl_locks_arry = 0;
-SSL_CTX* def_client_ssl_ctx = 0;
 
 void ssl_lock_callback(int mode, int n, const char *file, int line)
 {
@@ -92,7 +93,6 @@ struct CRYPTO_dynlock_value
 	pthread_mutex_t lock;
 };
 
-int ssl_locks_num = 0;
 pthread_mutex_t* ssl_locks_arry = 0;
 
 void ssl_lock_callback(int mode, int n, const char *file, int line)
