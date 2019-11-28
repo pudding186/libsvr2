@@ -3328,5 +3328,8 @@ void net_tcp_set_send_control(epoll_tcp_socket* sock_ptr, unsigned int pkg_size,
     sock_ptr->data_delay_send_size = pkg_size;
     _epoll_tcp_socket_mod_timer_send(sock_ptr, delay_time);
 }
-
+#elif _MSC_VER
+#include "./lib_svr_common_def.h"
+#else
+#error "unknown compiler"
 #endif
