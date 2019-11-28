@@ -43,7 +43,7 @@ extern bool file_logger_async_log(HFILELOGGER file_logger, bool is_c_format, fil
 template<typename... Args>
 void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
 {
-    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward<Args>(args)...);
+    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward<special_decay_type<Args>>(args)...);
 
     file_logger_async_log(file_logger, false, lv, fmt_args, true);
 }
@@ -51,7 +51,7 @@ void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char* 
 template<typename... Args>
 void file_logger_print(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
 {
-    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward<Args>(args)...);
+    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...>>()->New(1, fmt, std::forward< special_decay_type<Args>>(args)...);
 
     file_logger_async_log(file_logger, true, lv, fmt_args, true);
 }
