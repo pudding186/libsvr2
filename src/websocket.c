@@ -1463,7 +1463,7 @@ void _ws_on_recv(HSESSION session, const char* data, const unsigned int len)
     }
 }
 
-ws_manager* create_ws_manager(HTCPMANAGER net_mgr,
+ws_manager* create_net_ws(HTCPMANAGER net_mgr,
     pfn_on_open func_on_open,
     pfn_on_close func_on_close,
     pfn_on_fail func_on_fail,
@@ -1501,7 +1501,7 @@ ws_manager* create_ws_manager(HTCPMANAGER net_mgr,
     return mgr;
 }
 
-void destroy_ws_manager(ws_manager* ws_mgr)
+void destroy_net_ws(ws_manager* ws_mgr)
 {
     //libsvr_memory_manager_free(ws_mgr->mask_buffer);
     free(ws_mgr->mask_buffer);
@@ -1522,7 +1522,7 @@ void destroy_ws_manager(ws_manager* ws_mgr)
     free(ws_mgr);
 }
 
-ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
+ws_listener* net_ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
     unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* svr_ssl_ctx)
 {
     ws_listener* listener = (ws_listener*)malloc(sizeof(ws_listener));
@@ -1575,7 +1575,7 @@ ws_listener* ws_listen(ws_manager* mgr, const char* ip, unsigned short port,
     return listener;
 }
 
-void ws_close_listener(ws_listener* ws_listener)
+void net_ws_close_listener(ws_listener* ws_listener)
 {
     net_tcp_close_listener(ws_listener->listener);
     free(ws_listener);
@@ -1733,7 +1733,7 @@ bool _parser_uri(const char* uri, bool* is_secure, mem_seg* host_name_seg, mem_s
                                              copy_length += (size);\
                                          }
 
-ws_socket* ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* cli_ssl_ctx)
+ws_socket* net_ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra_headers, unsigned int recv_buf_size, unsigned int send_buf_size, SSL_CTX* cli_ssl_ctx)
 {
     mem_seg host_name_seg;
     mem_seg path_seg;
@@ -1850,7 +1850,7 @@ FAIL:
     return 0;
 }
 
-bool ws_send_text(ws_socket* ws_session, const char* data, unsigned int length, bool compress)
+bool net_ws_send_text(ws_socket* ws_session, const char* data, unsigned int length, bool compress)
 {
     if (ws_session->error_type != ws_error_ok)
     {
@@ -1875,7 +1875,7 @@ bool ws_send_text(ws_socket* ws_session, const char* data, unsigned int length, 
     }
 }
 
-bool ws_send_binary(ws_socket*  ws_session, const char* data, unsigned int length, bool compress)
+bool net_ws_send_binary(ws_socket*  ws_session, const char* data, unsigned int length, bool compress)
 {
     if (ws_session->error_type != ws_error_ok)
     {
@@ -1895,7 +1895,7 @@ bool ws_send_binary(ws_socket*  ws_session, const char* data, unsigned int lengt
     }
 }
 
-bool ws_send_ping(ws_socket*  ws_session, const char* message, unsigned int length)
+bool net_ws_send_ping(ws_socket*  ws_session, const char* message, unsigned int length)
 {
     if (ws_session->error_type != ws_error_ok)
     {
@@ -1915,7 +1915,7 @@ bool ws_send_ping(ws_socket*  ws_session, const char* message, unsigned int leng
     }
 }
 
-bool ws_send_pong(ws_socket*  ws_session, const char* message, unsigned int length)
+bool net_ws_send_pong(ws_socket*  ws_session, const char* message, unsigned int length)
 {
     if (ws_session->error_type != ws_error_ok)
     {
@@ -1935,37 +1935,37 @@ bool ws_send_pong(ws_socket*  ws_session, const char* message, unsigned int leng
     }
 }
 
-void ws_close_session(ws_socket* ws_session)
+void net_ws_close_session(ws_socket* ws_session)
 {
     _ws_close_socket(ws_session, ws_error_websocket, 1000, "", 0);
 }
 
-HSESSION ws_to_tcp_session(ws_socket* ws_session)
+HSESSION net_ws_to_tcp_session(ws_socket* ws_session)
 {
     return ws_session->session;
 }
 
-HLISTENER ws_to_tcp_listener(ws_listener* ws_listener)
+HLISTENER net_ws_to_tcp_listener(ws_listener* ws_listener)
 {
     return ws_listener->listener;
 }
 
-void ws_set_session_data(ws_socket* ws_session, void* user_data)
+void net_ws_set_session_data(ws_socket* ws_session, void* user_data)
 {
     ws_session->user_data = user_data;
 }
 
-void ws_set_listener_data(ws_listener* ws_listener, void* user_data)
+void net_ws_set_listener_data(ws_listener* ws_listener, void* user_data)
 {
     ws_listener->user_data = user_data;
 }
 
-void* ws_get_session_data(ws_socket* ws_session)
+void* net_ws_get_session_data(ws_socket* ws_session)
 {
     return ws_session->user_data;
 }
 
-void* ws_get_listener_data(ws_listener* ws_listener)
+void* net_ws_get_listener_data(ws_listener* ws_listener)
 {
     return ws_listener->user_data;
 }
