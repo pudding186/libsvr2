@@ -3,6 +3,9 @@ lib/
 test/
 .vs/
 output/
+tools/protocol_maker/Debug/
+tools/protocol_maker/Release/
 *.vcxproj.*
 *.vcxproj
 *.sln
+*副本.*
