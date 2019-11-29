@@ -16,6 +16,8 @@ extern SSL_CTX* create_client_ssl_ctx(void);
 
 extern void destroy_ssl_ctx(SSL_CTX* ssl_ctx);
 
+extern void get_ssl_err_msg(unsigned long err, char* buf, size_t len);
+
 
 extern HLISTENER(net_ssl_listen)(HTCPMANAGER mgr,
     const char* ip,

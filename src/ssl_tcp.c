@@ -206,6 +206,16 @@ void destroy_ssl_ctx(SSL_CTX* ssl_ctx)
     }
 }
 
+void get_ssl_err_msg(unsigned long err, char* buf, size_t len)
+{
+    if (!err)
+    {
+        err = ERR_get_error();
+    }
+
+    ERR_error_string_n(err, buf, len);
+}
+
 bool init_server_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
 {
     core->ssl = SSL_new(ssl_ctx_data);
