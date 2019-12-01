@@ -107,57 +107,6 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
     return (unsigned char*)alloc_mem + sizeof(void*);
 }
 
-//void* memory_unit_alloc(mem_unit* unit, size_t grow_size)
-//{
-//    void* alloc_mem;
-//
-//    if (!unit->unit_free_head)
-//    {
-//        size_t real_unit_size = sizeof(void*) + unit->unit_size;
-//
-//        if (grow_size > (sizeof(mem_block) + real_unit_size))
-//        {
-//            _create_memory_block(unit,
-//                (grow_size - sizeof(mem_block)) / real_unit_size);
-//        }
-//        else
-//        {
-//            _create_memory_block(unit, 1);
-//        }
-//    }
-//
-//    alloc_mem = unit->unit_free_head;
-//
-//    unit->unit_free_head = *(void**)alloc_mem;
-//
-//    *(void**)alloc_mem = unit;
-//
-//    return (unsigned char*)alloc_mem + sizeof(void*);
-//}
-//
-//void* memory_unit_alloc_ex(mem_unit* unit, size_t grow_count)
-//{
-//    void* alloc_mem;
-//
-//    if (!unit->unit_free_head)
-//    {
-//        if (!grow_count)
-//        {
-//            return 0;
-//        }
-//
-//        _create_memory_block(unit, grow_count);
-//    }
-//
-//    alloc_mem = unit->unit_free_head;
-//
-//    unit->unit_free_head = *(void**)alloc_mem;
-//
-//    *(void**)alloc_mem = unit;
-//
-//    return (unsigned char*)alloc_mem + sizeof(void*);
-//}
-
 void memory_unit_free(mem_unit* unit, void* mem)
 {
     void** ptr_mem_unit = memory_unit_check_data(mem);
