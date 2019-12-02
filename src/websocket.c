@@ -456,7 +456,10 @@ bool _ws_client_close(ws_socket* ws_session, unsigned short status_code, const c
     status_code = htons(status_code);
 
     _unmask_data_overflow(web_socket_frame + 6, (const char*)&status_code, (char*)&mask, 2);
-    _unmask_data_overflow(web_socket_frame + 8, message, (char*)&mask, length);
+    if (length)
+    {
+        _unmask_data_overflow(web_socket_frame + 8, message, (char*)&mask, length);
+    }
 
     return net_tcp_send(ws_session->session, web_socket_frame, length + 8);
 }
