@@ -15,8 +15,16 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
-    block->next = unit->block_head;
-    unit->block_head = block;
+    //block->next = unit->block_head;
+    //unit->block_head = block;
+
+    do 
+    {
+        block->next = unit->block_head;
+    } while (InterlockedCompareExchangePointer(
+        &unit->block_head, 
+        block, 
+        block->next) != block->next);
 
     ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -28,6 +36,42 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     *((void**)ptr) = unit->unit_free_head;
     unit->unit_free_head = (unsigned char*)block + sizeof(mem_block);
+
+    return block;
+}
+
+mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
+{
+    unsigned char* ptr;
+    size_t i;
+    mem_block* block;
+    size_t block_size = sizeof(mem_block) + unit_count * (sizeof(void*) + unit->unit_size);
+
+    block = (mem_block*)malloc(block_size);
+
+    do
+    {
+        block->next = unit->block_head;
+    } while (InterlockedCompareExchangePointer(
+        &unit->block_head,
+        block,
+        block->next) != block->next);
+
+    ptr = (unsigned char*)block + sizeof(mem_block);
+
+    for (i = 0; i < unit_count - 1; i++)
+    {
+        *((void**)ptr) = ptr + sizeof(void*) + unit->unit_size;
+        ptr += sizeof(void*) + unit->unit_size;
+    }
+
+    do 
+    {
+        *((void**)ptr) = unit->unit_free_head_mt;
+    } while (InterlockedCompareExchangePointer(
+        &unit->unit_free_head_mt, 
+        (unsigned char*)block + sizeof(mem_block), 
+        *((void**)ptr)) != *((void**)ptr));
 
     return block;
 }
@@ -62,10 +106,13 @@ mem_unit* create_memory_unit(size_t unit_size)
 {
     mem_unit* unit = (mem_unit*)malloc(sizeof(mem_unit));
 
-    unit->unit_size = unit_size;
+    unit->unit_create_thread = &lib_svr_mem_mgr;
     unit->block_head = 0;
     unit->unit_free_head = 0;
-
+    unit->unit_free_head_mt = 0;
+    unit->unit_size = unit_size;
+    unit->spin_lock = 0;
+    
     memory_unit_set_grow_bytes(unit, 4 * 1024);
 
     return unit;
@@ -88,19 +135,48 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
 {
     void* alloc_mem;
 
-    if (!unit->unit_free_head)
+    if (unit->unit_create_thread == &lib_svr_mem_mgr)
     {
-        if (!unit->grow_count)
+        if (!unit->unit_free_head)
         {
-            return 0;
+            if (!unit->grow_count)
+            {
+                return 0;
+            }
+
+            _create_memory_block(unit, unit->grow_count);
         }
 
-        _create_memory_block(unit, unit->grow_count);
+        alloc_mem = unit->unit_free_head;
+
+        unit->unit_free_head = *(void**)alloc_mem;
     }
+    else
+    {
+        if (!unit->unit_free_head_mt)
+        {
+            if (!unit->grow_count)
+            {
+                return 0;
+            }
 
-    alloc_mem = unit->unit_free_head;
+            _create_memory_block_mt(unit, unit->grow_count);
+        }
 
-    unit->unit_free_head = *(void**)alloc_mem;
+        do 
+        {
+            alloc_mem = unit->unit_free_head_mt;
+
+            while (!alloc_mem)
+            {
+                _create_memory_block_mt(unit, unit->grow_count);
+                alloc_mem = unit->unit_free_head_mt;
+            }
+        } while (InterlockedCompareExchangePointer(
+            &unit->unit_free_head_mt, 
+            *(void**)alloc_mem, 
+            alloc_mem) != alloc_mem);
+    }
 
     *(void**)alloc_mem = unit;
 
@@ -117,14 +193,40 @@ void memory_unit_free(mem_unit* unit, void* mem)
         return;
     }
 
-    *((void**)ptr_mem_unit) = unit->unit_free_head;
-    unit->unit_free_head = ptr_mem_unit;
+    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    {
+        *((void**)ptr_mem_unit) = unit->unit_free_head;
+        unit->unit_free_head = ptr_mem_unit;
+    }
+    else
+    {
+        do 
+        {
+            *((void**)ptr_mem_unit) = unit->unit_free_head;
+        } while (InterlockedCompareExchangePointer(
+            &unit->unit_free_head_mt, 
+            ptr_mem_unit, 
+            *(void**)ptr_mem_unit) != *(void**)ptr_mem_unit);
+    }
 }
 
 void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 {
-    *ptr_mem_unit = unit->unit_free_head;
-    unit->unit_free_head = ptr_mem_unit;
+    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    {
+        *ptr_mem_unit = unit->unit_free_head;
+        unit->unit_free_head = ptr_mem_unit;
+    }
+    else
+    {
+        do
+        {
+            *ptr_mem_unit = unit->unit_free_head;
+        } while (InterlockedCompareExchangePointer(
+            &unit->unit_free_head_mt,
+            ptr_mem_unit,
+            *ptr_mem_unit) != *ptr_mem_unit);
+    }
 }
 
 void** memory_unit_check_data(void* mem)

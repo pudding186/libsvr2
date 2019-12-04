@@ -30,10 +30,13 @@ typedef struct st_mem_block
 
 typedef struct st_mem_unit
 {
-    size_t                  unit_size;      //内存单元的大小
+    void*                   unit_create_thread;
     struct st_mem_block*    block_head;     //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
+    void*                   unit_free_head_mt;
+    size_t                  unit_size;      //内存单元的大小
     size_t                  grow_count;     //内存池每次增长个数
+    unsigned long long      spin_lock;
 }mem_unit;
 
 typedef struct st_mem_pool
