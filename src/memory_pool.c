@@ -65,13 +65,23 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         ptr += sizeof(void*) + unit->unit_size;
     }
 
-    do 
+    tag_pointer tp_next;
+    tp_next.u_data.tp.ptr = (unsigned char*)block + sizeof(mem_block);
+
+    //tag_pointer tp = unit->unit_free_head_mt;
+    tag_pointer tp;
+    tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+    tp.u_data.tp.tag = 0;
+
+    while (!InterlockedCompareExchange128(
+        unit->unit_free_head_mt.u_data.bit128.Int,
+        tp_next.u_data.bit128.Int[1],
+        tp_next.u_data.bit128.Int[0],
+        tp.u_data.bit128.Int))
     {
-        *((void**)ptr) = unit->unit_free_head_mt;
-    } while (InterlockedCompareExchangePointer(
-        &unit->unit_free_head_mt, 
-        (unsigned char*)block + sizeof(mem_block), 
-        *((void**)ptr)) != *((void**)ptr));
+        *((void**)ptr) = tp.u_data.tp.ptr;
+        tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+    }
 
     return block;
 }
@@ -106,12 +116,12 @@ mem_unit* create_memory_unit(size_t unit_size)
 {
     mem_unit* unit = (mem_unit*)malloc(sizeof(mem_unit));
 
+    unit->unit_free_head_mt.u_data.tp.ptr = 0;
+    unit->unit_free_head_mt.u_data.tp.tag = 0;
     unit->unit_create_thread = &lib_svr_mem_mgr;
     unit->block_head = 0;
     unit->unit_free_head = 0;
-    unit->unit_free_head_mt = 0;
     unit->unit_size = unit_size;
-    unit->spin_lock = 0;
     
     memory_unit_set_grow_bytes(unit, 4 * 1024);
 
@@ -133,7 +143,7 @@ void destroy_memory_unit(mem_unit* unit)
 
 void* memory_unit_alloc(HMEMORYUNIT unit)
 {
-    void* alloc_mem;
+    tag_pointer alloc_tp;
 
     if (unit->unit_create_thread == &lib_svr_mem_mgr)
     {
@@ -147,13 +157,14 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             _create_memory_block(unit, unit->grow_count);
         }
 
-        alloc_mem = unit->unit_free_head;
-
-        unit->unit_free_head = *(void**)alloc_mem;
+        alloc_tp.u_data.tp.ptr = unit->unit_free_head;
+        unit->unit_free_head = *(void**)alloc_tp.u_data.tp.ptr;
     }
     else
     {
-        if (!unit->unit_free_head_mt)
+        tag_pointer alloc_pt_next;
+
+        if (!unit->unit_free_head_mt.u_data.tp.ptr)
         {
             if (!unit->grow_count)
             {
@@ -163,24 +174,48 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             _create_memory_block_mt(unit, unit->grow_count);
         }
 
-        do 
-        {
-            alloc_mem = unit->unit_free_head_mt;
+        alloc_tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        alloc_tp.u_data.tp.tag = 0;
 
-            while (!alloc_mem)
+        while (!InterlockedCompareExchange128(
+            unit->unit_free_head_mt.u_data.bit128.Int,
+            alloc_pt_next.u_data.bit128.Int[1],
+            alloc_pt_next.u_data.bit128.Int[0],
+            alloc_tp.u_data.bit128.Int))
+        {
+            while (!alloc_tp.u_data.tp.ptr)
             {
                 _create_memory_block_mt(unit, unit->grow_count);
-                alloc_mem = unit->unit_free_head_mt;
+                alloc_tp = unit->unit_free_head_mt;
             }
-        } while (InterlockedCompareExchangePointer(
-            &unit->unit_free_head_mt, 
-            *(void**)alloc_mem, 
-            alloc_mem) != alloc_mem);
+
+            alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
+            alloc_pt_next.u_data.tp.tag = alloc_tp.u_data.tp.tag + 1;
+        }
+
+        //alloc_tp = unit->unit_free_head_mt;
+
+        //do 
+        //{
+        //    while (!alloc_tp.u_data.tp.ptr)
+        //    {
+        //        _create_memory_block_mt(unit, unit->grow_count);
+        //        alloc_tp = unit->unit_free_head_mt;
+        //    }
+
+        //    alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
+        //    alloc_pt_next.u_data.tp.tag = alloc_tp.u_data.tp.tag + 1;
+
+        //} while (!InterlockedCompareExchange128(
+        //    unit->unit_free_head_mt.u_data.bit128.Int,
+        //    alloc_pt_next.u_data.bit128.Int[1],
+        //    alloc_pt_next.u_data.bit128.Int[0],
+        //    alloc_tp.u_data.bit128.Int));
     }
 
-    *(void**)alloc_mem = unit;
+    *(void**)alloc_tp.u_data.tp.ptr = unit;
 
-    return (unsigned char*)alloc_mem + sizeof(void*);
+    return (unsigned char*)alloc_tp.u_data.tp.ptr + sizeof(void*);
 }
 
 void memory_unit_free(mem_unit* unit, void* mem)
@@ -189,24 +224,46 @@ void memory_unit_free(mem_unit* unit, void* mem)
 
     if ((*ptr_mem_unit) != unit)
     {
+        printf("0x%p != 0x%p\n", (*ptr_mem_unit), unit);
         CRUSH_CODE();
         return;
     }
 
     if (unit->unit_create_thread == &lib_svr_mem_mgr)
     {
-        *((void**)ptr_mem_unit) = unit->unit_free_head;
+        *ptr_mem_unit = unit->unit_free_head;
         unit->unit_free_head = ptr_mem_unit;
     }
     else
     {
-        do 
+        tag_pointer tp_next;
+        tp_next.u_data.tp.ptr = ptr_mem_unit;
+
+        tag_pointer tp;
+
+        tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        tp.u_data.tp.tag = 0;
+
+        while (!InterlockedCompareExchange128(
+            unit->unit_free_head_mt.u_data.bit128.Int,
+            tp_next.u_data.bit128.Int[1],
+            tp_next.u_data.bit128.Int[0],
+            tp.u_data.bit128.Int))
         {
-            *((void**)ptr_mem_unit) = unit->unit_free_head;
-        } while (InterlockedCompareExchangePointer(
-            &unit->unit_free_head_mt, 
-            ptr_mem_unit, 
-            *(void**)ptr_mem_unit) != *(void**)ptr_mem_unit);
+            *ptr_mem_unit = tp.u_data.tp.ptr;
+            tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        }
+
+        //do 
+        //{
+        //    *ptr_mem_unit = tp.u_data.tp.ptr;
+        //    
+        //    tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        //} while (!InterlockedCompareExchange128(
+        //    unit->unit_free_head_mt.u_data.bit128.Int,
+        //    tp_next.u_data.bit128.Int[1],
+        //    tp_next.u_data.bit128.Int[0],
+        //    tp.u_data.bit128.Int));
     }
 }
 
@@ -219,13 +276,23 @@ void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
     }
     else
     {
-        do
+        tag_pointer tp_next;
+        tp_next.u_data.tp.ptr = ptr_mem_unit;
+
+        tag_pointer tp;
+
+        tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        tp.u_data.tp.tag = 0;
+
+        while (!InterlockedCompareExchange128(
+            unit->unit_free_head_mt.u_data.bit128.Int,
+            tp_next.u_data.bit128.Int[1],
+            tp_next.u_data.bit128.Int[0],
+            tp.u_data.bit128.Int))
         {
-            *ptr_mem_unit = unit->unit_free_head;
-        } while (InterlockedCompareExchangePointer(
-            &unit->unit_free_head_mt,
-            ptr_mem_unit,
-            *ptr_mem_unit) != *ptr_mem_unit);
+            *ptr_mem_unit = tp.u_data.tp.ptr;
+            tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        }
     }
 }
 

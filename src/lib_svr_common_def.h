@@ -23,6 +23,15 @@ extern "C" {
 
 #define CRUSH_CODE() do{char* p = 0;*p = 'a';}while(0)
 //////////////////////////////////////////////////////////////////////////
+typedef struct st_tag_pointer
+{
+    union
+    {
+        struct { long long tag; void* ptr; } tp;
+        struct { long long Int[2]; } bit128;
+    }u_data;
+}tag_pointer;
+
 typedef struct st_mem_block
 {
     struct st_mem_block*    next; //指向下一个内存块的
@@ -30,13 +39,12 @@ typedef struct st_mem_block
 
 typedef struct st_mem_unit
 {
+    struct st_tag_pointer   unit_free_head_mt;
     void*                   unit_create_thread;
     struct st_mem_block*    block_head;     //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
-    void*                   unit_free_head_mt;
     size_t                  unit_size;      //内存单元的大小
     size_t                  grow_count;     //内存池每次增长个数
-    unsigned long long      spin_lock;
 }mem_unit;
 
 typedef struct st_mem_pool
