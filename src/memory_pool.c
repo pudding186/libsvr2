@@ -15,9 +15,6 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
-    //block->next = unit->block_head;
-    //unit->block_head = block;
-
     do 
     {
         block->next = unit->block_head;
@@ -68,9 +65,8 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
     tag_pointer tp_next;
     tp_next.u_data.tp.ptr = (unsigned char*)block + sizeof(mem_block);
 
-    //tag_pointer tp = unit->unit_free_head_mt;
     tag_pointer tp;
-    tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+    tp.u_data.tp.ptr = (void*)ULLONG_MAX;
     tp.u_data.tp.tag = 0;
 
     while (!InterlockedCompareExchange128(
@@ -170,11 +166,9 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             {
                 return 0;
             }
-
-            _create_memory_block_mt(unit, unit->grow_count);
         }
 
-        alloc_tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
         alloc_tp.u_data.tp.tag = 0;
 
         while (!InterlockedCompareExchange128(
@@ -183,34 +177,18 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             alloc_pt_next.u_data.bit128.Int[0],
             alloc_tp.u_data.bit128.Int))
         {
-            while (!alloc_tp.u_data.tp.ptr)
+            if (!alloc_tp.u_data.tp.ptr)
             {
+                alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
+                alloc_tp.u_data.tp.tag = 0;
+
                 _create_memory_block_mt(unit, unit->grow_count);
-                alloc_tp = unit->unit_free_head_mt;
+                continue;
             }
 
             alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
             alloc_pt_next.u_data.tp.tag = alloc_tp.u_data.tp.tag + 1;
         }
-
-        //alloc_tp = unit->unit_free_head_mt;
-
-        //do 
-        //{
-        //    while (!alloc_tp.u_data.tp.ptr)
-        //    {
-        //        _create_memory_block_mt(unit, unit->grow_count);
-        //        alloc_tp = unit->unit_free_head_mt;
-        //    }
-
-        //    alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
-        //    alloc_pt_next.u_data.tp.tag = alloc_tp.u_data.tp.tag + 1;
-
-        //} while (!InterlockedCompareExchange128(
-        //    unit->unit_free_head_mt.u_data.bit128.Int,
-        //    alloc_pt_next.u_data.bit128.Int[1],
-        //    alloc_pt_next.u_data.bit128.Int[0],
-        //    alloc_tp.u_data.bit128.Int));
     }
 
     *(void**)alloc_tp.u_data.tp.ptr = unit;
@@ -224,7 +202,6 @@ void memory_unit_free(mem_unit* unit, void* mem)
 
     if ((*ptr_mem_unit) != unit)
     {
-        printf("0x%p != 0x%p\n", (*ptr_mem_unit), unit);
         CRUSH_CODE();
         return;
     }
@@ -241,7 +218,7 @@ void memory_unit_free(mem_unit* unit, void* mem)
 
         tag_pointer tp;
 
-        tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        tp.u_data.tp.ptr = (void*)ULLONG_MAX;
         tp.u_data.tp.tag = 0;
 
         while (!InterlockedCompareExchange128(
@@ -253,17 +230,6 @@ void memory_unit_free(mem_unit* unit, void* mem)
             *ptr_mem_unit = tp.u_data.tp.ptr;
             tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
         }
-
-        //do 
-        //{
-        //    *ptr_mem_unit = tp.u_data.tp.ptr;
-        //    
-        //    tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
-        //} while (!InterlockedCompareExchange128(
-        //    unit->unit_free_head_mt.u_data.bit128.Int,
-        //    tp_next.u_data.bit128.Int[1],
-        //    tp_next.u_data.bit128.Int[0],
-        //    tp.u_data.bit128.Int));
     }
 }
 
@@ -281,7 +247,7 @@ void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 
         tag_pointer tp;
 
-        tp.u_data.tp.ptr = (void*)0xFFFFFFFFFFFFFFFF;
+        tp.u_data.tp.ptr = (void*)ULLONG_MAX;
         tp.u_data.tp.tag = 0;
 
         while (!InterlockedCompareExchange128(
@@ -428,9 +394,13 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
     }
     else
     {
-        pool->units[i] = create_memory_unit(pool->min_mem_size + i * pool->align);
+        HMEMORYUNIT unit = create_memory_unit(pool->min_mem_size + i * pool->align);
+        memory_unit_set_grow_bytes(unit, pool->grow);
 
-        memory_unit_set_grow_bytes(pool->units[i], pool->grow);
+        if (InterlockedCompareExchangePointer(&(pool->units[i]), unit, 0))
+        {
+            destroy_memory_unit(unit);
+        }
 
         return memory_unit_alloc(pool->units[i]);
     }
