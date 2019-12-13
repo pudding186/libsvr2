@@ -40,6 +40,7 @@ typedef struct st_mem_block
 typedef struct st_mem_unit
 {
     struct st_tag_pointer   unit_free_head_mt;
+    struct st_tag_pointer   unit_free_head_cache;
     void*                   unit_create_thread;
     struct st_mem_block*    block_head;     //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
