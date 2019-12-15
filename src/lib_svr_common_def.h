@@ -57,6 +57,7 @@ typedef struct st_mem_pool
     size_t                  grow;           //每次扩展内存大小
     size_t                  min_mem_size;   //内存池管理的最小内存大小，小于此大小按最小分配
     size_t                  max_mem_size;   //内存池管理的最大内存大小，大于此大小的内存由系统托管
+    void*                   pool_create_thread;
 }mem_pool;
 
 //////////////////////////////////////////////////////////////////////////

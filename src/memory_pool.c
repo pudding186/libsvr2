@@ -437,6 +437,8 @@ mem_pool* create_memory_pool(size_t align, size_t min_mem_size, size_t max_mem_s
         pool->grow = grow_size;
     }
 
+    pool->pool_create_thread = &lib_svr_mem_mgr;
+
     return pool;
 }
 
@@ -492,6 +494,7 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
     else
     {
         HMEMORYUNIT unit = create_memory_unit(pool->min_mem_size + i * pool->align);
+        unit->unit_create_thread = pool->pool_create_thread;
         memory_unit_set_grow_bytes(unit, pool->grow);
 
         if (InterlockedCompareExchangePointer(&(pool->units[i]), unit, 0))
