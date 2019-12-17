@@ -171,31 +171,42 @@ typedef struct st_logger_manager
 static logger_manager* g_logger_manager = 0;
 static TLS_VAR log_proc* s_log_proc = 0;
 
-class log_proc_check
-{
-public:
-    log_proc_check(void)
-    {
-    }
+//class log_proc_check
+//{
+//public:
+//    log_proc_check(void)
+//    {
+//    }
+//
+//    ~log_proc_check(void)
+//    {
+//        if (g_logger_manager)
+//        {
+//            if (s_log_proc)
+//            {
+//                s_log_proc->is_run = false;
+//            }
+//        }
+//    }
+//
+//    bool m_is_use;
+//
+//protected:
+//private:
+//};
 
-    ~log_proc_check(void)
+//static thread_local log_proc_check s_check;
+
+void check_log_proc(void)
+{
+    if (g_logger_manager)
     {
-        if (g_logger_manager)
+        if (s_log_proc)
         {
-            if (s_log_proc)
-            {
-                s_log_proc->is_run = false;
-            }
+            s_log_proc->is_run = false;
         }
     }
-
-    bool m_is_use;
-
-protected:
-private:
-};
-
-static thread_local log_proc_check s_check;
+}
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -1100,7 +1111,6 @@ log_proc* _get_log_proc(void)
 #endif
         strftime(s_log_proc->time_str, sizeof(s_log_proc->time_str), "%Y-%m-%d %H:%M:%S", &s_log_proc->last_log_tm);
 
-        s_check.m_is_use = true;
         s_log_proc->is_run = true;
 
         std::mutex mtx;
