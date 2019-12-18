@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <signal.h>
 #else
 #error "unknown compiler"
 #endif
