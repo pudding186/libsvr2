@@ -797,6 +797,23 @@ void log_thread::_proc_log_end()
 
 void log_thread::_log_func()
 {
+#ifdef __GNUC__
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
+    sigset_t new_set, old_set;
+    sigemptyset(&new_set);
+    sigemptyset(&old_set);
+    sigaddset(&new_set, SIGHUP);
+    sigaddset(&new_set, SIGINT);
+    sigaddset(&new_set, SIGQUIT);
+    sigaddset(&new_set, SIGTERM);
+    sigaddset(&new_set, SIGUSR1);
+    sigaddset(&new_set, SIGUSR2);
+    sigaddset(&new_set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &new_set, &old_set);
+#endif
+
     m_is_run = true;
     unsigned int cur_do_proc_count = 0;
     unsigned int run_loop_check = 0;
@@ -908,6 +925,23 @@ void print_thread::_check_print(print_cmd* cmd)
 
 void print_thread::_print_func()
 {
+#ifdef __GNUC__
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
+    sigset_t new_set, old_set;
+    sigemptyset(&new_set);
+    sigemptyset(&old_set);
+    sigaddset(&new_set, SIGHUP);
+    sigaddset(&new_set, SIGINT);
+    sigaddset(&new_set, SIGQUIT);
+    sigaddset(&new_set, SIGTERM);
+    sigaddset(&new_set, SIGUSR1);
+    sigaddset(&new_set, SIGUSR2);
+    sigaddset(&new_set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &new_set, &old_set);
+#endif
+
     while (g_logger_manager->is_run)
     {
         if (!_proc_print())
