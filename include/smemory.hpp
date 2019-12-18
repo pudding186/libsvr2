@@ -143,11 +143,9 @@ namespace SMemory
                 *p = 'a';
             }
 
-            //void** check_data = memory_unit_check_data(pTmp);
-            void** check_data = memory_unit_get_info(pTmp);
+            void** check_data = memory_unit_get_sign(pTmp);
 
-            //if (*check_data == unit)
-            if (memory_unit_info_unit(check_data) == unit)
+            if (memory_unit_sign_to_unit(check_data) == unit)
             {
                 T* obj = (T*)ptr;
                 obj->~T();
@@ -220,12 +218,9 @@ namespace SMemory
                 *p = 'a';
             }
 
-            //void** check_data = memory_unit_check_data(pTmp);
-            void** check_data = memory_unit_get_info(pTmp);
+            void** check_data = memory_unit_get_sign(pTmp);
 
-            //if (memory_unit_check(unit, pTmp))
-            //if (*check_data == unit)
-            if (memory_unit_info_unit(check_data) == unit)
+            if (memory_unit_sign_to_unit(check_data) == unit)
             {
                 *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
                 memory_unit_quick_free(unit, check_data);

@@ -7,19 +7,33 @@
 #define MAIN_THREAD_ALLOC  1
 #define MULTI_THREAD_ALLOC 2
 
-void** memory_unit_get_info(void* mem)
+void** memory_unit_get_sign(void* mem)
 {
     return (void**)((unsigned char*)mem - sizeof(void*));
 }
 
-HMEMORYUNIT memory_unit_info_unit(void** info)
+HMEMORYUNIT memory_unit_sign_to_unit(void** info)
 {
     unsigned long long magic_unit = (unsigned long long)(*info);
     magic_unit &= ~((unsigned long long)1 << 63);
     return (HMEMORYUNIT)(magic_unit);
 }
 
-int memory_unit_check_info(mem_unit* unit, void** info)
+size_t memory_unit_alloc_count(mem_unit* unit)
+{
+    return unit->alloc_count +
+        unit->unit_free_head_cache.u_data.tp.tag[0] -
+        unit->unit_free_head_cache.u_data.tp.tag[1] +
+        unit->unit_free_head_mt.u_data.tp.tag[0] -
+        unit->unit_free_head_mt.u_data.tp.tag[1];
+}
+
+size_t memory_unit_total_count(mem_unit* unit)
+{
+    return unit->total_count;
+}
+
+int memory_unit_check_sign(mem_unit* unit, void** info)
 {
     if (*info == unit)
     {
@@ -66,7 +80,7 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     *((void**)ptr) = unit->unit_free_head;
     unit->unit_free_head = (unsigned char*)block + sizeof(mem_block);
-
+    InterlockedAdd64(&unit->total_count, unit_count);
     return block;
 }
 
@@ -100,7 +114,6 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
 
     tag_pointer tp;
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-    tp.u_data.tp.tag = 0;
 
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_mt.u_data.bit128.Int,
@@ -109,8 +122,10 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         tp.u_data.bit128.Int))
     {
         *((void**)ptr) = tp.u_data.tp.ptr;
-        tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0] + 1;
+        tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
+    InterlockedAdd64(&unit->total_count, unit_count);
 
     return block;
 }
@@ -145,14 +160,17 @@ mem_unit* create_memory_unit(size_t unit_size)
 {
     mem_unit* unit = (mem_unit*)malloc(sizeof(mem_unit));
 
-    unit->unit_free_head_mt.u_data.tp.ptr = 0;
-    unit->unit_free_head_mt.u_data.tp.tag = 0;
-    unit->unit_free_head_cache.u_data.tp.ptr = 0;
-    unit->unit_free_head_cache.u_data.tp.tag = 0;
+    unit->unit_free_head_mt.u_data.bit128.Int[0] = 0;
+    unit->unit_free_head_mt.u_data.bit128.Int[1] = 0;
+    unit->unit_free_head_cache.u_data.bit128.Int[0] = 0;
+    unit->unit_free_head_cache.u_data.bit128.Int[1] = 0;
     unit->unit_create_thread = &lib_svr_mem_mgr;
     unit->block_head = 0;
     unit->unit_free_head = 0;
     unit->unit_size = unit_size;
+    unit->alloc_count = 0;
+    unit->total_count = 0;
+
     
     memory_unit_set_grow_bytes(unit, 4 * 1024);
 
@@ -178,7 +196,6 @@ void _check_mutli_free_cache(mem_unit* unit)
     tag_pointer tp;
 
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-    tp.u_data.tp.tag = 0;
 
     tp_next.u_data.tp.ptr = 0;
 
@@ -188,10 +205,12 @@ void _check_mutli_free_cache(mem_unit* unit)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
     {
-        tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[1] + 1;
+        tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
 
     unit->unit_free_head = tp.u_data.tp.ptr;
+    unit->alloc_count = unit->alloc_count - (tp.u_data.tp.tag[1] - tp.u_data.tp.tag[0]);
 }
 
 void* memory_unit_alloc(HMEMORYUNIT unit)
@@ -219,6 +238,8 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
         unit->unit_free_head = *(void**)alloc_tp.u_data.tp.ptr;
 
         *(void**)alloc_tp.u_data.tp.ptr = unit;
+
+        unit->alloc_count++;
     }
     else
     {
@@ -233,7 +254,6 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
         }
 
         alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-        alloc_tp.u_data.tp.tag = 0;
 
         while (!InterlockedCompareExchange128(
             unit->unit_free_head_mt.u_data.bit128.Int,
@@ -244,14 +264,14 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             if (!alloc_tp.u_data.tp.ptr)
             {
                 alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-                alloc_tp.u_data.tp.tag = 0;
 
                 _create_memory_block_mt(unit, unit->grow_count);
                 continue;
             }
 
             alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
-            alloc_pt_next.u_data.tp.tag = alloc_tp.u_data.tp.tag + 1;
+            alloc_pt_next.u_data.tp.tag[0] = alloc_tp.u_data.tp.tag[0] + 1;
+            alloc_pt_next.u_data.tp.tag[1] = alloc_tp.u_data.tp.tag[1];
         }
 
         *(unsigned long long*)(&unit) |= ((unsigned long long)1 << 63);
@@ -266,6 +286,8 @@ void _main_thread_free(mem_unit* unit, void** ptr_mem_unit)
 {
     *ptr_mem_unit = unit->unit_free_head;
     unit->unit_free_head = ptr_mem_unit;
+
+    unit->alloc_count--;
 }
 
 void _multi_thread_free(mem_unit* unit, void** ptr_mem_unit)
@@ -276,7 +298,6 @@ void _multi_thread_free(mem_unit* unit, void** ptr_mem_unit)
     tag_pointer tp;
 
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-    tp.u_data.tp.tag = 0;
 
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_mt.u_data.bit128.Int,
@@ -285,7 +306,8 @@ void _multi_thread_free(mem_unit* unit, void** ptr_mem_unit)
         tp.u_data.bit128.Int))
     {
         *ptr_mem_unit = tp.u_data.tp.ptr;
-        tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0];
+        tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
 }
 
@@ -297,7 +319,6 @@ void _multi_thread_free_cache(mem_unit* unit, void** ptr_mem_unit)
     tag_pointer tp;
 
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
-    tp.u_data.tp.tag = 0;
 
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_cache.u_data.bit128.Int,
@@ -306,13 +327,14 @@ void _multi_thread_free_cache(mem_unit* unit, void** ptr_mem_unit)
         tp.u_data.bit128.Int))
     {
         *ptr_mem_unit = tp.u_data.tp.ptr;
-        tp_next.u_data.tp.tag = tp.u_data.tp.tag + 1;
+        tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0];
+        tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
 }
 
 void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 {
-    int alloc_thread = memory_unit_check_info(unit, ptr_mem_unit);
+    int alloc_thread = memory_unit_check_sign(unit, ptr_mem_unit);
     if (unit->unit_create_thread == &lib_svr_mem_mgr)
     {
         if (alloc_thread == MAIN_THREAD_ALLOC)
@@ -347,10 +369,9 @@ void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 
 void memory_unit_free(mem_unit* unit, void* mem)
 {
-    void** ptr_mem_unit = memory_unit_get_info(mem);
+    void** ptr_mem_unit = memory_unit_get_sign(mem);
 
-    //if ((*ptr_mem_unit) != unit)
-    if (!memory_unit_check_info(unit, ptr_mem_unit))
+    if (!memory_unit_check_sign(unit, ptr_mem_unit))
     {
         CRUSH_CODE();
         return;
@@ -366,7 +387,7 @@ bool memory_unit_check(mem_unit* unit, void* mem)
     //    return true;
     //}
 
-    if (memory_unit_check_info(unit, memory_unit_get_info(mem)))
+    if (memory_unit_check_sign(unit, memory_unit_get_sign(mem)))
     {
         return true;
     }
@@ -515,13 +536,11 @@ void* memory_pool_realloc(mem_pool* pool, void* old_mem, size_t mem_size)
         return memory_pool_alloc(pool, mem_size);
     }
 
-    //void** check_data = memory_unit_check_data(old_mem);
-    void** check_data = memory_unit_get_info(old_mem);
+    void** check_data = memory_unit_get_sign(old_mem);
 
     if ((*check_data) != pool)
     {
-        //mem_unit* unit = *(mem_unit**)check_data;
-        mem_unit* unit = memory_unit_info_unit(check_data);
+        mem_unit* unit = memory_unit_sign_to_unit(check_data);
 
         if (unit == pool->units[(unit->unit_size - pool->min_mem_size) >> pool->shift])
         {
@@ -557,8 +576,8 @@ void* memory_pool_realloc(mem_pool* pool, void* old_mem, size_t mem_size)
 void memory_pool_free(mem_pool* pool, void* mem)
 {
     //void** check_data = memory_unit_check_data(mem);
-    void** check_data = memory_unit_get_info(mem);
-    mem_unit* unit = memory_unit_info_unit(check_data);
+    void** check_data = memory_unit_get_sign(mem);
+    mem_unit* unit = memory_unit_sign_to_unit(check_data);
 
     if (*(mem_pool**)check_data == pool)
     {
@@ -578,8 +597,8 @@ void memory_pool_free(mem_pool* pool, void* mem)
 bool memory_pool_check(mem_pool* pool, void* mem)
 {
     //void** check_data = memory_unit_check_data(mem);
-    void** check_data = memory_unit_get_info(mem);
-    mem_unit* unit = memory_unit_info_unit(check_data);
+    void** check_data = memory_unit_get_sign(mem);
+    mem_unit* unit = memory_unit_sign_to_unit(check_data);
 
     if (unit ==
         pool->units[(unit->unit_size - pool->min_mem_size) >> pool->shift])
@@ -690,8 +709,7 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
         return memory_manager_alloc(mgr, mem_size);
     }
 
-    //unit = *memory_unit_check_data(old_mem);
-    unit = memory_unit_info_unit(memory_unit_get_info(old_mem));
+    unit = memory_unit_sign_to_unit(memory_unit_get_sign(old_mem));
 
     if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {
@@ -740,10 +758,9 @@ void memory_manager_free(mem_mgr* mgr, void* mem)
 
     if (!mem)
         return;
-    //void** check_data = memory_unit_check_data(mem);
-    //unit = *check_data;
-    void** check_data = memory_unit_get_info(mem);
-    unit = memory_unit_info_unit(check_data);
+
+    void** check_data = memory_unit_get_sign(mem);
+    unit = memory_unit_sign_to_unit(check_data);
 
     if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {
@@ -784,7 +801,7 @@ bool memory_manager_check(mem_mgr* mgr, void* mem)
     HMEMORYPOOL pool = 0;
 
     //unit = *memory_unit_check_data(mem);
-    unit = memory_unit_info_unit(memory_unit_get_info(mem));
+    unit = memory_unit_sign_to_unit(memory_unit_get_sign(mem));
 
     if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {

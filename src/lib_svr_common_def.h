@@ -27,7 +27,7 @@ typedef struct st_tag_pointer
 {
     union
     {
-        struct { long long tag; void* ptr; } tp;
+        struct { unsigned int tag[2]; void* ptr; } tp;
         struct { long long Int[2]; } bit128;
     }u_data;
 }tag_pointer;
@@ -46,6 +46,8 @@ typedef struct st_mem_unit
     void*                   unit_free_head; //可分配内存单元链表头
     size_t                  unit_size;      //内存单元的大小
     size_t                  grow_count;     //内存池每次增长个数
+    size_t                  alloc_count;
+    long long               total_count;
 }mem_unit;
 
 typedef struct st_mem_pool
