@@ -150,7 +150,7 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
 #elif __GNUC__
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_mt.u_data.bit128,
-        &tp.u_data.bit128
+        &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 #else
@@ -208,8 +208,8 @@ mem_unit* create_memory_unit(size_t unit_size)
     unit->unit_free_head_cache.u_data.bit128.Int[0] = 0;
     unit->unit_free_head_cache.u_data.bit128.Int[1] = 0;
 #elif __GNUC__
-    unit->unit_free_head_mt.u_data.bit128.Int = 0;
-    unit->unit_free_head_cache.u_data.bit128.Int = 0;
+    unit->unit_free_head_mt.u_data.bit128 = 0;
+    unit->unit_free_head_cache.u_data.bit128 = 0;
 #else
 #error "unknown compiler"
 #endif
