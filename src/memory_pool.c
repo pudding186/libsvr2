@@ -62,6 +62,7 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
+#ifdef _MSC_VER
     do 
     {
         block->next = unit->block_head;
@@ -69,6 +70,15 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
         &unit->block_head, 
         block, 
         block->next) != block->next);
+#elif __GNUC__
+    block->next = unit->block_head;
+
+    while (!__atomic_compare_exchange(&unit->block_head, &block->next, &block, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    {
+    }
+#else
+#error "unknown compiler"
+#endif
 
     ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -80,7 +90,13 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     *((void**)ptr) = unit->unit_free_head;
     unit->unit_free_head = (unsigned char*)block + sizeof(mem_block);
+#ifdef _MSC_VER
     InterlockedAdd64(&unit->total_count, unit_count);
+#elif __GNUC__
+    __atomic_fetch_add(&unit->total_count, unit_count, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
     return block;
 }
 
@@ -93,6 +109,7 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
+#ifdef _MSC_VER
     do
     {
         block->next = unit->block_head;
@@ -100,6 +117,15 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         &unit->block_head,
         block,
         block->next) != block->next);
+#elif __GNUC__
+    block->next = unit->block_head;
+
+    while (!__atomic_compare_exchange(&unit->block_head, &block->next, &block, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    {
+    }
+#else
+#error "unknown compiler"
+#endif
 
     ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -115,17 +141,34 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
     tag_pointer tp;
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
+#ifdef _MSC_VER
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_mt.u_data.bit128.Int,
         tp_next.u_data.bit128.Int[1],
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
+#elif __GNUC__
+    while (!__atomic_compare_exchange(
+        &unit->unit_free_head_mt.u_data.bit128,
+        &tp.u_data.bit128
+        &tp_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
     {
         *((void**)ptr) = tp.u_data.tp.ptr;
         tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0] + 1;
         tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
+
+#ifdef _MSC_VER
     InterlockedAdd64(&unit->total_count, unit_count);
+#elif __GNUC__
+    __atomic_fetch_add(&unit->total_count, unit_count, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
 
     return block;
 }
@@ -159,11 +202,17 @@ void memory_unit_set_grow_count(HMEMORYUNIT unit, size_t grow_count)
 mem_unit* create_memory_unit(size_t unit_size)
 {
     mem_unit* unit = (mem_unit*)malloc(sizeof(mem_unit));
-
+#ifdef _MSC_VER
     unit->unit_free_head_mt.u_data.bit128.Int[0] = 0;
     unit->unit_free_head_mt.u_data.bit128.Int[1] = 0;
     unit->unit_free_head_cache.u_data.bit128.Int[0] = 0;
     unit->unit_free_head_cache.u_data.bit128.Int[1] = 0;
+#elif __GNUC__
+    unit->unit_free_head_mt.u_data.bit128.Int = 0;
+    unit->unit_free_head_cache.u_data.bit128.Int = 0;
+#else
+#error "unknown compiler"
+#endif
     unit->unit_create_thread = &lib_svr_mem_mgr;
     unit->block_head = 0;
     unit->unit_free_head = 0;
@@ -199,11 +248,21 @@ void _check_mutli_free_cache(mem_unit* unit)
 
     tp_next.u_data.tp.ptr = 0;
 
+#ifdef _MSC_VER
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_cache.u_data.bit128.Int,
         tp_next.u_data.bit128.Int[1],
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
+#elif __GNUC__
+    while (!__atomic_compare_exchange(
+        &unit->unit_free_head_cache.u_data.bit128,
+        &tp.u_data.bit128,
+        &tp_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
     {
         tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[1] + 1;
         tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
@@ -255,11 +314,21 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
 
         alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
+#ifdef _MSC_VER
         while (!InterlockedCompareExchange128(
             unit->unit_free_head_mt.u_data.bit128.Int,
             alloc_pt_next.u_data.bit128.Int[1],
             alloc_pt_next.u_data.bit128.Int[0],
             alloc_tp.u_data.bit128.Int))
+#elif __GNUC__
+        while (!__atomic_compare_exchange(
+            &unit->unit_free_head_mt.u_data.bit128,
+            &alloc_tp.u_data.bit128,
+            &alloc_pt_next.u_data.bit128,
+            false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
         {
             if (!alloc_tp.u_data.tp.ptr)
             {
@@ -299,11 +368,22 @@ void _multi_thread_free(mem_unit* unit, void** ptr_mem_unit)
 
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
+#ifdef _MSC_VER
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_mt.u_data.bit128.Int,
         tp_next.u_data.bit128.Int[1],
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
+#elif __GNUC__
+    while (!__atomic_compare_exchange(
+        &unit->unit_free_head_mt.u_data.bit128,
+        &tp.u_data.bit128,
+        &tp_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
+
     {
         *ptr_mem_unit = tp.u_data.tp.ptr;
         tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0];
@@ -320,11 +400,21 @@ void _multi_thread_free_cache(mem_unit* unit, void** ptr_mem_unit)
 
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
+#ifdef _MSC_VER
     while (!InterlockedCompareExchange128(
         unit->unit_free_head_cache.u_data.bit128.Int,
         tp_next.u_data.bit128.Int[1],
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
+#elif __GNUC__
+    while (!__atomic_compare_exchange(
+        &unit->unit_free_head_cache.u_data.bit128,
+        &tp.u_data.bit128,
+        &tp_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
     {
         *ptr_mem_unit = tp.u_data.tp.ptr;
         tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0];
@@ -382,11 +472,6 @@ void memory_unit_free(mem_unit* unit, void* mem)
 
 bool memory_unit_check(mem_unit* unit, void* mem)
 {
-    //if (*(mem_unit**)memory_unit_check_data(mem) == unit)
-    //{
-    //    return true;
-    //}
-
     if (memory_unit_check_sign(unit, memory_unit_get_sign(mem)))
     {
         return true;
@@ -514,15 +599,23 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
     }
     else
     {
+        HMEMORYUNIT zero_unit = 0;
+
         HMEMORYUNIT unit = create_memory_unit(pool->min_mem_size + i * pool->align);
         unit->unit_create_thread = pool->pool_create_thread;
         memory_unit_set_grow_bytes(unit, pool->grow);
 
-        if (InterlockedCompareExchangePointer(&(pool->units[i]), unit, 0))
+#ifdef _MSC_VER
+        if (InterlockedCompareExchangePointer(&(pool->units[i]), unit, zero_unit))
+#elif __GNUC__
+        if (!__atomic_compare_exchange(&(pool->units[i]), &zero_unit, &unit,
+            false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+#else
+#error "unknown compiler"
+#endif
         {
             destroy_memory_unit(unit);
         }
-
         return memory_unit_alloc(pool->units[i]);
     }
 }
@@ -575,7 +668,6 @@ void* memory_pool_realloc(mem_pool* pool, void* old_mem, size_t mem_size)
 
 void memory_pool_free(mem_pool* pool, void* mem)
 {
-    //void** check_data = memory_unit_check_data(mem);
     void** check_data = memory_unit_get_sign(mem);
     mem_unit* unit = memory_unit_sign_to_unit(check_data);
 
@@ -596,7 +688,6 @@ void memory_pool_free(mem_pool* pool, void* mem)
 
 bool memory_pool_check(mem_pool* pool, void* mem)
 {
-    //void** check_data = memory_unit_check_data(mem);
     void** check_data = memory_unit_get_sign(mem);
     mem_unit* unit = memory_unit_sign_to_unit(check_data);
 
@@ -800,7 +891,6 @@ bool memory_manager_check(mem_mgr* mgr, void* mem)
     HAVLNODE pool_node = 0;
     HMEMORYPOOL pool = 0;
 
-    //unit = *memory_unit_check_data(mem);
     unit = memory_unit_sign_to_unit(memory_unit_get_sign(mem));
 
     if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
