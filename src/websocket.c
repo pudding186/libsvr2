@@ -1436,6 +1436,7 @@ void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error
     }
     break;
 	case error_ok:
+    case error_none:
 	break;
     }
 }

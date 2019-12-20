@@ -26,7 +26,7 @@ typedef struct st_tag_pointer
     union
     {
         struct { unsigned int tag[2]; void* ptr; } tp;
-        __int128 bit128;
+        __extension__ __int128 bit128;
     }u_data;
 }tag_pointer;
 #else

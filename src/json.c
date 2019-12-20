@@ -852,7 +852,7 @@ json_struct* create_json(enum e_json_value_type type)
     default:
         return 0;
     }
-};
+}
 
 
 void destroy_json(json_struct* json_struct_ptr)

@@ -106,7 +106,7 @@ typedef struct st_event_accept_fail
 
 typedef struct st_event_terminate
 {
-
+    unsigned int unuse;
 }event_terminate;
 
 typedef struct st_event_accept
@@ -122,7 +122,7 @@ typedef struct st_event_close
 
 typedef struct st_event_recv_activate
 {
-
+    unsigned int unuse;
 }event_recv_activate;
 
 typedef struct st_net_event
@@ -147,7 +147,7 @@ typedef struct st_net_event
 
 typedef struct st_request_accept
 {
-
+    unsigned int unuse;
 }request_accept;
 
 typedef struct st_request_accept_fail
@@ -157,7 +157,7 @@ typedef struct st_request_accept_fail
 
 typedef struct st_request_connect
 {
-
+    unsigned int unuse;
 }request_connect;
 
 typedef struct st_request_ssl_connect
@@ -167,7 +167,7 @@ typedef struct st_request_ssl_connect
 
 typedef struct st_request_send
 {
-
+    unsigned int unuse;
 }request_send;
 
 typedef struct st_request_close_listener
@@ -183,7 +183,7 @@ typedef struct st_request_terminate
 
 typedef struct st_request_recv_activate
 {
-
+    unsigned int unuse;
 }request_recv_activate;
 
 typedef struct st_net_request
