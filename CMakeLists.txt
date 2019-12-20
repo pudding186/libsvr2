@@ -4,6 +4,10 @@ project (libsvr2)
 
 aux_source_directory (src SRC_LIST)
 
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+list(REMOVE_ITEM SRC_LIST "src/iocp_tcp.c")
+endif()
+
 include_directories(include)
 
 add_library(svr2 STATIC ${SRC_LIST})
