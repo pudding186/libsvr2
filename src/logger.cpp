@@ -171,32 +171,6 @@ typedef struct st_logger_manager
 static logger_manager* g_logger_manager = 0;
 static TLS_VAR log_proc* s_log_proc = 0;
 
-//class log_proc_check
-//{
-//public:
-//    log_proc_check(void)
-//    {
-//    }
-//
-//    ~log_proc_check(void)
-//    {
-//        if (g_logger_manager)
-//        {
-//            if (s_log_proc)
-//            {
-//                s_log_proc->is_run = false;
-//            }
-//        }
-//    }
-//
-//    bool m_is_use;
-//
-//protected:
-//private:
-//};
-
-//static thread_local log_proc_check s_check;
-
 void check_log_proc(void)
 {
     if (g_logger_manager)
@@ -1074,7 +1048,7 @@ void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
 
 HMEMORYMANAGER logger_mem_pool(void)
 {
-    static thread_local HMEMORYMANAGER mem_mgr = 0;
+    static TLS_VAR HMEMORYMANAGER mem_mgr = 0;
 
     if (!mem_mgr)
     {
