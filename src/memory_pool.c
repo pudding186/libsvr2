@@ -7,6 +7,12 @@
 #define MAIN_THREAD_ALLOC  1
 #define MULTI_THREAD_ALLOC 2
 
+typedef union u_sign_data
+{
+    unsigned long long  ull;
+    HMEMORYUNIT         unit;
+}sign_data;
+
 void** memory_unit_get_sign(void* mem)
 {
     return (void**)((unsigned char*)mem - sizeof(void*));
@@ -41,8 +47,13 @@ int memory_unit_check_sign(mem_unit* unit, void** info)
     }
     else 
     {
-        *(unsigned long long*)(&unit) |= ((unsigned long long)1 << 63);
-        if (*info == unit)
+
+        sign_data data;
+
+        data.unit = unit;
+        data.ull |= ((unsigned long long)1 << 63);
+
+        if (*info == data.unit)
         {
             return MULTI_THREAD_ALLOC;
         }
@@ -343,9 +354,12 @@ void* memory_unit_alloc(HMEMORYUNIT unit)
             alloc_pt_next.u_data.tp.tag[1] = alloc_tp.u_data.tp.tag[1];
         }
 
-        *(unsigned long long*)(&unit) |= ((unsigned long long)1 << 63);
+        sign_data data;
 
-        *(void**)alloc_tp.u_data.tp.ptr = unit;
+        data.unit = unit;
+        data.ull |= ((unsigned long long)1 << 63);
+
+        *(void**)alloc_tp.u_data.tp.ptr = data.unit;
     }
 
     return (unsigned char*)alloc_tp.u_data.tp.ptr + sizeof(void*);
