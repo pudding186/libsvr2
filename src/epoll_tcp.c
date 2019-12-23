@@ -1601,7 +1601,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     int ssl_ret;
 
     net_tcp_error error_type = error_none;
-    int error_code;
+    int error_code = 0;
 
     if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
         sock_ptr->state != SOCKET_STATE_TERMINATE)
@@ -1632,8 +1632,8 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
-                error_code = ERR_get_error();
                 error_type = error_ssl;
+                error_code = ERR_get_error();
             }
             break;
         }
@@ -1728,7 +1728,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     int ssl_ret;
 
     net_tcp_error error_type = error_none;
-    int error_code;
+    int error_code = 0;
 
     unsigned int decrypt_data_push_len = 0;
 
@@ -1820,8 +1820,8 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
             if (is_ssl_error(error_code))
             {
-                error_code = ERR_get_error();
                 error_type = error_ssl;
+                error_code = ERR_get_error();
             }
 
             break;
