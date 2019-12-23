@@ -38,8 +38,7 @@
 #define S_FREE(mem) SMemory::IClassMemory::Free(mem)
 #endif
 
-#define REP_DEL_SIG 0xa1b2c3d4
-#define THD_DEL_SIG 0xaabbccdd
+#define REP_DEL_SIG 0x19830116
 
 namespace SMemory
 {
@@ -142,7 +141,7 @@ namespace SMemory
             {
                 T* obj = (T*)ptr;
                 obj->~T();
-                *(IClassMemory**)(pTmp) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_unit_quick_free(unit, check_data);
             }
             else
@@ -160,7 +159,7 @@ namespace SMemory
                     size--;
                 }
 
-                *(IClassMemory**)(pTmp) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
             }
         }
@@ -210,13 +209,13 @@ namespace SMemory
 
             if (memory_unit_sign_to_unit(check_data) == unit)
             {
-                *(IClassMemory**)(pTmp) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_unit_quick_free(unit, check_data);
             }
             else
             {
                 HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
-                *(IClassMemory**)(pTmp) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
             }
         }
