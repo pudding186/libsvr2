@@ -24,7 +24,7 @@ extern void (update_logger_obj_pool)(SMemory::IClassMemory* new_obj_pool);
 template<typename T>
 SMemory::CClassMemory<T>* logger_obj_pool(void)
 {
-    static TLS_VAR SMemory::CClassMemory<T>* obj_pool = 0;
+    static thread_local SMemory::CClassMemory<T>* obj_pool = 0;
 
     if (!obj_pool)
     {
