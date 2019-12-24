@@ -92,7 +92,7 @@ namespace SMemory
 
         CClassMemory<T, false>(void)
         {
-            unit = create_memory_unit(sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T));
+            unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
         }
 
         ~CClassMemory<T, false>(void)
@@ -173,7 +173,7 @@ namespace SMemory
 
         CClassMemory<T, true>(void)
         {
-            unit = create_memory_unit(sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T));
+            unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
         }
 
         ~CClassMemory<T, true>(void)
@@ -187,7 +187,7 @@ namespace SMemory
             {
                 void* ptr = memory_unit_alloc(unit);
                 *(IClassMemory**)ptr = this;
-                return (T*)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                return (T*)((unsigned char*)ptr + sizeof(IClassMemory**));
             }
             else if (size > 1)
             {
