@@ -283,86 +283,98 @@ void _check_mutli_free_cache(mem_unit* unit)
     unit->alloc_count = unit->alloc_count - (tp.u_data.tp.tag[1] - tp.u_data.tp.tag[0]);
 }
 
-void* memory_unit_alloc(HMEMORYUNIT unit)
+void* _main_thread_alloc(mem_unit* unit)
+{
+    if (!unit->unit_free_head)
+    {
+        if (!unit->grow_count)
+        {
+            return 0;
+        }
+
+        _check_mutli_free_cache(unit);
+
+        if (!unit->unit_free_head)
+        {
+            _create_memory_block(unit, unit->grow_count);
+        }
+    }
+
+    void* ptr = unit->unit_free_head;
+    unit->unit_free_head = *(void**)ptr;
+
+    *(void**)ptr = unit;
+
+    unit->alloc_count++;
+
+    return (unsigned char*)ptr + sizeof(void*);
+}
+
+void* _multi_thread_alloc(mem_unit* unit)
 {
     tag_pointer alloc_tp;
 
-    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    tag_pointer alloc_pt_next;
+
+    if (!unit->unit_free_head_mt.u_data.tp.ptr)
     {
-        if (!unit->unit_free_head)
+        if (!unit->grow_count)
         {
-            if (!unit->grow_count)
-            {
-                return 0;
-            }
-
-            _check_mutli_free_cache(unit);
-
-            if (!unit->unit_free_head)
-            {
-                _create_memory_block(unit, unit->grow_count);
-            }
+            return 0;
         }
-
-        alloc_tp.u_data.tp.ptr = unit->unit_free_head;
-        unit->unit_free_head = *(void**)alloc_tp.u_data.tp.ptr;
-
-        *(void**)alloc_tp.u_data.tp.ptr = unit;
-
-        unit->alloc_count++;
     }
-    else
-    {
-        tag_pointer alloc_pt_next;
 
-        if (!unit->unit_free_head_mt.u_data.tp.ptr)
-        {
-            if (!unit->grow_count)
-            {
-                return 0;
-            }
-        }
-
-        alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
+    alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
 #ifdef _MSC_VER
-        while (!InterlockedCompareExchange128(
-            unit->unit_free_head_mt.u_data.bit128.Int,
-            alloc_pt_next.u_data.bit128.Int[1],
-            alloc_pt_next.u_data.bit128.Int[0],
-            alloc_tp.u_data.bit128.Int))
+    while (!InterlockedCompareExchange128(
+        unit->unit_free_head_mt.u_data.bit128.Int,
+        alloc_pt_next.u_data.bit128.Int[1],
+        alloc_pt_next.u_data.bit128.Int[0],
+        alloc_tp.u_data.bit128.Int))
 #elif __GNUC__
-        while (!__atomic_compare_exchange(
-            &unit->unit_free_head_mt.u_data.bit128,
-            &alloc_tp.u_data.bit128,
-            &alloc_pt_next.u_data.bit128,
-            false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    while (!__atomic_compare_exchange(
+        &unit->unit_free_head_mt.u_data.bit128,
+        &alloc_tp.u_data.bit128,
+        &alloc_pt_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 #else
 #error "unknown compiler"
 #endif
+    {
+        if (!alloc_tp.u_data.tp.ptr)
         {
-            if (!alloc_tp.u_data.tp.ptr)
-            {
-                alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
+            alloc_tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
-                _create_memory_block_mt(unit, unit->grow_count);
-                continue;
-            }
-
-            alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
-            alloc_pt_next.u_data.tp.tag[0] = alloc_tp.u_data.tp.tag[0] + 1;
-            alloc_pt_next.u_data.tp.tag[1] = alloc_tp.u_data.tp.tag[1];
+            _create_memory_block_mt(unit, unit->grow_count);
+            continue;
         }
 
-        sign_data data;
-
-        data.unit = unit;
-        data.ull |= ((unsigned long long)1 << 63);
-
-        *(void**)alloc_tp.u_data.tp.ptr = data.unit;
+        alloc_pt_next.u_data.tp.ptr = *(void**)alloc_tp.u_data.tp.ptr;
+        alloc_pt_next.u_data.tp.tag[0] = alloc_tp.u_data.tp.tag[0] + 1;
+        alloc_pt_next.u_data.tp.tag[1] = alloc_tp.u_data.tp.tag[1];
     }
 
+    sign_data data;
+
+    data.unit = unit;
+    data.ull |= ((unsigned long long)1 << 63);
+
+    *(void**)alloc_tp.u_data.tp.ptr = data.unit;
+
     return (unsigned char*)alloc_tp.u_data.tp.ptr + sizeof(void*);
+}
+
+void* memory_unit_alloc(HMEMORYUNIT unit)
+{
+    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    {
+        return _main_thread_alloc(unit);
+    }
+    else
+    {
+        return _multi_thread_alloc(unit);
+    }
 }
 
 void _main_thread_free(mem_unit* unit, void** ptr_mem_unit)

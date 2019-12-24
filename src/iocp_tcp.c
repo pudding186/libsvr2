@@ -47,6 +47,7 @@
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
 
+extern void* _multi_thread_alloc(mem_unit* unit);
 
 typedef struct st_event_establish
 {
@@ -281,7 +282,7 @@ void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_
 
     unit = (HMEMORYUNIT)rb_node_value_user(mem_node);
 
-    return memory_unit_alloc(unit);
+    return _multi_thread_alloc(unit);
 }
 
 void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned int buffer_size)
@@ -368,8 +369,7 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
         send_buf_size = 1024;
     }
 
-    //iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)lock_free_ptr_queue_pop(mgr->socket_pool);
-    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)memory_unit_alloc(mgr->socket_pool);
+    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)_multi_thread_alloc(mgr->socket_pool);
 
     if (sock_ptr)
     {
@@ -2422,13 +2422,13 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
     mgr->socket_pool = create_memory_unit(sizeof(struct st_iocp_tcp_socket));
     memory_unit_set_grow_count(mgr->socket_pool, mgr->max_socket_num);
 
-    memory_unit_free(mgr->socket_pool, memory_unit_alloc(mgr->socket_pool));
+    memory_unit_free(mgr->socket_pool, _multi_thread_alloc(mgr->socket_pool));
     memory_unit_set_grow_count(mgr->socket_pool, 0);
 
     sock_ptr_array = (struct st_iocp_tcp_socket**)malloc(sizeof(struct st_iocp_tcp_socket*) * mgr->max_socket_num);
     for (unsigned int i = 0; i < mgr->max_socket_num; i++)
     {
-        sock_ptr_array[i] = (struct st_iocp_tcp_socket*)memory_unit_alloc(mgr->socket_pool);
+        sock_ptr_array[i] = (struct st_iocp_tcp_socket*)_multi_thread_alloc(mgr->socket_pool);
         sock_ptr_array[i]->mgr = mgr;
         sock_ptr_array[i]->recv_loop_cache = 0;
         sock_ptr_array[i]->send_loop_cache = 0;
