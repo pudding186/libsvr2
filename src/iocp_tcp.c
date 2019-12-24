@@ -2422,9 +2422,6 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
     mgr->socket_pool = create_memory_unit(sizeof(struct st_iocp_tcp_socket));
     memory_unit_set_grow_count(mgr->socket_pool, mgr->max_socket_num);
 
-    memory_unit_free(mgr->socket_pool, _multi_thread_alloc(mgr->socket_pool));
-    memory_unit_set_grow_count(mgr->socket_pool, 0);
-
     sock_ptr_array = (struct st_iocp_tcp_socket**)malloc(sizeof(struct st_iocp_tcp_socket*) * mgr->max_socket_num);
     for (unsigned int i = 0; i < mgr->max_socket_num; i++)
     {
@@ -2436,11 +2433,14 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
         sock_ptr_array[i]->iocp_send_data.pt.sock_ptr = sock_ptr_array[i];
     }
 
+    memory_unit_set_grow_count(mgr->socket_pool, 0);
+
     for (unsigned int i = 0; i < mgr->max_socket_num; i++)
     {
         memory_unit_free(mgr->socket_pool, sock_ptr_array[i]);
     }
     free(sock_ptr_array);
+    sock_ptr_array = 0;
 
 
     mgr->evt_queue = create_loop_cache(0, mgr->max_socket_num * 5 * sizeof(struct st_net_event));

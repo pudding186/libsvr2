@@ -68,6 +68,7 @@
 
 #define MAX_RUN_LOOP_CHECK		100
 
+extern void* _main_thread_alloc(mem_unit* unit);
 
 typedef struct st_event_establish
 {
@@ -477,7 +478,7 @@ void* _epoll_tcp_manager_alloc_memory(epoll_tcp_manager* mgr, unsigned int buffe
         unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
     }
 
-    return memory_unit_alloc(unit);
+    return _main_thread_alloc(unit);
 }
 
 void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned int buffer_size)
@@ -485,11 +486,6 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
     HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
 
     HMEMORYUNIT check_unit = rb_node_value_user(memory_node);
-
-    if (!memory_unit_check(check_unit, mem))
-    {
-        CRUSH_CODE();
-    }
 
     memory_unit_free(check_unit, mem);
 }
@@ -534,7 +530,7 @@ epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsign
         send_buf_size = 1024;
     }
 
-    sock_ptr = memory_unit_alloc(mgr->socket_pool);
+    sock_ptr = _main_thread_alloc(mgr->socket_pool);
 
     if (sock_ptr)
     {
@@ -2582,7 +2578,7 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
 
     for (unsigned int i = 0; i < max_socket_num; i++)
     {
-        arry_socket_ptr[i] = memory_unit_alloc(mgr->socket_pool);
+        arry_socket_ptr[i] = _main_thread_alloc(mgr->socket_pool);
         arry_socket_ptr[i]->mgr = mgr;
         arry_socket_ptr[i]->recv_loop_cache = 0;
         arry_socket_ptr[i]->send_loop_cache = 0;
