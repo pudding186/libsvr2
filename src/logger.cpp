@@ -1208,6 +1208,7 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num, size_t
         g_logger_manager->is_run = true;
         g_logger_manager->log_proc_head = 0;
         g_logger_manager->log_obj_pool_head = 0;
+        g_logger_manager->log_mem_pool_head = 0;
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
         g_logger_manager->print_cache_size = print_cache_size;
@@ -1255,14 +1256,25 @@ void uninit_logger_manager(void)
             *(g_logger_manager->main_log_proc) = 0;
         }
 
-        log_obj_pool* pool = g_logger_manager->log_obj_pool_head;
+        log_obj_pool* obj_pool = g_logger_manager->log_obj_pool_head;
 
-        while (pool)
+        while (obj_pool)
         {
-            log_obj_pool* cur_pool = pool;
-            pool = pool->next_pool;
+            log_obj_pool* cur_pool = obj_pool;
+            obj_pool = obj_pool->next_pool;
 
             delete cur_pool->obj_pool;
+            free(cur_pool);
+        }
+
+        log_mem_pool* mem_pool = g_logger_manager->log_mem_pool_head;
+
+        while (mem_pool)
+        {
+            log_mem_pool* cur_pool = mem_pool;
+            mem_pool = mem_pool->next_pool;
+
+            destroy_memory_manager(cur_pool->mem_pool);
             free(cur_pool);
         }
 
