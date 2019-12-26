@@ -1212,13 +1212,13 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num, size_t
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
         g_logger_manager->print_cache_size = print_cache_size;
-        g_logger_manager->log_thread_array = SMemory::New<log_thread>(log_thread_num);
+        g_logger_manager->log_thread_array = new log_thread[log_thread_num];
         g_logger_manager->main_log_proc = &s_log_proc;
         for (size_t i = 0; i < log_thread_num; i++)
         {
             g_logger_manager->log_thread_array[i].set_idx(i);
         }
-        g_logger_manager->print_thread_pt = SMemory::New<print_thread>(1);
+        g_logger_manager->print_thread_pt = new print_thread;
     }
 
     return true;
@@ -1230,8 +1230,8 @@ void uninit_logger_manager(void)
     {
         g_logger_manager->is_run = false;
 
-        S_DELETE(g_logger_manager->print_thread_pt);
-        S_DELETE(g_logger_manager->log_thread_array);
+        delete g_logger_manager->print_thread_pt;
+        delete[] g_logger_manager->log_thread_array;
 
         log_proc* proc = g_logger_manager->log_proc_head;
 
