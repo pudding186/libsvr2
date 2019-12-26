@@ -11,8 +11,24 @@
 
 #ifdef _MSC_VER
 #define TLS_VAR __declspec(thread)
+typedef struct st_tag_pointer
+{
+    union
+    {
+        struct { unsigned int tag[2]; void* ptr; } tp;
+        struct { long long Int[2]; } bit128;
+    }u_data;
+}tag_pointer;
 #elif __GNUC__
 #define TLS_VAR __thread
+typedef struct st_tag_pointer
+{
+    union
+    {
+        struct { unsigned int tag[2]; void* ptr; } tp;
+        __extension__ __int128 bit128;
+    }u_data;
+}tag_pointer;
 #else
 #error "unknown compiler"
 #endif
@@ -23,6 +39,7 @@ extern "C" {
 
 #define CRUSH_CODE() do{char* p = 0;*p = 'a';}while(0)
 //////////////////////////////////////////////////////////////////////////
+
 typedef struct st_mem_block
 {
     struct st_mem_block*    next; //指向下一个内存块的
@@ -30,10 +47,15 @@ typedef struct st_mem_block
 
 typedef struct st_mem_unit
 {
-    size_t                  unit_size;      //内存单元的大小
+    struct st_tag_pointer   unit_free_head_mt;
+    struct st_tag_pointer   unit_free_head_cache;
+    void*                   unit_create_thread;
     struct st_mem_block*    block_head;     //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
+    size_t                  unit_size;      //内存单元的大小
     size_t                  grow_count;     //内存池每次增长个数
+    size_t                  alloc_count;
+    long long               total_count;
 }mem_unit;
 
 typedef struct st_mem_pool
@@ -45,6 +67,7 @@ typedef struct st_mem_pool
     size_t                  grow;           //每次扩展内存大小
     size_t                  min_mem_size;   //内存池管理的最小内存大小，小于此大小按最小分配
     size_t                  max_mem_size;   //内存池管理的最大内存大小，大于此大小的内存由系统托管
+    void*                   pool_create_thread;
 }mem_pool;
 
 //////////////////////////////////////////////////////////////////////////

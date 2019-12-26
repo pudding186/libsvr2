@@ -28,6 +28,8 @@ extern TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr;
 
 static TLS_VAR HMEMORYMANAGER   def_mem_mgr = 0;
 
+extern void check_log_proc(void);
+
 namespace SMemory
 {
     //////////////////////////////////////////////////////////////////////////
@@ -110,6 +112,7 @@ namespace SMemory
         }
         ~DefMemInit()
         {
+            check_log_proc();
 #ifdef _DEBUG
             if (trace_info_map)
             {

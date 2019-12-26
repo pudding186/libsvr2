@@ -12,7 +12,12 @@ extern void (memory_unit_set_grow_count)(HMEMORYUNIT unit, size_t grow_count);
 extern void (memory_unit_free)(HMEMORYUNIT unit, void* mem);
 extern void (memory_unit_quick_free)(HMEMORYUNIT unit, void** ptr_mem_unit);
 extern bool (memory_unit_check)(HMEMORYUNIT unit, void* mem);
-extern void** (memory_unit_check_data)(void* mem);
+extern void** (memory_unit_get_sign)(void* mem);
+extern int (memory_unit_check_sign)(HMEMORYUNIT unit, void** info);
+extern HMEMORYUNIT (memory_unit_sign_to_unit)(void** info);
+extern size_t (memory_unit_alloc_count)(HMEMORYUNIT unit);
+extern size_t (memory_unit_total_count)(HMEMORYUNIT unit);
+
 
 extern HMEMORYPOOL(create_memory_pool)(size_t align, size_t min_mem_size, size_t max_mem_size, size_t grow_size);
 extern void (destroy_memory_pool)(HMEMORYPOOL pool);

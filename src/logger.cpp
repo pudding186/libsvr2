@@ -172,31 +172,16 @@ typedef struct st_logger_manager
 static logger_manager* g_logger_manager = 0;
 static TLS_VAR log_proc* s_log_proc = 0;
 
-class log_proc_check
+void check_log_proc(void)
 {
-public:
-    log_proc_check(void)
+    if (g_logger_manager)
     {
-    }
-
-    ~log_proc_check(void)
-    {
-        if (g_logger_manager)
+        if (s_log_proc)
         {
-            if (s_log_proc)
-            {
-                s_log_proc->is_run = false;
-            }
+            s_log_proc->is_run = false;
         }
     }
-
-    bool m_is_use;
-
-protected:
-private:
-};
-
-static thread_local log_proc_check s_check;
+}
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -1098,7 +1083,7 @@ void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
 
 HMEMORYMANAGER logger_mem_pool(void)
 {
-    static thread_local HMEMORYMANAGER mem_mgr = 0;
+    static TLS_VAR HMEMORYMANAGER mem_mgr = 0;
 
     if (!mem_mgr)
     {
@@ -1135,7 +1120,6 @@ log_proc* _get_log_proc(void)
 #endif
         strftime(s_log_proc->time_str, sizeof(s_log_proc->time_str), "%Y-%m-%d %H:%M:%S", &s_log_proc->last_log_tm);
 
-        s_check.m_is_use = true;
         s_log_proc->is_run = true;
 
         std::mutex mtx;
@@ -1259,16 +1243,17 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num, size_t
         g_logger_manager->is_run = true;
         g_logger_manager->log_proc_head = 0;
         g_logger_manager->log_obj_pool_head = 0;
+        g_logger_manager->log_mem_pool_head = 0;
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
         g_logger_manager->print_cache_size = print_cache_size;
-        g_logger_manager->log_thread_array = S_NEW(log_thread, log_thread_num);
+        g_logger_manager->log_thread_array = new log_thread[log_thread_num];
         g_logger_manager->main_log_proc = &s_log_proc;
         for (size_t i = 0; i < log_thread_num; i++)
         {
             g_logger_manager->log_thread_array[i].set_idx(i);
         }
-        g_logger_manager->print_thread_pt = S_NEW(print_thread, 1);
+        g_logger_manager->print_thread_pt = new print_thread;
     }
 
     return true;
@@ -1280,8 +1265,8 @@ void uninit_logger_manager(void)
     {
         g_logger_manager->is_run = false;
 
-        S_DELETE(g_logger_manager->print_thread_pt);
-        S_DELETE(g_logger_manager->log_thread_array);
+        delete g_logger_manager->print_thread_pt;
+        delete[] g_logger_manager->log_thread_array;
 
         log_proc* proc = g_logger_manager->log_proc_head;
 
@@ -1306,14 +1291,25 @@ void uninit_logger_manager(void)
             *(g_logger_manager->main_log_proc) = 0;
         }
 
-        log_obj_pool* pool = g_logger_manager->log_obj_pool_head;
+        log_obj_pool* obj_pool = g_logger_manager->log_obj_pool_head;
 
-        while (pool)
+        while (obj_pool)
         {
-            log_obj_pool* cur_pool = pool;
-            pool = pool->next_pool;
+            log_obj_pool* cur_pool = obj_pool;
+            obj_pool = obj_pool->next_pool;
 
             delete cur_pool->obj_pool;
+            free(cur_pool);
+        }
+
+        log_mem_pool* mem_pool = g_logger_manager->log_mem_pool_head;
+
+        while (mem_pool)
+        {
+            log_mem_pool* cur_pool = mem_pool;
+            mem_pool = mem_pool->next_pool;
+
+            destroy_memory_manager(cur_pool->mem_pool);
             free(cur_pool);
         }
 
@@ -1331,7 +1327,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     if (!is_valid_utf8((const unsigned char*)path_utf8, strlen(path_utf8)))
     {
         return 0;
-}
+    }
 
     if (!is_valid_utf8((const unsigned char*)name_utf8, strlen(name_utf8)))
     {

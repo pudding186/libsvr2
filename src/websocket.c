@@ -126,7 +126,6 @@ unsigned int _ws_deflate(ws_manager* mgr, const char* data, unsigned int length)
         {
             deflate_length += last_deflate_cache_size - dfs->avail_out;
             mgr->deflate_cache_size += ZLIB_CACHE_EXTEND_SIZE;
-            //mgr->deflate_cache = libsvr_memory_manager_realloc(mgr->deflate_cache, mgr->deflate_cache_size);
             mgr->deflate_cache = realloc(mgr->deflate_cache, mgr->deflate_cache_size);
         }
         else
@@ -169,7 +168,6 @@ unsigned int _ws_inflate(ws_manager* mgr, const char* data, unsigned int length)
 
         inflate_length += last_inflate_cache_size - ifs->avail_out;
         mgr->inflate_cache_size += ZLIB_CACHE_EXTEND_SIZE;
-        //mgr->inflate_cache = libsvr_memory_manager_realloc(mgr->inflate_cache, mgr->inflate_cache_size);
         mgr->inflate_cache = realloc(mgr->inflate_cache, mgr->inflate_cache_size);
 
         if (err != Z_BUF_ERROR)
@@ -399,7 +397,6 @@ bool _ws_client_data(ws_socket* ws_session, ws_op_code code, const char* data, u
 
     if (ws_session->mgr->mask_buffer_size < length + 4)
     {
-        //ws_session->mgr->mask_buffer = libsvr_memory_manager_realloc(ws_session->mgr->mask_buffer, length + 4);
         ws_session->mgr->mask_buffer = realloc(ws_session->mgr->mask_buffer, length + 4);
     }
 
@@ -1439,6 +1436,7 @@ void _ws_on_error(HSESSION session, net_tcp_error module_error, int system_error
     }
     break;
 	case error_ok:
+    case error_none:
 	break;
     }
 }
@@ -1490,15 +1488,12 @@ ws_manager* create_net_ws(HTCPMANAGER net_mgr,
     deflateInit2(&mgr->deflation_stream, 1, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
 
     mgr->deflate_cache_size = ZLIB_CACHE_EXTEND_SIZE;
-    //mgr->deflate_cache = libsvr_memory_manager_alloc(mgr->deflate_cache_size);
     mgr->deflate_cache = malloc(mgr->deflate_cache_size);
 
     mgr->inflate_cache_size = ZLIB_CACHE_EXTEND_SIZE;
-    //mgr->inflate_cache = libsvr_memory_manager_alloc(mgr->inflate_cache_size);
     mgr->inflate_cache = malloc(mgr->inflate_cache_size);
 
     mgr->mask_buffer_size = CLIENT_MASK_CACHE_SIZE;
-    //mgr->mask_buffer = libsvr_memory_manager_alloc(mgr->mask_buffer_size);
     mgr->mask_buffer = malloc(mgr->mask_buffer_size);
 
     return mgr;
@@ -1506,15 +1501,12 @@ ws_manager* create_net_ws(HTCPMANAGER net_mgr,
 
 void destroy_net_ws(ws_manager* ws_mgr)
 {
-    //libsvr_memory_manager_free(ws_mgr->mask_buffer);
     free(ws_mgr->mask_buffer);
     ws_mgr->mask_buffer_size = 0;
 
-    //libsvr_memory_manager_free(ws_mgr->deflate_cache);
     free(ws_mgr->deflate_cache);
     ws_mgr->deflate_cache_size = 0;
 
-    //libsvr_memory_manager_free(ws_mgr->inflate_cache);
     free(ws_mgr->inflate_cache);
     ws_mgr->inflate_cache_size = 0;
 

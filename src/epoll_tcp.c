@@ -68,6 +68,7 @@
 
 #define MAX_RUN_LOOP_CHECK		100
 
+extern void* _main_thread_alloc(mem_unit* unit);
 
 typedef struct st_event_establish
 {
@@ -106,7 +107,7 @@ typedef struct st_event_accept_fail
 
 typedef struct st_event_terminate
 {
-
+    unsigned int unuse;
 }event_terminate;
 
 typedef struct st_event_accept
@@ -122,7 +123,7 @@ typedef struct st_event_close
 
 typedef struct st_event_recv_activate
 {
-
+    unsigned int unuse;
 }event_recv_activate;
 
 typedef struct st_net_event
@@ -147,7 +148,7 @@ typedef struct st_net_event
 
 typedef struct st_request_accept
 {
-
+    unsigned int unuse;
 }request_accept;
 
 typedef struct st_request_accept_fail
@@ -157,7 +158,7 @@ typedef struct st_request_accept_fail
 
 typedef struct st_request_connect
 {
-
+    unsigned int unuse;
 }request_connect;
 
 typedef struct st_request_ssl_connect
@@ -167,7 +168,7 @@ typedef struct st_request_ssl_connect
 
 typedef struct st_request_send
 {
-
+    unsigned int unuse;
 }request_send;
 
 typedef struct st_request_close_listener
@@ -183,7 +184,7 @@ typedef struct st_request_terminate
 
 typedef struct st_request_recv_activate
 {
-
+    unsigned int unuse;
 }request_recv_activate;
 
 typedef struct st_net_request
@@ -477,7 +478,7 @@ void* _epoll_tcp_manager_alloc_memory(epoll_tcp_manager* mgr, unsigned int buffe
         unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
     }
 
-    return memory_unit_alloc(unit);
+    return _main_thread_alloc(unit);
 }
 
 void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned int buffer_size)
@@ -485,11 +486,6 @@ void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned 
     HRBNODE memory_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
 
     HMEMORYUNIT check_unit = rb_node_value_user(memory_node);
-
-    if (!memory_unit_check(check_unit, mem))
-    {
-        CRUSH_CODE();
-    }
 
     memory_unit_free(check_unit, mem);
 }
@@ -534,7 +530,7 @@ epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsign
         send_buf_size = 1024;
     }
 
-    sock_ptr = memory_unit_alloc(mgr->socket_pool);
+    sock_ptr = _main_thread_alloc(mgr->socket_pool);
 
     if (sock_ptr)
     {
@@ -1601,7 +1597,7 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     int ssl_ret;
 
     net_tcp_error error_type = error_none;
-    int error_code;
+    int error_code = 0;
 
     if (sock_ptr->state != SOCKET_STATE_ESTABLISH &&
         sock_ptr->state != SOCKET_STATE_TERMINATE)
@@ -1632,8 +1628,8 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             error_code = SSL_get_error(sock_ptr->ssl_data_ptr->core.ssl, ssl_ret);
             if (is_ssl_error(error_code))
             {
-                error_code = ERR_get_error();
                 error_type = error_ssl;
+                error_code = ERR_get_error();
             }
             break;
         }
@@ -1728,7 +1724,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
     int ssl_ret;
 
     net_tcp_error error_type = error_none;
-    int error_code;
+    int error_code = 0;
 
     unsigned int decrypt_data_push_len = 0;
 
@@ -1820,8 +1816,8 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
             if (is_ssl_error(error_code))
             {
-                error_code = ERR_get_error();
                 error_type = error_ssl;
+                error_code = ERR_get_error();
             }
 
             break;
@@ -2582,7 +2578,7 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
 
     for (unsigned int i = 0; i < max_socket_num; i++)
     {
-        arry_socket_ptr[i] = memory_unit_alloc(mgr->socket_pool);
+        arry_socket_ptr[i] = _main_thread_alloc(mgr->socket_pool);
         arry_socket_ptr[i]->mgr = mgr;
         arry_socket_ptr[i]->recv_loop_cache = 0;
         arry_socket_ptr[i]->send_loop_cache = 0;

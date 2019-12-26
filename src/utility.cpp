@@ -106,7 +106,7 @@ private:
 
 void init_lib_svr(void)
 {
-    S_DELETE(S_NEW(char, 1));
+    SMemory::Delete(SMemory::New<char>(1));
 }
 
 long long rand_integer(long long min, long long max)

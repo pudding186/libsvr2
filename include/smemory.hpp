@@ -38,8 +38,7 @@
 #define S_FREE(mem) SMemory::IClassMemory::Free(mem)
 #endif
 
-#define REP_DEL_SIG 0xa1b2c3d4
-#define THD_DEL_SIG 0xaabbccdd
+#define REP_DEL_SIG 0x19830116
 
 namespace SMemory
 {
@@ -93,7 +92,7 @@ namespace SMemory
 
         CClassMemory<T, false>(void)
         {
-            unit = create_memory_unit(sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T));
+            unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
         }
 
         ~CClassMemory<T, false>(void)
@@ -107,10 +106,9 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(HMEMORYMANAGER*)ptr = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
+                *(IClassMemory**)ptr = this;
 
-                return new((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**))T(std::forward<Args>(args)...);
+                return new((unsigned char*)ptr + sizeof(IClassMemory**))T(std::forward<Args>(args)...);
             }
             else if (size > 1)
             {
@@ -135,26 +133,22 @@ namespace SMemory
 
         virtual void Delete(void* ptr)
         {
-            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*);
+            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**);
 
-            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != DefMemMgr())
-            {
-                char* p = (char*)((intptr_t)THD_DEL_SIG);
-                *p = 'a';
-            }
+            void** check_data = memory_unit_get_sign(pTmp);
 
-            void** check_data = memory_unit_check_data(pTmp);
-
-            if (*check_data == unit)
+            if (memory_unit_sign_to_unit(check_data) == unit)
             {
                 T* obj = (T*)ptr;
                 obj->~T();
-                *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_unit_quick_free(unit, check_data);
             }
             else
             {
-                size_t size = *(size_t*)(pTmp - sizeof(size_t));
+                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
 
                 T* obj = (T*)ptr;
 
@@ -165,8 +159,8 @@ namespace SMemory
                     size--;
                 }
 
-                *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
-                memory_manager_free(DefMemMgr(), pTmp - sizeof(size_t));
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
+                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
             }
         }
     };
@@ -179,7 +173,7 @@ namespace SMemory
 
         CClassMemory<T, true>(void)
         {
-            unit = create_memory_unit(sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T));
+            unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
         }
 
         ~CClassMemory<T, true>(void)
@@ -192,9 +186,8 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(HMEMORYMANAGER*)ptr = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*)) = this;
-                return (T*)((unsigned char*)ptr + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                *(IClassMemory**)ptr = this;
+                return (T*)((unsigned char*)ptr + sizeof(IClassMemory**));
             }
             else if (size > 1)
             {
@@ -210,26 +203,20 @@ namespace SMemory
 
         virtual void Delete(void* ptr)
         {
-            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*);
+            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**);
 
-            if (*(void**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != DefMemMgr())
+            void** check_data = memory_unit_get_sign(pTmp);
+
+            if (memory_unit_sign_to_unit(check_data) == unit)
             {
-                char* p = (char*)((intptr_t)THD_DEL_SIG);
-                *p = 'a';
-            }
-
-            void** check_data = memory_unit_check_data(pTmp);
-
-            //if (memory_unit_check(unit, pTmp))
-            if (*check_data == unit)
-            {
-                *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
                 memory_unit_quick_free(unit, check_data);
             }
             else
             {
-                *(IClassMemory**)(pTmp + sizeof(HMEMORYMANAGER*)) = (IClassMemory*)((intptr_t)REP_DEL_SIG);
-                memory_manager_free(DefMemMgr(), pTmp - sizeof(size_t));
+                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
+                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
             }
         }
     };

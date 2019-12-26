@@ -10,7 +10,6 @@
 #include "../include/rb_tree.h"
 #include "../include/net_tcp.h"
 #include "../include/ssl_tcp.h"
-#include "../include/lock_free_queue.hpp"
 
 #define MAX_BACKLOG     256
 #define MAX_ADDR_SIZE   ((sizeof(struct sockaddr_in6)+16)*2)
@@ -48,6 +47,7 @@
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
 
+extern void* _multi_thread_alloc(mem_unit* unit);
 
 typedef struct st_event_establish
 {
@@ -227,8 +227,9 @@ typedef struct st_iocp_tcp_manager
     HLOOPCACHE                  evt_queue;
     HTIMERMANAGER               timer_mgr;
 
-    iocp_tcp_socket*            socket_array;
-    HLOCKFREEPTRQUEUE           socket_pool;
+    //iocp_tcp_socket*            socket_array;
+    //HLOCKFREEPTRQUEUE           socket_pool;
+    HMEMORYUNIT                 socket_pool;
     HRBTREE                     memory_mgr;
 
     unsigned int                max_socket_num;
@@ -273,46 +274,34 @@ void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_
         mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
         if (!mem_node)
         {
-            HLOCKFREEPTRQUEUE unit_queue = create_lock_free_ptr_queue(1);
             unit = create_memory_unit(buffer_size);
-
-            lock_free_ptr_queue_push(unit_queue, unit);
-
-            mem_node = rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit_queue);
+            mem_node = rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit);
         }
         LeaveCriticalSection(&mgr->mem_lock);
     }
 
-    unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
-    while (!unit)
-    {
-        unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
-    }
+    unit = (HMEMORYUNIT)rb_node_value_user(mem_node);
 
-    void* buffer = memory_unit_alloc(unit);
-
-    lock_free_ptr_queue_push((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node), unit);
-
-    return buffer;
+    return _multi_thread_alloc(unit);
 }
 
 void _iocp_tcp_manager_free_memory(iocp_tcp_manager* mgr, void* mem, unsigned int buffer_size)
 {
     HRBNODE mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
-    HMEMORYUNIT unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
-    while (!unit)
+    if (!mem_node)
     {
-        unit = lock_free_ptr_queue_pop((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node));
-    }
+        EnterCriticalSection(&mgr->mem_lock);
+        mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
+        LeaveCriticalSection(&mgr->mem_lock);
 
-    if (!memory_unit_check(unit, mem))
-    {
-        CRUSH_CODE();
+        if (!mem_node)
+        {
+            CRUSH_CODE();
+        }
     }
+    HMEMORYUNIT unit = (HMEMORYUNIT)rb_node_value_user(mem_node);
 
     memory_unit_free(unit, mem);
-
-    lock_free_ptr_queue_push((HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node), unit);
 }
 
 void _iocp_tcp_manager_free_ssl_data(iocp_tcp_manager* mgr, iocp_ssl_data* data)
@@ -380,7 +369,7 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
         send_buf_size = 1024;
     }
 
-    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)lock_free_ptr_queue_pop(mgr->socket_pool);
+    iocp_tcp_socket* sock_ptr = (iocp_tcp_socket*)_multi_thread_alloc(mgr->socket_pool);
 
     if (sock_ptr)
     {
@@ -425,10 +414,7 @@ iocp_tcp_socket* _iocp_tcp_manager_alloc_socket(iocp_tcp_manager* mgr, unsigned 
 
 void _iocp_tcp_manager_free_socket(iocp_tcp_manager* mgr, iocp_tcp_socket* sock_ptr)
 {
-    if (sock_ptr)
-    {
-        lock_free_ptr_queue_push(mgr->socket_pool, sock_ptr);
-    }
+    memory_unit_free(mgr->socket_pool, sock_ptr);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2354,15 +2340,7 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
         HRBNODE mem_node = rb_first(mgr->memory_mgr);
         while (mem_node)
         {
-            HLOCKFREEPTRQUEUE unit_queue = (HLOCKFREEPTRQUEUE)rb_node_value_user(mem_node);
-            HMEMORYUNIT unit = lock_free_ptr_queue_pop(unit_queue);
-            while (!unit)
-            {
-                unit = lock_free_ptr_queue_pop(unit_queue);
-            }
-
-            destroy_memory_unit(unit);
-            destroy_lock_free_ptr_queue(unit_queue);
+            destroy_memory_unit((HMEMORYUNIT)rb_node_value_user(mem_node));
 
             mem_node = rb_next(mem_node);
         }
@@ -2380,14 +2358,8 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
 
     if (mgr->socket_pool)
     {
-        destroy_lock_free_ptr_queue(mgr->socket_pool);
+        destroy_memory_unit(mgr->socket_pool);
         mgr->socket_pool = 0;
-    }
-
-    if (mgr->socket_array)
-    {
-        free(mgr->socket_array);
-        mgr->socket_array = 0;
     }
 
     if (mgr->iocp_port)
@@ -2410,6 +2382,8 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
 {
     WORD version_requested;
     WSADATA wsa_data;
+
+    struct st_iocp_tcp_socket** sock_ptr_array = 0;
 
     iocp_tcp_manager* mgr = (iocp_tcp_manager*)malloc(sizeof(struct st_iocp_tcp_manager));
 
@@ -2445,19 +2419,29 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
         goto ERROR_DEAL;
     }
 
-    mgr->socket_array = (iocp_tcp_socket*)malloc(sizeof(struct st_iocp_tcp_socket)*mgr->max_socket_num);
-    mgr->socket_pool = create_lock_free_ptr_queue(mgr->max_socket_num);
+    mgr->socket_pool = create_memory_unit(sizeof(struct st_iocp_tcp_socket));
+    memory_unit_set_grow_count(mgr->socket_pool, mgr->max_socket_num);
+
+    sock_ptr_array = (struct st_iocp_tcp_socket**)malloc(sizeof(struct st_iocp_tcp_socket*) * mgr->max_socket_num);
+    for (unsigned int i = 0; i < mgr->max_socket_num; i++)
+    {
+        sock_ptr_array[i] = (struct st_iocp_tcp_socket*)_multi_thread_alloc(mgr->socket_pool);
+        sock_ptr_array[i]->mgr = mgr;
+        sock_ptr_array[i]->recv_loop_cache = 0;
+        sock_ptr_array[i]->send_loop_cache = 0;
+        sock_ptr_array[i]->iocp_recv_data.pt.sock_ptr = sock_ptr_array[i];
+        sock_ptr_array[i]->iocp_send_data.pt.sock_ptr = sock_ptr_array[i];
+    }
+
+    memory_unit_set_grow_count(mgr->socket_pool, 0);
 
     for (unsigned int i = 0; i < mgr->max_socket_num; i++)
     {
-        mgr->socket_array[i].mgr = mgr;
-        mgr->socket_array[i].recv_loop_cache = 0;
-        mgr->socket_array[i].send_loop_cache = 0;
-        mgr->socket_array[i].iocp_recv_data.pt.sock_ptr = &mgr->socket_array[i];
-        mgr->socket_array[i].iocp_send_data.pt.sock_ptr = &mgr->socket_array[i];
-
-        lock_free_ptr_queue_push(mgr->socket_pool, &mgr->socket_array[i]);
+        memory_unit_free(mgr->socket_pool, sock_ptr_array[i]);
     }
+    free(sock_ptr_array);
+    sock_ptr_array = 0;
+
 
     mgr->evt_queue = create_loop_cache(0, mgr->max_socket_num * 5 * sizeof(struct st_net_event));
     if (!mgr->evt_queue)
