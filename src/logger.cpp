@@ -1062,11 +1062,25 @@ void update_logger_obj_pool(SMemory::IClassMemory* new_obj_pool)
     log_obj_pool* new_pool = (log_obj_pool*)malloc(sizeof(log_obj_pool));
     new_pool->obj_pool = new_obj_pool;
 
-    std::mutex mtx;
-    mtx.lock();
+#ifdef _MSC_VER
+    do
+    {
+        new_pool->next_pool = g_logger_manager->log_obj_pool_head;
+    } while (InterlockedCompareExchangePointer(
+        &reinterpret_cast<PVOID>(g_logger_manager->log_obj_pool_head),
+        new_pool,
+        new_pool->next_pool) != new_pool->next_pool);
+#elif __GNUC__
     new_pool->next_pool = g_logger_manager->log_obj_pool_head;
-    g_logger_manager->log_obj_pool_head = new_pool;
-    mtx.unlock();
+    while (!__atomic_compare_exchange(
+        &g_logger_manager->log_obj_pool_head,
+        &new_pool->next_pool,
+        &new_pool, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    {
+    }
+#else
+#error "unknown compiler"
+#endif
 }
 
 void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
@@ -1074,11 +1088,25 @@ void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
     log_mem_pool* new_pool = (log_mem_pool*)malloc(sizeof(log_mem_pool));
     new_pool->mem_pool = new_mem_pool;
 
-    std::mutex mtx;
-    mtx.lock();
+#ifdef _MSC_VER
+    do
+    {
+        new_pool->next_pool = g_logger_manager->log_mem_pool_head;
+    } while (InterlockedCompareExchangePointer(
+        &reinterpret_cast<PVOID>(g_logger_manager->log_mem_pool_head),
+        new_pool,
+        new_pool->next_pool) != new_pool->next_pool);
+#elif __GNUC__
     new_pool->next_pool = g_logger_manager->log_mem_pool_head;
-    g_logger_manager->log_mem_pool_head = new_pool;
-    mtx.unlock();
+    while (!__atomic_compare_exchange(
+        &g_logger_manager->log_mem_pool_head,
+        &new_pool->next_pool,
+        &new_pool, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    {
+    }
+#else
+#error "unknown compiler"
+#endif
 }
 
 HMEMORYMANAGER logger_mem_pool(void)
@@ -1122,11 +1150,26 @@ log_proc* _get_log_proc(void)
 
         s_log_proc->is_run = true;
 
-        std::mutex mtx;
-        mtx.lock();
+#ifdef _MSC_VER
+        do 
+        {
+            s_log_proc->next_proc = g_logger_manager->log_proc_head;
+        } while (InterlockedCompareExchangePointer(
+            &reinterpret_cast<PVOID>(g_logger_manager->log_proc_head),
+            s_log_proc,
+            s_log_proc->next_proc) != s_log_proc->next_proc);
+#elif __GNUC__
         s_log_proc->next_proc = g_logger_manager->log_proc_head;
-        g_logger_manager->log_proc_head = s_log_proc;
-        mtx.unlock();
+        while (!__atomic_compare_exchange(
+            &g_logger_manager->log_proc_head, 
+            &s_log_proc->next_proc, 
+            &s_log_proc, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+        {
+        }
+#else
+#error "unknown compiler"
+#endif
+        
     }
 
     return s_log_proc;
