@@ -1292,7 +1292,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     if (!is_valid_utf8((const unsigned char*)path_utf8, strlen(path_utf8)))
     {
         return 0;
-}
+    }
 
     if (!is_valid_utf8((const unsigned char*)name_utf8, strlen(name_utf8)))
     {
