@@ -82,27 +82,29 @@ typedef struct st_log_queue
     HLOOPCACHE  rcy_queue;
 }log_queue;
 
+typedef struct st_log_obj_pool
+{
+    struct st_log_obj_pool* next_pool;
+    SMemory::IClassMemory* obj_pool;
+}log_obj_pool;
+typedef struct st_log_mem_pool
+{
+    struct st_log_mem_pool* next_pool;
+    HMEMORYMANAGER              mem_pool;
+}log_mem_pool;
+
 typedef struct st_log_proc
 {
     struct st_log_proc* next_proc;
     log_queue*          queue;
+    log_obj_pool*       log_obj_pool_head;
+    log_mem_pool*       log_mem_pool_head;
     time_t              last_log_time;
     struct tm           last_log_tm;
     char                time_str[32];
     unsigned int        t_id;
     bool                is_run;
 }log_proc;
-
-typedef struct st_log_obj_pool
-{
-    struct st_log_obj_pool*     next_pool;
-    SMemory::IClassMemory*      obj_pool;
-}log_obj_pool;
-typedef struct st_log_mem_pool
-{
-    struct st_log_mem_pool*     next_pool;
-    HMEMORYMANAGER              mem_pool;
-}log_mem_pool;
 
 class log_thread
 {
@@ -162,8 +164,6 @@ typedef struct st_logger_manager
     size_t              log_queue_size;
     log_proc*           log_proc_head;
     log_proc**          main_log_proc;
-    log_obj_pool*       log_obj_pool_head;
-    log_mem_pool*       log_mem_pool_head;
     print_thread*       print_thread_pt;
     size_t              print_cache_size;
     bool                is_run;
@@ -1057,78 +1057,14 @@ size_t _get_idle_log_thread_idx(void)
     return idle_log_thread_idx;
 }
 
-void update_logger_obj_pool(SMemory::IClassMemory* new_obj_pool)
-{
-    log_obj_pool* new_pool = (log_obj_pool*)malloc(sizeof(log_obj_pool));
-    new_pool->obj_pool = new_obj_pool;
-
-#ifdef _MSC_VER
-    do
-    {
-        new_pool->next_pool = g_logger_manager->log_obj_pool_head;
-    } while (InterlockedCompareExchangePointer(
-        &reinterpret_cast<PVOID>(g_logger_manager->log_obj_pool_head),
-        new_pool,
-        new_pool->next_pool) != new_pool->next_pool);
-#elif __GNUC__
-    new_pool->next_pool = g_logger_manager->log_obj_pool_head;
-    while (!__atomic_compare_exchange(
-        &g_logger_manager->log_obj_pool_head,
-        &new_pool->next_pool,
-        &new_pool, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-    {
-    }
-#else
-#error "unknown compiler"
-#endif
-}
-
-void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
-{
-    log_mem_pool* new_pool = (log_mem_pool*)malloc(sizeof(log_mem_pool));
-    new_pool->mem_pool = new_mem_pool;
-
-#ifdef _MSC_VER
-    do
-    {
-        new_pool->next_pool = g_logger_manager->log_mem_pool_head;
-    } while (InterlockedCompareExchangePointer(
-        &reinterpret_cast<PVOID>(g_logger_manager->log_mem_pool_head),
-        new_pool,
-        new_pool->next_pool) != new_pool->next_pool);
-#elif __GNUC__
-    new_pool->next_pool = g_logger_manager->log_mem_pool_head;
-    while (!__atomic_compare_exchange(
-        &g_logger_manager->log_mem_pool_head,
-        &new_pool->next_pool,
-        &new_pool, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-    {
-    }
-#else
-#error "unknown compiler"
-#endif
-}
-
-HMEMORYMANAGER logger_mem_pool(void)
-{
-    static TLS_VAR HMEMORYMANAGER mem_mgr = 0;
-
-    if (!mem_mgr)
-    {
-        mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
-
-        update_logger_mem_pool(mem_mgr);
-    }
-
-    return mem_mgr;
-}
-
 log_proc* _get_log_proc(void)
 {
     if (!s_log_proc)
     {
         s_log_proc = (log_proc*)malloc(sizeof(log_proc));
         s_log_proc->queue = (log_queue*)malloc(sizeof(log_queue)*g_logger_manager->log_thread_num);
+        s_log_proc->log_mem_pool_head = 0;
+        s_log_proc->log_obj_pool_head = 0;
 
         for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
         {
@@ -1173,6 +1109,42 @@ log_proc* _get_log_proc(void)
     }
 
     return s_log_proc;
+}
+
+void update_logger_mem_pool(HMEMORYMANAGER new_mem_pool)
+{
+    log_mem_pool* new_pool = (log_mem_pool*)malloc(sizeof(log_mem_pool));
+    new_pool->mem_pool = new_mem_pool;
+
+    log_proc* proc = _get_log_proc();
+
+    new_pool->next_pool = proc->log_mem_pool_head;
+    proc->log_mem_pool_head = new_pool;
+}
+
+void update_logger_obj_pool(SMemory::IClassMemory* new_obj_pool)
+{
+    log_obj_pool* new_pool = (log_obj_pool*)malloc(sizeof(log_obj_pool));
+    new_pool->obj_pool = new_obj_pool;
+
+    log_proc* proc = _get_log_proc();
+
+    new_pool->next_pool = proc->log_obj_pool_head;
+    proc->log_obj_pool_head = new_pool;
+}
+
+HMEMORYMANAGER logger_mem_pool(void)
+{
+    static TLS_VAR HMEMORYMANAGER mem_mgr = 0;
+
+    if (!mem_mgr)
+    {
+        mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
+
+        update_logger_mem_pool(mem_mgr);
+    }
+
+    return mem_mgr;
 }
 
 void _free_log_cmd(log_proc* proc)
@@ -1285,8 +1257,6 @@ bool init_logger_manager(size_t log_thread_num, size_t max_log_event_num, size_t
         g_logger_manager = new logger_manager;
         g_logger_manager->is_run = true;
         g_logger_manager->log_proc_head = 0;
-        g_logger_manager->log_obj_pool_head = 0;
-        g_logger_manager->log_mem_pool_head = 0;
         g_logger_manager->log_thread_num = log_thread_num;
         g_logger_manager->log_queue_size = max_log_event_num;
         g_logger_manager->print_cache_size = print_cache_size;
@@ -1323,6 +1293,28 @@ void uninit_logger_manager(void)
                 destroy_loop_cache(cur_proc->queue[i].cmd_queue);
                 destroy_loop_cache(cur_proc->queue[i].rcy_queue);
             }
+
+            log_obj_pool* obj_pool = cur_proc->log_obj_pool_head;
+            while (obj_pool)
+            {
+                log_obj_pool* cur_pool = obj_pool;
+                obj_pool = obj_pool->next_pool;
+
+                delete cur_pool->obj_pool;
+                free(cur_pool);
+            }
+
+            log_mem_pool* mem_pool = cur_proc->log_mem_pool_head;
+
+            while (mem_pool)
+            {
+                log_mem_pool* cur_pool = mem_pool;
+                mem_pool = mem_pool->next_pool;
+
+                destroy_memory_manager(cur_pool->mem_pool);
+                free(cur_pool);
+            }
+
             free(cur_proc->queue);
             free(cur_proc);
             cur_proc = 0;
@@ -1332,28 +1324,6 @@ void uninit_logger_manager(void)
         if (g_logger_manager->main_log_proc)
         {
             *(g_logger_manager->main_log_proc) = 0;
-        }
-
-        log_obj_pool* obj_pool = g_logger_manager->log_obj_pool_head;
-
-        while (obj_pool)
-        {
-            log_obj_pool* cur_pool = obj_pool;
-            obj_pool = obj_pool->next_pool;
-
-            delete cur_pool->obj_pool;
-            free(cur_pool);
-        }
-
-        log_mem_pool* mem_pool = g_logger_manager->log_mem_pool_head;
-
-        while (mem_pool)
-        {
-            log_mem_pool* cur_pool = mem_pool;
-            mem_pool = mem_pool->next_pool;
-
-            destroy_memory_manager(cur_pool->mem_pool);
-            free(cur_pool);
         }
 
         delete g_logger_manager;
