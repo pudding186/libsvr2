@@ -17,7 +17,7 @@
 #include "../include/memory_pool.h"
 #include "../include/rb_tree.h"
 #include "../include/net_tcp.h"
-#include "../include/ssl_tcp.h"
+#include "../include/net_ssl.h"
 
 //socket state
 #define SOCKET_STATE_NONE       0

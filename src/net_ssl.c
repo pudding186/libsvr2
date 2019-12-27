@@ -1,5 +1,5 @@
 #include "./lib_svr_common_def.h"
-#include "../include/ssl_tcp.h"
+#include "../include/net_ssl.h"
 
 #if OPENSSL_VERSION_NUMBER > 0x1000000fL
 
