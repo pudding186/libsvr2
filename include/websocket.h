@@ -1,7 +1,7 @@
 #pragma once
 #include "./lib_svr_def.h"
 #include "./net_tcp.h"
-#include "./ssl_tcp.h"
+#include "./net_ssl.h"
 #ifdef  __cplusplus
 extern "C" {
 #endif
