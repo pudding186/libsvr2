@@ -1395,7 +1395,9 @@ void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr
     if (sock_ptr->sock_fd != -1)
     {
         _epoll_tcp_socket_proc_del(proc, sock_ptr);
-        close(sock_ptr->sock_fd);
+        int ret_shutdown = shutdown(sock_ptr->sock_fd, SHUT_RDWR);
+        int ret_close = close(sock_ptr->sock_fd);
+        printf("close socket %d shutdown=%d close=%d\n", sock_ptr->sock_fd, ret_shutdown, ret_close);
         sock_ptr->sock_fd = -1;
     }
 }
@@ -1850,6 +1852,11 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         {
             sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _epoll_tcp_proc_push_evt_ssl_establish(proc, sock_ptr->listener, sock_ptr);
+
+            if (decrypt_data_push_len)
+            {
+                _epoll_tcp_proc_push_evt_data(proc, sock_ptr, decrypt_data_push_len);
+            }
         }
     }
 
