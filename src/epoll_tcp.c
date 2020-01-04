@@ -1397,7 +1397,6 @@ void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr
         _epoll_tcp_socket_proc_del(proc, sock_ptr);
         int ret_shutdown = shutdown(sock_ptr->sock_fd, SHUT_RDWR);
         int ret_close = close(sock_ptr->sock_fd);
-        printf("close socket %d shutdown=%d close=%d\n", sock_ptr->sock_fd, ret_shutdown, ret_close);
         sock_ptr->sock_fd = -1;
     }
 }
