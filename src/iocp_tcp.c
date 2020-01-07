@@ -936,6 +936,11 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
         {
             sock_ptr->ssl_data_ptr->ssl_state = SSL_HAND_SHAKE;
             _push_ssl_establish_event(sock_ptr);
+
+            if (decrypt_data_push_len)
+            {
+                _push_data_event(sock_ptr, decrypt_data_push_len);
+            }
         }
     }
 
