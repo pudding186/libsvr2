@@ -2965,6 +2965,14 @@ epoll_tcp_listener* net_tcp_listen(
     return listener;
 }
 
+SSL_CTX* (net_ssl_change_ctx)(epoll_tcp_listener* ssl_listener,
+    SSL_CTX* new_svr_ssl_ctx)
+{
+    SSL_CTX* old_svr_ssl_ctx = ssl_listener->svr_ssl_ctx;
+    ssl_listener->svr_ssl_ctx = new_svr_ssl_ctx;
+    return old_svr_ssl_ctx;
+}
+
 epoll_tcp_listener* net_ssl_listen(
     epoll_tcp_manager* mgr,
     const char* ip,

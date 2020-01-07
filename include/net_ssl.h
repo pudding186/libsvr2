@@ -47,6 +47,8 @@ extern HSESSION(net_ssl_connect)(HTCPMANAGER mgr,
     pfn_on_recv func_on_recv,
     pfn_parse_packet func_parse_packet);
 
+extern SSL_CTX* (net_ssl_change_ctx)(HLISTENER ssl_listener, 
+    SSL_CTX* new_svr_ssl_ctx);
 
 #ifdef  __cplusplus
 }
