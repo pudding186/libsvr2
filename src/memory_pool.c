@@ -36,7 +36,9 @@ size_t memory_unit_alloc_count(mem_unit* unit)
 
 size_t memory_unit_total_count(mem_unit* unit)
 {
-    return unit->total_count;
+    return unit->total_count + 
+        unit->mem_block_head_mt.u_data.tp.tag[0] - 
+        unit->mem_block_head_mt.u_data.tp.tag[1];
 }
 
 int memory_unit_check_sign(mem_unit* unit, void** info)
@@ -73,23 +75,8 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
-#ifdef _MSC_VER
-    do 
-    {
-        block->next = unit->block_head;
-    } while (InterlockedCompareExchangePointer(
-        &unit->block_head, 
-        block, 
-        block->next) != block->next);
-#elif __GNUC__
-    block->next = unit->block_head;
-
-    while (!__atomic_compare_exchange(&unit->block_head, &block->next, &block, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-    {
-    }
-#else
-#error "unknown compiler"
-#endif
+    block->next = unit->mem_block_head;
+    unit->mem_block_head = block;
 
     ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -101,13 +88,9 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 
     *((void**)ptr) = unit->unit_free_head;
     unit->unit_free_head = (unsigned char*)block + sizeof(mem_block);
-#ifdef _MSC_VER
-    InterlockedAdd64(&unit->total_count, unit_count);
-#elif __GNUC__
-    __atomic_fetch_add(&unit->total_count, unit_count, __ATOMIC_SEQ_CST);
-#else
-#error "unknown compiler"
-#endif
+
+    unit->total_count += unit_count;
+
     return block;
 }
 
@@ -120,23 +103,33 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
 
     block = (mem_block*)malloc(block_size);
 
-#ifdef _MSC_VER
-    do
-    {
-        block->next = unit->block_head;
-    } while (InterlockedCompareExchangePointer(
-        &unit->block_head,
-        block,
-        block->next) != block->next);
-#elif __GNUC__
-    block->next = unit->block_head;
+    tag_pointer tp_next;
+    tp_next.u_data.tp.ptr = block;
 
-    while (!__atomic_compare_exchange(&unit->block_head, &block->next, &block, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-    {
-    }
+    tag_pointer tp;
+    tp.u_data.tp.ptr = (void*)ULLONG_MAX;
+
+#ifdef _MSC_VER
+    while (!InterlockedCompareExchange128(
+        unit->mem_block_head_mt.u_data.bit128.Int,
+        tp_next.u_data.bit128.Int[1],
+        tp_next.u_data.bit128.Int[0],
+        tp.u_data.bit128.Int))
+#elif __GNUC__
+    while (!__atomic_compare_exchange(
+        &unit->mem_block_head_mt.u_data.bit128,
+        &tp.u_data.bit128,
+        &tp_next.u_data.bit128,
+        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 #else
 #error "unknown compiler"
 #endif
+    {
+        block->next = tp.u_data.tp.ptr;
+
+        tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0];
+        tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + (unsigned int)unit_count;
+    }
 
     ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -146,10 +139,8 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         ptr += sizeof(void*) + unit->unit_size;
     }
 
-    tag_pointer tp_next;
     tp_next.u_data.tp.ptr = (unsigned char*)block + sizeof(mem_block);
 
-    tag_pointer tp;
     tp.u_data.tp.ptr = (void*)ULLONG_MAX;
 
 #ifdef _MSC_VER
@@ -172,14 +163,6 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         tp_next.u_data.tp.tag[0] = tp.u_data.tp.tag[0] + 1;
         tp_next.u_data.tp.tag[1] = tp.u_data.tp.tag[1] + 1;
     }
-
-#ifdef _MSC_VER
-    InterlockedAdd64(&unit->total_count, unit_count);
-#elif __GNUC__
-    __atomic_fetch_add(&unit->total_count, unit_count, __ATOMIC_SEQ_CST);
-#else
-#error "unknown compiler"
-#endif
 
     return block;
 }
@@ -218,14 +201,17 @@ mem_unit* create_memory_unit(size_t unit_size)
     unit->unit_free_head_mt.u_data.bit128.Int[1] = 0;
     unit->unit_free_head_cache.u_data.bit128.Int[0] = 0;
     unit->unit_free_head_cache.u_data.bit128.Int[1] = 0;
+    unit->mem_block_head_mt.u_data.bit128.Int[0] = 0;
+    unit->mem_block_head_mt.u_data.bit128.Int[1] = 0;
 #elif __GNUC__
     unit->unit_free_head_mt.u_data.bit128 = 0;
     unit->unit_free_head_cache.u_data.bit128 = 0;
+    unit->mem_block_head_mt.u_data.bit128 = 0;
 #else
 #error "unknown compiler"
 #endif
     unit->unit_create_thread = &lib_svr_mem_mgr;
-    unit->block_head = 0;
+    unit->mem_block_head = 0;
     unit->unit_free_head = 0;
     unit->unit_size = unit_size;
     unit->alloc_count = 0;
@@ -239,10 +225,18 @@ mem_unit* create_memory_unit(size_t unit_size)
 
 void destroy_memory_unit(mem_unit* unit)
 {
-    while (unit->block_head)
+    while (unit->mem_block_head)
     {
-        mem_block* block = unit->block_head;
-        unit->block_head = block->next;
+        mem_block* block = unit->mem_block_head;
+        unit->mem_block_head = block->next;
+
+        free(block);
+    }
+
+    while (unit->mem_block_head_mt.u_data.tp.ptr)
+    {
+        mem_block* block = (mem_block*)unit->mem_block_head_mt.u_data.tp.ptr;
+        unit->mem_block_head_mt.u_data.tp.ptr = block->next;
 
         free(block);
     }

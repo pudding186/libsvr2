@@ -47,15 +47,20 @@ typedef struct st_mem_block
 
 typedef struct st_mem_unit
 {
+    struct st_tag_pointer   mem_block_head_mt;
     struct st_tag_pointer   unit_free_head_mt;
     struct st_tag_pointer   unit_free_head_cache;
+
     void*                   unit_create_thread;
-    struct st_mem_block*    block_head;     //内存块链表头
+    
+    struct st_mem_block*    mem_block_head; //内存块链表头
     void*                   unit_free_head; //可分配内存单元链表头
+
     size_t                  unit_size;      //内存单元的大小
     size_t                  grow_count;     //内存池每次增长个数
+
     size_t                  alloc_count;
-    long long               total_count;
+    size_t                  total_count;
 }mem_unit;
 
 typedef struct st_mem_pool
