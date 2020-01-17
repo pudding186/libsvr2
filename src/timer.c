@@ -298,6 +298,8 @@ void timer_update(timer_manager* mgr, unsigned run_time)
 
     unsigned int tick = get_tick();
 
+    bool time_out = false;
+
     while ((int)(tick)-(int)(mgr->last_tick) >= 0)
     {
         struct list_head work_list;
@@ -347,10 +349,13 @@ void timer_update(timer_manager* mgr, unsigned run_time)
 
 				if (run_time)
 				{
-					if (get_tick() - tick > run_time)
-					{
-						return;
-					}
+                    if (!time_out)
+                    {
+                        if (get_tick() - tick > run_time)
+                        {
+                            time_out = true;
+                        }
+                    }
 				}
             }
             else
@@ -361,6 +366,11 @@ void timer_update(timer_manager* mgr, unsigned run_time)
         }
 
         ++mgr->last_tick;
+
+        if (time_out)
+        {
+            return;
+        }
     }
 }
 

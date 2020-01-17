@@ -1,4 +1,4 @@
-#include "StdAfx.h"
+ï»¿#include "StdAfx.h"
 #include "protocolmaker.h"
 //#include <string>
 //
@@ -100,12 +100,12 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
 
     if (!oXml.Load(strXML.c_str()))
     {
-        m_strErrorInfo = "¼ÓÔØĞ­ÒéÎÄ¼ş"+strXML+"Ê§°Ü! ";
+        m_strErrorInfo = "åŠ è½½åè®®æ–‡ä»¶"+strXML+"å¤±è´¥! ";
         m_strErrorInfo += oXml.GetError();
         goto ERROR_DEAL;
     }
 
-    //»ñÈ¡Ğ­ÒéÄ£¿éÃû×÷ÎªÎÄ¼şÃû
+    //è·å–åè®®æ¨¡å—åä½œä¸ºæ–‡ä»¶å
     FIND_ELEM("protocol_define");
     GET_ATTRIB("name");
 
@@ -115,6 +115,15 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
     pCppFile = fopen(strCppFile.c_str(), "wb");
     if (NULL == pHppFile || NULL == pCppFile)
         goto ERROR_DEAL;
+
+
+
+    {
+        //utf8-bom
+        char bom[3] = { 0xEF, 0xBB, 0xBF };
+        fwrite(bom, 1, 3, pHppFile);
+        fwrite(bom, 1, 3, pCppFile);
+    }
 
     fprintf(pHppFile, u8"#pragma once\r\n\r\n");
     fprintf(pHppFile, u8"#include \"net_data.hpp\"\r\n\r\n");
@@ -250,7 +259,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
 
     if (!oXml.Load(strPkg.c_str()))
     {
-        m_strErrorInfo = "¼ÓÔØĞ­ÒéÎÄ¼ş"+strPkg+"Ê§°Ü!";
+        m_strErrorInfo = "åŠ è½½åè®®æ–‡ä»¶"+strPkg+"å¤±è´¥!";
         goto ERROR_DEAL;
     }
 
@@ -259,7 +268,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
     FIND_ELEM("protocol_define");
     INTO_ELEM();
 
-    //²éÕÒºê¶¨Òå
+    //æŸ¥æ‰¾å®å®šä¹‰
     rXml.ResetMainPos();
     while (rXml.FindElem("macro"))
     {
@@ -268,7 +277,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
         std::string strComment = rXml.GetAttrib("comment");
         if (strName.empty() ||strValue.empty())
         {
-            m_strErrorInfo = "ºê¶¨Òå´íÎó name »ò value ÊôĞÔÎª¿Õ";
+            m_strErrorInfo = "å®å®šä¹‰é”™è¯¯ name æˆ– value å±æ€§ä¸ºç©º";
             return false;
         }
         m_setMacro.insert(strName);
@@ -287,7 +296,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
         {
             if (m_mapStruct.find(strName) != m_mapStruct.end())
             {
-                m_strErrorInfo += "ÖØ¶¨Òå";
+                m_strErrorInfo += "é‡å®šä¹‰";
                 return false;
             }
             eDataType = eStruct;
@@ -298,13 +307,13 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
         }
         else
         {
-            m_strErrorInfo += "typeÊôĞÔµÄÀàĞÍÎ´Öª£¬Ö»ÄÜ¶¨ÒåÎªstruct";
+            m_strErrorInfo += "typeå±æ€§çš„ç±»å‹æœªçŸ¥ï¼Œåªèƒ½å®šä¹‰ä¸ºstruct";
             return false;
         }
 
         if (!rXml.IntoElem())
         {
-            m_strErrorInfo += "½øÈë×Ó¼¶Ê§°Ü";
+            m_strErrorInfo += "è¿›å…¥å­çº§å¤±è´¥";
             return false;
         }
 
@@ -325,7 +334,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
             CItem::iterator it  = mapItem.find(vecAttrib[eName]);
             if (it != mapItem.end())
             {
-                m_strErrorInfo += "nameÊôĞÔÖµÖØ¸´";
+                m_strErrorInfo += "nameå±æ€§å€¼é‡å¤";
                 return false;
             }
             else
@@ -334,7 +343,7 @@ bool CProtocolMaker::__CheckPackge( const std::string& strPkg )
 
         if (!rXml.OutOfElem())
         {
-            m_strErrorInfo += "´Ó×Ó¼¯·µ»ØÊ§°Ü";
+            m_strErrorInfo += "ä»å­é›†è¿”å›å¤±è´¥";
             return false;
         }
 
@@ -358,8 +367,8 @@ ERROR_DEAL:
 
 bool CProtocolMaker::__WritePackge( FILE* pHppFile, CMarkupSTL& rXml, const std::string& strPackgePath )
 {
-    //²éÕÒËùÓĞÊı¾İ¶¨Òå
-    fprintf(pHppFile, u8"//===============°üº¬µÄÆäËûĞ­ÒéÎÄ¼ş===============\r\n");
+    //æŸ¥æ‰¾æ‰€æœ‰æ•°æ®å®šä¹‰
+    fprintf(pHppFile, u8"//===============åŒ…å«çš„å…¶ä»–åè®®æ–‡ä»¶===============\r\n");
     rXml.ResetMainPos();
     while (rXml.FindElem("package"))
     {
@@ -378,8 +387,8 @@ bool CProtocolMaker::__WritePackge( FILE* pHppFile, CMarkupSTL& rXml, const std:
 
 bool CProtocolMaker::__WriteMacro( FILE* pHppFile, CMarkupSTL& rXml )
 {
-    //²éÕÒËùÓĞµÄºê¶¨Òå
-    fprintf(pHppFile, u8"//===============ºê¶¨Òå¿ªÊ¼===============\r\n");
+    //æŸ¥æ‰¾æ‰€æœ‰çš„å®å®šä¹‰
+    fprintf(pHppFile, u8"//===============å®å®šä¹‰å¼€å§‹===============\r\n");
     rXml.ResetMainPos();
     while (rXml.FindElem("macro"))
     {
@@ -388,7 +397,7 @@ bool CProtocolMaker::__WriteMacro( FILE* pHppFile, CMarkupSTL& rXml )
         std::string strComment = rXml.GetAttrib("comment");
         if (strName.empty() ||strValue.empty())
         {
-            m_strErrorInfo = "ºê¶¨Òå´íÎó name »ò value ÊôĞÔÎª¿Õ";
+            m_strErrorInfo = "å®å®šä¹‰é”™è¯¯ name æˆ– value å±æ€§ä¸ºç©º";
             return false;
         }
 
@@ -398,14 +407,14 @@ bool CProtocolMaker::__WriteMacro( FILE* pHppFile, CMarkupSTL& rXml )
             fprintf(pHppFile, u8"#define %-*s %s //%s\r\n", 30, strName.c_str(), strValue.c_str(), strComment.c_str());
         m_setMacro.insert(strName);
     }
-    fprintf(pHppFile, u8"//===============ºê¶¨Òå½áÊø===============\r\n\r\n");
+    fprintf(pHppFile, u8"//===============å®å®šä¹‰ç»“æŸ===============\r\n\r\n");
     return true;
 }
 
 bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
 {
-    //²éÕÒËùÓĞÊı¾İ¶¨Òå
-    fprintf(pHppFile, u8"//===============Êı¾İ¶¨Òå¿ªÊ¼===============\r\n");
+    //æŸ¥æ‰¾æ‰€æœ‰æ•°æ®å®šä¹‰
+    fprintf(pHppFile, u8"//===============æ•°æ®å®šä¹‰å¼€å§‹===============\r\n");
     //fprintf(pHppFile, "#pragma warning( push )\r\n#pragma warning( disable : 4512)\r\n");
     rXml.ResetMainPos();
     while (rXml.FindElem("data"))
@@ -421,7 +430,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
         {
             if (m_mapStruct.find(strName) != m_mapStruct.end())
             {
-                m_strErrorInfo += "ÖØ¶¨Òå";
+                m_strErrorInfo += "é‡å®šä¹‰";
                 return false;
             }
 
@@ -438,7 +447,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
         {
             if (m_mapProtocol.find(strName) != m_mapProtocol.end())
             {
-                m_strErrorInfo += " ÖØ¶¨Òå";
+                m_strErrorInfo += " é‡å®šä¹‰";
                 return false;
             }
             fprintf(pHppFile, u8"struct %s:protocol_base{\r\n", strName.c_str());
@@ -448,13 +457,13 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
         }
         else
         {
-            m_strErrorInfo += "typeÊôĞÔµÄÀàĞÍÎ´Öª£¬Ö»ÄÜ¶¨ÒåÎªstruct,union,protocol";
+            m_strErrorInfo += "typeå±æ€§çš„ç±»å‹æœªçŸ¥ï¼Œåªèƒ½å®šä¹‰ä¸ºstruct,union,protocol";
             return false;
         }
 
         if (!rXml.IntoElem())
         {
-            m_strErrorInfo += "½øÈë×Ó¼¶Ê§°Ü";
+            m_strErrorInfo += "è¿›å…¥å­çº§å¤±è´¥";
             return false;
         }
 
@@ -476,7 +485,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
             CItem::iterator it  = mapItem.find(vecAttrib[eName]);
             if (it != mapItem.end())
             {
-                m_strErrorInfo += "nameÊôĞÔÖµÖØ¸´";
+                m_strErrorInfo += "nameå±æ€§å€¼é‡å¤";
                 return false;
             }
             else
@@ -494,7 +503,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
 
         if (!rXml.OutOfElem())
         {
-            m_strErrorInfo += "´Ó×Ó¼¯·µ»ØÊ§°Ü";
+            m_strErrorInfo += "ä»å­é›†è¿”å›å¤±è´¥";
             return false;
         }
 
@@ -525,13 +534,13 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
         fprintf(pHppFile, u8"};\r\n\r\n");
     }
     //fprintf(pHppFile, "#pragma warning( pop ) \r\n");
-    fprintf(pHppFile, u8"//===============Êı¾İ¶¨Òå½áÊø===============\r\n");
+    fprintf(pHppFile, u8"//===============æ•°æ®å®šä¹‰ç»“æŸ===============\r\n");
     return true;
 }
 
 bool CProtocolMaker::__WriteDataFunction( FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml )
 {
-    fprintf(pHppFile, u8"//===============´ò°ü½â°üº¯Êı¶¨Òå¿ªÊ¼===============\r\n");
+    fprintf(pHppFile, u8"//===============æ‰“åŒ…è§£åŒ…å‡½æ•°å®šä¹‰å¼€å§‹===============\r\n");
     rXml.ResetMainPos();
     while (rXml.FindElem("data"))
     {
@@ -578,7 +587,7 @@ bool CProtocolMaker::__WriteDataFunction( FILE* pHppFile, FILE* pCppFile, CMarku
         }
 
     }
-    fprintf(pHppFile, u8"//===============´ò°ü½â°üº¯Êı¶¨Òå½áÊø===============\r\n");
+    fprintf(pHppFile, u8"//===============æ‰“åŒ…è§£åŒ…å‡½æ•°å®šä¹‰ç»“æŸ===============\r\n");
     return true;
 }
 
@@ -598,7 +607,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
 
     if (strName.empty() || strType.empty())
     {
-        m_strErrorInfo += "ÖĞ nameÊôĞÔºÍtypeÊôĞÔ²»ÄÜÎª¿Õ";
+        m_strErrorInfo += "ä¸­ nameå±æ€§å’Œtypeå±æ€§ä¸èƒ½ä¸ºç©º";
         return false;
     }
 
@@ -606,13 +615,13 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
     {
         if (!__IsStruct(strType))
         {
-            m_strErrorInfo += "unionÖĞµÄ³ÉÔ±±ØĞëÊÇstruct";
+            m_strErrorInfo += "unionä¸­çš„æˆå‘˜å¿…é¡»æ˜¯struct";
             return false;
         }
 
         if (strId.empty())
         {
-            m_strErrorInfo += "unionÖĞidÊôĞÔ²»ÄÜÎª¿Õ";
+            m_strErrorInfo += "unionä¸­idå±æ€§ä¸èƒ½ä¸ºç©º";
             return false;
         }
 
@@ -620,38 +629,38 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
         {
             if (!__IsMacro(strId))
             {
-                m_strErrorInfo += "unionÖĞid±ØĞëÎªÊı×Ö»òÕßÊÇ¶¨ÒåµÄºê";
+                m_strErrorInfo += "unionä¸­idå¿…é¡»ä¸ºæ•°å­—æˆ–è€…æ˜¯å®šä¹‰çš„å®";
                 return false;
             }
         }
 
         if (!strCount.empty())
         {
-            m_strErrorInfo += "unionÖĞ²»ÄÜÓĞÊı×é";
+            m_strErrorInfo += "unionä¸­ä¸èƒ½æœ‰æ•°ç»„";
             return false;
         }
 
         if (!strArray.empty())
         {
-            m_strErrorInfo += "unionÖĞ²»ÄÜÓĞÊı×é";
+            m_strErrorInfo += "unionä¸­ä¸èƒ½æœ‰æ•°ç»„";
             return false;
         }
 
         if (!strRefer.empty())
         {
-            m_strErrorInfo += "unionÖĞ²»ÄÜÓĞreferÊôĞÔ";
+            m_strErrorInfo += "unionä¸­ä¸èƒ½æœ‰referå±æ€§";
             return false;
         }
 
         if (!strSelect.empty())
         {
-            m_strErrorInfo += "unionÖĞ²»ÄÜÓĞselectÊôĞÔ";
+            m_strErrorInfo += "unionä¸­ä¸èƒ½æœ‰selectå±æ€§";
             return false;
         }
 
         if (!strLength.empty())
         {
-            m_strErrorInfo += "unionÖĞ²»ÄÜÓĞlengthÊôĞÔ";
+            m_strErrorInfo += "unionä¸­ä¸èƒ½æœ‰lengthå±æ€§";
             return false;
         }
     }
@@ -665,13 +674,13 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
             {
                 if (!strCount.empty())
                 {
-                    m_strErrorInfo += "ÓĞarrayÊôĞÔ¾Í²»ÄÜÓĞcountÊôĞÔ";
+                    m_strErrorInfo += "æœ‰arrayå±æ€§å°±ä¸èƒ½æœ‰countå±æ€§";
                     return false;
                 }
 
                 if (!strRefer.empty())
                 {
-                    m_strErrorInfo += "ÓĞarrayÊôĞÔ¾Í²»ÄÜÓĞreferÊôĞÔ";
+                    m_strErrorInfo += "æœ‰arrayå±æ€§å°±ä¸èƒ½æœ‰referå±æ€§";
                     return false;
                 }
 
@@ -680,7 +689,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
                     strArray != "uint32" &&
                     strArray != "uint64")
                 {
-                    m_strErrorInfo += "arrayÊôĞÔÖµ±ØĞëÎª uint8, uint16, uint32, uint64 ÖĞµÄÒ»ÖÖ";
+                    m_strErrorInfo += "arrayå±æ€§å€¼å¿…é¡»ä¸º uint8, uint16, uint32, uint64 ä¸­çš„ä¸€ç§";
                     return false;
                 }
             }
@@ -691,7 +700,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
                 {
                     if (!__IsMacro(strCount))
                     {
-                        m_strErrorInfo += "itemÖĞcount±ØĞëÎªÊı×Ö»òÕßÊÇ¶¨ÒåµÄºê";
+                        m_strErrorInfo += "itemä¸­countå¿…é¡»ä¸ºæ•°å­—æˆ–è€…æ˜¯å®šä¹‰çš„å®";
                         return false;
                     }
                 }
@@ -701,39 +710,39 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
             {
                 if (strCount.empty())
                 {
-                    m_strErrorInfo += "itemÖĞÓĞreferÊôĞÔÇ°±ØĞëÏÈÓĞcountÊôĞÔ";
+                    m_strErrorInfo += "itemä¸­æœ‰referå±æ€§å‰å¿…é¡»å…ˆæœ‰countå±æ€§";
                     return false;
                 }
 
                 CItem::iterator it = mapItem.find(strRefer);
                 if (it == mapItem.end())
                 {
-                    m_strErrorInfo += "itemÖĞreferµÄÊôĞÔÖµÎ´¶¨Òå";
+                    m_strErrorInfo += "itemä¸­referçš„å±æ€§å€¼æœªå®šä¹‰";
                     return false;
                 }
                 else
                 {
                     if (!__IsKeyType((it->second)[eType]))
                     {
-                        m_strErrorInfo += "itemÖĞreferµÄÊôĞÔÖµ±ØĞëÊÇ»ù´¡Êı¾İÀàĞÍµÄ±äÁ¿";
+                        m_strErrorInfo += "itemä¸­referçš„å±æ€§å€¼å¿…é¡»æ˜¯åŸºç¡€æ•°æ®ç±»å‹çš„å˜é‡";
                         return false;
                     }
 
                     if (!(it->second)[eCount].empty())
                     {
-                        m_strErrorInfo += "itemÖĞreferµÄÊôĞÔÖµ²»ÄÜÊÇÊı×é";
+                        m_strErrorInfo += "itemä¸­referçš„å±æ€§å€¼ä¸èƒ½æ˜¯æ•°ç»„";
                         return false;
                     }
                 }
             }
             if (!strId.empty())
             {
-                m_strErrorInfo += "Ö»ÓĞdataÊÇunion²ÅÄÜÓĞ´ËÊôĞÔ";
+                m_strErrorInfo += "åªæœ‰dataæ˜¯unionæ‰èƒ½æœ‰æ­¤å±æ€§";
                 return false;
             }
             if (!strSelect.empty())
             {
-                m_strErrorInfo += "Ö»ÓĞtype=union²ÅÄÜÓĞ´ËÊôĞÔ";
+                m_strErrorInfo += "åªæœ‰type=unionæ‰èƒ½æœ‰æ­¤å±æ€§";
                 return false;
             }
 
@@ -745,7 +754,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
                     {
                         if (!__IsMacro(strLength))
                         {
-                            m_strErrorInfo += "itemÖĞlength±ØĞëÎªÊı×Ö»òÕßÊÇ¶¨ÒåµÄºê";
+                            m_strErrorInfo += "itemä¸­lengthå¿…é¡»ä¸ºæ•°å­—æˆ–è€…æ˜¯å®šä¹‰çš„å®";
                             return false;
                         }
                     }
@@ -753,14 +762,14 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
                     {
                         if (atoi(strLength.c_str()) > 65535)
                         {
-                            m_strErrorInfo += "stringÀàĞÍµÄlengthÊôĞÔ×î´ó³¤¶È²»ÄÜ³¬¹ı65535";
+                            m_strErrorInfo += "stringç±»å‹çš„lengthå±æ€§æœ€å¤§é•¿åº¦ä¸èƒ½è¶…è¿‡65535";
                             return false;
                         }
                     }
                 }
                 else
                 {
-                    m_strErrorInfo += "Ö»ÓĞtype=string²ÅÄÜÓĞ´ËÊôĞÔ";
+                    m_strErrorInfo += "åªæœ‰type=stringæ‰èƒ½æœ‰æ­¤å±æ€§";
                     return false;
                 }
             }
@@ -769,7 +778,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
         {
             if (strSelect.empty())
             {
-                m_strErrorInfo += "unionÖĞ±ØĞëÓĞselectÊôĞÔ";
+                m_strErrorInfo += "unionä¸­å¿…é¡»æœ‰selectå±æ€§";
                 return false;
             }
             else
@@ -777,47 +786,47 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
                 CItem::iterator it = mapItem.find(strSelect);
                 if (it == mapItem.end())
                 {
-                    m_strErrorInfo += "itemÖĞselectµÄÊôĞÔÖµÎ´¶¨Òå";
+                    m_strErrorInfo += "itemä¸­selectçš„å±æ€§å€¼æœªå®šä¹‰";
                     return false;
                 }
                 else
                 {
                     if (!__IsKeyType((it->second)[eType]))
                     {
-                        m_strErrorInfo += "itemÖĞselectµÄÊôĞÔÖµ±ØĞëÊÇ»ù´¡Êı¾İÀàĞÍµÄ±äÁ¿";
+                        m_strErrorInfo += "itemä¸­selectçš„å±æ€§å€¼å¿…é¡»æ˜¯åŸºç¡€æ•°æ®ç±»å‹çš„å˜é‡";
                         return false;
                     }
 
                     if (!(it->second)[eCount].empty())
                     {
-                        m_strErrorInfo += "itemÖĞselectµÄÊôĞÔÖµ²»ÄÜÎªÊı×é";
+                        m_strErrorInfo += "itemä¸­selectçš„å±æ€§å€¼ä¸èƒ½ä¸ºæ•°ç»„";
                         return false;
                     }
                 }
             }
             if (!strCount.empty())
             {
-                m_strErrorInfo += "type=union²»ÄÜÓĞcountÊôĞÔ";
+                m_strErrorInfo += "type=unionä¸èƒ½æœ‰countå±æ€§";
                 return false;
             }
             if (!strRefer.empty())
             {
-                m_strErrorInfo += "type=union²»ÄÜÓĞreferÊôĞÔ";
+                m_strErrorInfo += "type=unionä¸èƒ½æœ‰referå±æ€§";
                 return false;
             }
             if (!strArray.empty())
             {
-                m_strErrorInfo += "type=union²»ÄÜÓĞarrayÊôĞÔ";
+                m_strErrorInfo += "type=unionä¸èƒ½æœ‰arrayå±æ€§";
                 return false;
             }
             if (!strId.empty())
             {
-                m_strErrorInfo += "type=union²»ÄÜÓĞidÊôĞÔ";
+                m_strErrorInfo += "type=unionä¸èƒ½æœ‰idå±æ€§";
                 return false;
             }
             if (!strLength.empty())
             {
-                m_strErrorInfo += "type=union²»ÄÜÓĞlengthÊôĞÔ";
+                m_strErrorInfo += "type=unionä¸èƒ½æœ‰lengthå±æ€§";
                 return false;
             }
         }
@@ -890,7 +899,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
         {
             if (strType == "string")
             {
-                m_strErrorInfo += "type=string²»ÄÜÓĞcountÊôĞÔ";
+                m_strErrorInfo += "type=stringä¸èƒ½æœ‰countå±æ€§";
                 return false;
             }
             fprintf(pHppFile, u8"\t%-*s %s[%s];", 25, strCStyle.c_str(), strName.c_str(), strCount.c_str());
@@ -919,7 +928,7 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
 
             if (strType == "string")
             {
-                m_strErrorInfo += "type=string²»ÄÜÓĞarrayÊôĞÔ";
+                m_strErrorInfo += "type=stringä¸èƒ½æœ‰arrayå±æ€§";
                 return false;
             }
             std::string array_name = "DataArray<" + strCStyle + ", " + strArrayCtype + ">";
@@ -1243,7 +1252,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 
     //fprintf(pHppFile, "typedef int (*EnCodeFunc%s)(void *pHost, CNetData* poNetData);\r\ntypedef int (*DeCodeFunc%s)(void *pHost, CNetData* poNetData);\r\n\r\n", strProtocolName.c_str(), strProtocolName.c_str());
     fprintf(pHppFile, u8"class C%s\r\n{\r\npublic:\r\n\tC%s();\r\n\tvirtual ~C%s();\r\n", strProtocolName.c_str(), strProtocolName.c_str(), strProtocolName.c_str());
-    //Ìí¼Ó³ÉÔ±º¯Êı
+    //æ·»åŠ æˆå‘˜å‡½æ•°
     //fprintf(pHppFile, "\tint BuildProtocol(void* pHost, char *pNet, int iNetSize);\r\n\r\n");
     //fprintf(pHppFile, "\tbool HandleProtocol(char *pNet, int iNetSize, void* pHost);\r\n\r\n");
 	fprintf(pHppFile, u8"\tbool BuildProtocol(protocol_base* proto, NetEnCode& net_data);\r\n\r\n");
@@ -1252,8 +1261,8 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     fprintf(pHppFile, u8"\tstatic inline unsigned short GetProtocolNum(void){ return %d; }\r\n\r\n", m_vecProtocol.size());
     fprintf(pHppFile, u8"\tstatic const unsigned short module_id = %s;\r\n\r\n", m_strMoudleID.c_str());
     fprintf(pHppFile, u8"\tstatic const unsigned short protocol_num = %d;\r\n\r\n", m_vecProtocol.size());
-    //Ìí¼Ó¸÷Ğ­ÒéµÄ»Øµ÷´¿Ğéº¯Êı
-    fprintf(pHppFile, u8"//===============ÒÔÏÂĞ­Òé»Øµ÷º¯ÊıĞèÒªÊ¹ÓÃÕßÀ´ÊµÏÖ===============\r\n");
+    //æ·»åŠ å„åè®®çš„å›è°ƒçº¯è™šå‡½æ•°
+    fprintf(pHppFile, u8"//===============ä»¥ä¸‹åè®®å›è°ƒå‡½æ•°éœ€è¦ä½¿ç”¨è€…æ¥å®ç°===============\r\n");
     for (int i = 0; i < (int)m_vecProtocol.size(); i++)
     {
         fprintf(pHppFile, u8"\tvirtual void OnRecv_%s(%s& rstProtocol){ (void)(rstProtocol); };\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
@@ -1262,7 +1271,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 	fprintf(pHppFile, u8"private:\r\n\t void* m_protocol_buffer;\r\n");
 	fprintf(pHppFile, u8"\r\n};\r\n");
 
-    //¹¹Ôìº¯Êı
+    //æ„é€ å‡½æ•°
     fprintf(pCppFile, u8"C%s::C%s()\r\n{\r\n\tsize_t max_protocol_size = 0;\r\n", strProtocolName.c_str(), strProtocolName.c_str());
     //for (int i = 0; i < (int)m_vecProtocol.size(); i++)
     //{
@@ -1277,7 +1286,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 	fprintf(pCppFile, u8"\tm_protocol_buffer = S_MALLOC(max_protocol_size);\r\n");
 
     fprintf(pCppFile, u8"}\r\n\r\n");
-    //Îö¹¹º¯Êı
+    //ææ„å‡½æ•°
 	fprintf(pCppFile, u8"C%s::~C%s()\r\n{\r\n", strProtocolName.c_str(), strProtocolName.c_str());
 	//for (int i = 0; i < (int)m_vecProtocol.size(); i++)
 	//{
@@ -1293,7 +1302,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 	fprintf(pCppFile, u8"}\r\n\r\n");
     //fprintf(pCppFile, "C%s::~C%s()\r\n{\r\n\tif (m_EnCodeBuffer)\r\n\t{\r\n\t\tS_FREE(m_EnCodeBuffer);\r\n\t}\r\n\r\n\tif (m_DeCodeBuffer)\r\n\t{\r\n\t\tS_FREE(m_DeCodeBuffer);\r\n\t}\r\n}\r\n\r\n", strProtocolName.c_str(), strProtocolName.c_str());
 
-    //¹¹½¨Ğ­Òéº¯Êı
+    //æ„å»ºåè®®å‡½æ•°
     //fprintf(pCppFile, "int C%s::BuildProtocol(void* pHost, char *pNet, int iNetSize)\r\n{\r\n", strProtocolName.c_str());
 	fprintf(pCppFile, u8"bool C%s::BuildProtocol(protocol_base* proto, NetEnCode& net_data)\r\n{\r\n", strProtocolName.c_str());
 	fprintf(pCppFile, u8"\tif (proto->module_id != %s)\r\n", m_strMoudleID.c_str());
@@ -1325,7 +1334,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     //fprintf(pCppFile, "\tif (*(unsigned short*)((char*)pHost+sizeof(unsigned short)) >= sizeof(m_EnCodeFuncArray)/sizeof(EnCodeFunc%s))\r\n\t{\r\n\t\treturn -1;\r\n\t}\r\n\treturn m_EnCodeFuncArray[*(unsigned short*)((char*)pHost+sizeof(unsigned short))](pHost, &m_oData);\r\n}\r\n\r\n", strProtocolName.c_str());
 
 
-    //´¦ÀíĞ­Òéº¯Êı
+    //å¤„ç†åè®®å‡½æ•°
     fprintf(pCppFile, u8"bool C%s::HandleProtocol(NetDeCode& net_data)\r\n{\r\n", strProtocolName.c_str());
 	fprintf(pCppFile, u8"\tunsigned short m_id = 0;\r\n");
 	fprintf(pCppFile, u8"\tunsigned short p_id = 0;\r\n");
@@ -1376,7 +1385,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     //    fprintf(pCppFile, "\tcase %d:\r\n\t\tOnRecv_%s(*(%s*)pHost);\r\n\t\tbreak;\r\n", i, m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
     //}
     //fprintf(pCppFile, "\tdefault:\r\n\t\treturn false;\r\n\t}\r\n\r\n\treturn true;\r\n}\r\n\r\n");
-    //Ğ­Òé»Øµ÷º¯Êı
+    //åè®®å›è°ƒå‡½æ•°
 
     return true;
 }
