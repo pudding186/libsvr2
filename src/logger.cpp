@@ -40,36 +40,6 @@ typedef enum st_log_option
 
 typedef std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> TPMS;
 
-typedef struct st_file_logger
-{
-#ifdef _MSC_VER
-    wchar_t*        path;
-    wchar_t*        name;
-#elif __GNUC__
-    char*           path;
-    char*           name;
-#else
-#error "unknown compiler"
-#endif
-    FILE*       file;
-    size_t      log_thread_idx;
-    struct tm   file_time;
-    size_t      file_size;
-    size_t      file_idx;
-
-    size_t      write_ack;
-    std::atomic<size_t>* write_req;
-}file_logger;
-
-typedef struct st_log_cmd
-{
-    log_option          option;
-    file_logger*        logger;
-    file_logger_level   lv;
-    SFormatArgs<>*      fmt_args;
-    TPMS                tpms;
-}log_cmd;
-
 typedef struct st_print_cmd
 {
     file_logger_level   lv;
@@ -105,6 +75,38 @@ typedef struct st_log_proc
     unsigned int        t_id;
     bool                is_run;
 }log_proc;
+
+typedef struct st_file_logger
+{
+    unsigned long long log_req_mt;
+    unsigned long long log_req;
+    unsigned long long log_ack;
+#ifdef _MSC_VER
+    wchar_t* path;
+    wchar_t* name;
+#elif __GNUC__
+    char* path;
+    char* name;
+#else
+#error "unknown compiler"
+#endif
+    FILE* file;
+    size_t      log_thread_idx;
+    struct tm   file_time;
+    size_t      file_size;
+    size_t      file_idx;
+    log_proc*   create_proc;
+
+}file_logger;
+
+typedef struct st_log_cmd
+{
+    log_option          option;
+    file_logger* logger;
+    file_logger_level   lv;
+    SFormatArgs<>* fmt_args;
+    TPMS                tpms;
+}log_cmd;
 
 class log_thread
 {
@@ -633,7 +635,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
             }
         }
 
-        cmd->logger->write_ack++;
+        cmd->logger->log_ack++;
 
         print_cmd pt_cmd;
         pt_cmd.data_len = out_prefix.size() + out_data.size();
@@ -677,7 +679,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         }
 
 
-        cmd->logger->write_ack++;
+        cmd->logger->log_ack++;
 
         print_cmd pt_cmd;
         pt_cmd.data_len = out_prefix.size() + out_data.size();
@@ -698,7 +700,7 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
             fflush(cmd->logger->file);
         }
 
-        cmd->logger->write_ack++;
+        cmd->logger->log_ack++;
     }
     break;
     case opt_close:
@@ -706,7 +708,6 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         if (cmd->logger->file)
         {
             fclose(cmd->logger->file);
-            delete cmd->logger->write_req;
             free(cmd->logger);
         }
     }
@@ -1225,7 +1226,20 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
     cmd->tpms = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
     if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
-        (*(logger->write_req))++;
+        if (logger->create_proc == proc)
+        {
+            logger->log_req++;
+        }
+        else
+        {
+#ifdef _MSC_VER
+            InterlockedIncrement64((LONG64*)(&logger->log_req_mt));
+#elif __GNUC__
+            __atomic_add_fetch(&logger->log_req_mt, 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
+        }
         return true;
     }
     else
@@ -1237,7 +1251,20 @@ bool file_logger_async_log(file_logger* logger, bool is_c_format, file_logger_le
                 _free_log_cmd(proc);
             }
 
-            (*(logger->write_req))++;
+            if (logger->create_proc == proc)
+            {
+                logger->log_req++;
+            }
+            else
+            {
+#ifdef _MSC_VER
+                InterlockedIncrement64((LONG64*)(&logger->log_req_mt));
+#elif __GNUC__
+                __atomic_add_fetch(&logger->log_req_mt, 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
+            }
             return true;
         }
         else
@@ -1363,6 +1390,9 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     char* ptr = (char*)malloc(sizeof(file_logger) + sizeof(wchar_t)*(w_path_len + w_name_len));
 
     file_logger* logger = (file_logger*)ptr;
+    logger->log_req_mt = 0;
+    logger->log_req = 0;
+    logger->log_ack = 0;
     logger->path = (wchar_t*)(ptr + sizeof(file_logger));
     logger->name = (wchar_t*)(ptr + sizeof(file_logger) + sizeof(wchar_t)*w_path_len);
 
@@ -1374,10 +1404,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     logger->file_time = { 0 };
     logger->file_size = 0;
     logger->file_idx = 0;
-
-    logger->write_ack = 0;
-
-    logger->write_req = new std::atomic<size_t>(0);
+    logger->create_proc = _get_log_proc();
 
     return logger;
 }
@@ -1404,6 +1431,10 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     char* ptr = (char*)malloc(sizeof(file_logger) + sizeof(char)*(path_len + name_len + 2));
 
     file_logger* logger = (file_logger*)ptr;
+    logger->log_req_mt = 0;
+    logger->log_req = 0;
+    logger->log_ack = 0;
+
     logger->path = (char*)(ptr + sizeof(file_logger));
     logger->name = (char*)(ptr + sizeof(file_logger) + sizeof(char)*(path_len + 1));
 
@@ -1415,10 +1446,7 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
     logger->file_time = { 0 };
     logger->file_size = 0;
     logger->file_idx = 0;
-
-    logger->write_ack = 0;
-
-    logger->write_req = new std::atomic<size_t>(0);
+    logger->create_proc = _get_log_proc();
 
     return logger;
 }
@@ -1438,7 +1466,7 @@ void destroy_file_logger(file_logger* logger)
     cmd->fmt_args = 0;
     cmd->logger = logger;
 
-    while (logger->write_req->load() != logger->write_ack)
+    while ((logger->log_req + logger->log_req_mt) != logger->log_ack)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -1461,7 +1489,20 @@ void file_logger_flush(file_logger* logger)
 
     if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
     {
-        (*(logger->write_req))++;
+        if (logger->create_proc == proc)
+        {
+            logger->log_req++;
+        }
+        else
+        {
+#ifdef _MSC_VER
+            InterlockedIncrement64((LONG64*)(&logger->log_req_mt));
+#elif __GNUC__
+            __atomic_add_fetch(&logger->log_req_mt, 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
+        }
     }
     else
     {
