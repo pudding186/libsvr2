@@ -45,7 +45,7 @@ unsigned int get_tick(void)
 #elif __GNUC__
     struct timeval now;
     gettimeofday(&now, NULL);
-    return now.tv_sec*1000 + now.tv_usec / 1000;
+    return now.tv_sec * 1000 + now.tv_usec / 1000;
 #else
 #error "unknown compiler"
 #endif
@@ -64,13 +64,13 @@ time_t get_time(void)
 //////////////////////////////////////////////////////////////////////////
 #define INDEX(N) ((mgr->last_tick >> (TVR_BITS + (N) * TVN_BITS)) & TVN_MASK)
 
-static inline void INIT_LIST_HEAD(struct list_head *list)
+static inline void INIT_LIST_HEAD(struct list_head* list)
 {
     list->next = list;
     list->prev = list;
 }
 
-static inline void LIST_ADD_TAIL(struct list_head *newone, struct list_head *head)
+static inline void LIST_ADD_TAIL(struct list_head* newone, struct list_head* head)
 {
     newone->prev = head->prev;
     head->prev->next = newone;
@@ -134,17 +134,17 @@ void _add_timer(struct st_timer_info* info)
     }
     else if (idx < 1 << (TVR_BITS + TVN_BITS))
     {
-        i = (expires >> TVR_BITS) & TVN_MASK;
+        i = (expires >> TVR_BITS)& TVN_MASK;
         vec = info->manager->tv2 + i;
     }
     else if (idx < 1 << (TVR_BITS + 2 * TVN_BITS))
     {
-        i = (expires >> (TVR_BITS + TVN_BITS)) & TVN_MASK;
+        i = (expires >> (TVR_BITS + TVN_BITS))& TVN_MASK;
         vec = info->manager->tv3 + i;
     }
     else if (idx < 1 << (TVR_BITS + 3 * TVN_BITS))
     {
-        i = (expires >> (TVR_BITS + 2 * TVN_BITS)) & TVN_MASK;
+        i = (expires >> (TVR_BITS + 2 * TVN_BITS))& TVN_MASK;
         vec = info->manager->tv4 + i;
     }
     else if ((int)idx < 0)
@@ -166,7 +166,7 @@ void _add_timer(struct st_timer_info* info)
             expires = idx + info->manager->last_tick;
         }
 
-        i = (expires >> (TVR_BITS + 3 * TVN_BITS)) & TVN_MASK;
+        i = (expires >> (TVR_BITS + 3 * TVN_BITS))& TVN_MASK;
 
         vec = info->manager->tv5 + i;
     }
@@ -347,8 +347,8 @@ void timer_update(timer_manager* mgr, unsigned run_time)
                     _add_timer(info);
                 }
 
-				if (run_time)
-				{
+                if (run_time)
+                {
                     if (!time_out)
                     {
                         if (get_tick() - tick > run_time)
@@ -356,7 +356,7 @@ void timer_update(timer_manager* mgr, unsigned run_time)
                             time_out = true;
                         }
                     }
-				}
+                }
             }
             else
             {
