@@ -1888,6 +1888,10 @@ void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* lis
 
 		if (accept_sock_fd == -1)
 		{
+            if (errno == EINTR)
+            {
+                continue;
+            }
 			return;
 		}
 		else
