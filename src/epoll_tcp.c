@@ -69,6 +69,7 @@
 #define MAX_RUN_LOOP_CHECK		100
 
 extern void* _main_thread_alloc(mem_unit* unit);
+extern void _main_thread_free(mem_unit* unit, void** ptr_mem_unit);
 
 typedef struct st_event_establish
 {
