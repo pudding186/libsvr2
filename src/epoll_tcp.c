@@ -479,7 +479,7 @@ void* _epoll_tcp_manager_alloc_memory(epoll_tcp_manager* mgr, unsigned int buffe
         unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
     }
 
-    return _main_thread_alloc(unit);
+    return memory_unit_alloc(unit);
 }
 
 void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned int buffer_size)
