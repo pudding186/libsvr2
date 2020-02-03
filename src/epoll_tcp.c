@@ -407,7 +407,7 @@ bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* list
     }
 
     struct epoll_event evt;
-    evt.events = EPOLLIN | EPOLLET;
+    evt.events = EPOLLIN;
     evt.data.ptr = listener;
 
     if (epoll_ctl(proc->epoll_fd, EPOLL_CTL_ADD, listener->sock_fd, &evt) < 0)
@@ -1880,27 +1880,38 @@ void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_p
 
 void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
-	int accept_sock_fd = -1;
+    int accept_sock_fd = accept(listener->sock_fd, 0, 0);
 
-	for (;;)
-	{
-		accept_sock_fd = accept(listener->sock_fd, 0, 0);
-
-		if (accept_sock_fd == -1)
-		{
-            if (errno == EINTR)
-            {
-                continue;
-            }
-			return;
-		}
-		else
-		{
-			listener->accept_push++;
-			_epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
-		}
-	}
+    if (accept_sock_fd > 0)
+    {
+        listener->accept_push++;
+        _epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+    }
 }
+
+//void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+//{
+//	int accept_sock_fd = -1;
+//
+//	for (;;)
+//	{
+//		accept_sock_fd = accept(listener->sock_fd, 0, 0);
+//
+//		if (accept_sock_fd == -1)
+//		{
+//            if (errno == EINTR)
+//            {
+//                continue;
+//            }
+//			return;
+//		}
+//		else
+//		{
+//			listener->accept_push++;
+//			_epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+//		}
+//	}
+//}
 
 void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
