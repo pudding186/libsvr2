@@ -580,7 +580,7 @@ epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsign
 
 void _epoll_tcp_manager_free_socket(epoll_tcp_manager* mgr, epoll_tcp_socket* sock_ptr)
 {
-    void** ptr_mem_unit = memory_unit_get_sign(sock_ptr);
+    void** ptr_mem_unit = memory_unit_get_sign((void*)sock_ptr);
     if (!memory_unit_check_sign(mgr->socket_pool, ptr_mem_unit))
     {
         CRUSH_CODE();
