@@ -1,7 +1,7 @@
 #include "./lib_svr_common_def.h"
 
 #ifdef _MSC_VER
-#include <windows.h>
+#include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 #elif __GNUC__
 #include <sys/time.h>
