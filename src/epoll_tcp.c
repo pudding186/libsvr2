@@ -69,6 +69,7 @@
 #define MAX_RUN_LOOP_CHECK		100
 
 extern void* _main_thread_alloc(mem_unit* unit);
+extern void _main_thread_free(mem_unit* unit, void** ptr_mem_unit);
 
 typedef struct st_event_establish
 {
@@ -407,7 +408,7 @@ bool _epoll_tcp_listener_proc_add(epoll_tcp_proc* proc, epoll_tcp_listener* list
     }
 
     struct epoll_event evt;
-    evt.events = EPOLLIN | EPOLLET;
+    evt.events = EPOLLIN;
     evt.data.ptr = listener;
 
     if (epoll_ctl(proc->epoll_fd, EPOLL_CTL_ADD, listener->sock_fd, &evt) < 0)
@@ -478,7 +479,7 @@ void* _epoll_tcp_manager_alloc_memory(epoll_tcp_manager* mgr, unsigned int buffe
         unit = (HMEMORYUNIT)rb_node_value_user(memory_node);
     }
 
-    return _main_thread_alloc(unit);
+    return memory_unit_alloc(unit);
 }
 
 void _epoll_tcp_manager_free_memory(epoll_tcp_manager* mgr, void* mem, unsigned int buffer_size)
@@ -579,7 +580,12 @@ epoll_tcp_socket* _epoll_tcp_manager_alloc_socket(epoll_tcp_manager* mgr, unsign
 
 void _epoll_tcp_manager_free_socket(epoll_tcp_manager* mgr, epoll_tcp_socket* sock_ptr)
 {
-    memory_unit_free(mgr->socket_pool, sock_ptr);
+    void** ptr_mem_unit = memory_unit_get_sign(sock_ptr);
+    if (!memory_unit_check_sign(mgr->socket_pool, ptr_mem_unit))
+    {
+        CRUSH_CODE();
+    }
+    _main_thread_free(mgr->socket_pool, ptr_mem_unit);
 }
 
 bool _epoll_tcp_manager_is_socket(epoll_tcp_manager* mgr, void* ptr)
@@ -1880,23 +1886,38 @@ void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_p
 
 void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
-	int accept_sock_fd = -1;
+    int accept_sock_fd = accept(listener->sock_fd, 0, 0);
 
-	for (;;)
-	{
-		accept_sock_fd = accept(listener->sock_fd, 0, 0);
-
-		if (accept_sock_fd == -1)
-		{
-			return;
-		}
-		else
-		{
-			listener->accept_push++;
-			_epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
-		}
-	}
+    if (accept_sock_fd > 0)
+    {
+        listener->accept_push++;
+        _epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+    }
 }
+
+//void _epoll_tcp_listener_on_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
+//{
+//	int accept_sock_fd = -1;
+//
+//	for (;;)
+//	{
+//		accept_sock_fd = accept(listener->sock_fd, 0, 0);
+//
+//		if (accept_sock_fd == -1)
+//		{
+//            if (errno == EINTR)
+//            {
+//                continue;
+//            }
+//			return;
+//		}
+//		else
+//		{
+//			listener->accept_push++;
+//			_epoll_tcp_proc_push_evt_accept(proc, listener, accept_sock_fd);
+//		}
+//	}
+//}
 
 void _epoll_tcp_listener_on_close(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
@@ -2593,7 +2614,8 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
 
     for (unsigned int i = 0; i < max_socket_num; i++)
     {
-        memory_unit_free(mgr->socket_pool, arry_socket_ptr[i]);
+        void** ptr_mem_unit = memory_unit_get_sign(arry_socket_ptr[i]);
+        _main_thread_free(mgr->socket_pool, ptr_mem_unit);
     }
 
     free(arry_socket_ptr);

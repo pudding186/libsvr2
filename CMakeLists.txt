@@ -8,10 +8,6 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
 list(REMOVE_ITEM SRC_LIST "src/iocp_tcp.c")
 endif()
 
-include_directories(include)
-
-add_library(svr2 STATIC ${SRC_LIST})
-
 #if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11 -mcx16")
 #endif ()
@@ -21,6 +17,16 @@ add_library(svr2 STATIC ${SRC_LIST})
 #endif ()
 
 if(MSVC)
+set(
+    VCPKG_PATH
+    "D:/vcpkg"
+)
+
+include_directories(
+	include
+	${VCPKG_PATH}/installed/x64-windows-static/include
+	)
+	
 # Use the static C library for all build types
     foreach(var 
         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
@@ -40,9 +46,14 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   endif()
 elseif(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+include_directories(
+	include
+	)
   # Update if necessary
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-long-long -pedantic -std=gnu++11 -mcx16")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-long-long -pedantic -std=gnu11 -mcx16")
 endif()
+
+add_library(svr2 STATIC ${SRC_LIST})
 
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)

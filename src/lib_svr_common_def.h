@@ -10,6 +10,8 @@
 
 
 #ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #define TLS_VAR __declspec(thread)
 typedef struct st_tag_pointer
 {

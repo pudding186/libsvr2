@@ -65,11 +65,6 @@ void ssl_tcp_init(void)
 			InitializeCriticalSection(&ssl_locks_arry[i]);
 		}
 	}
-#ifdef _DEBUG
-	CRYPTO_malloc_debug_init();
-	CRYPTO_dbg_set_options(V_CRYPTO_MDEBUG_ALL);
-	CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
-#endif
 
 	CRYPTO_set_locking_callback(&ssl_lock_callback);
 	CRYPTO_set_dynlock_create_callback(&ssl_lock_dyn_create_callback);
@@ -137,11 +132,6 @@ void ssl_tcp_init(void)
 			pthread_mutex_init(&ssl_locks_arry[i], 0);
 		}
 	}
-#ifdef _DEBUG
-	CRYPTO_malloc_debug_init();
-	CRYPTO_dbg_set_options(V_CRYPTO_MDEBUG_ALL);
-	CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
-#endif
 
 	CRYPTO_set_locking_callback(&ssl_lock_callback);
 	CRYPTO_set_dynlock_create_callback(&ssl_lock_dyn_create_callback);
