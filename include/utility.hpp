@@ -136,11 +136,9 @@ extern int (GetFuncStackTop)(HFUNCPERFMGR mgr);
 extern CFuncPerformanceInfo* (GetStackFuncPerfInfo)(HFUNCPERFMGR mgr, int idx);
 
 extern HFUNCPERFMGR(DefFuncPerfMgr)(void);
-
-//extern void (FuncStackToFile)(HFUNCPERFMGR mgr, const char* file_path);
 extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_size);
 
-#define FUNC_PERFORMANCE_CHECK \
+#define FUNC_PERFORMANCE_CHECK() \
 	static thread_local CFuncPerformanceInfo s_func_perf_info(__FUNCTION__, DefFuncPerfMgr());\
 	++ s_func_perf_info.hit_count;\
 	CFuncPerformanceCheck func_perf_check(&s_func_perf_info, DefFuncPerfMgr());
