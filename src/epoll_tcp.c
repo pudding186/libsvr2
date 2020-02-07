@@ -1874,6 +1874,21 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
 void _epoll_tcp_socket_on_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
+    int opt_val = 0;
+    socklen_t opt_len = sizeof(opt_val);
+
+    if (getsockopt(sock_ptr->sock_fd, SOL_SOCKET, SO_ERROR, &opt_val, &opt_len) < 0)
+    {
+        opt_val = errno;
+    }
+
+    if (opt_val)
+    {
+        sock_ptr->state = SOCKET_STATE_DELETE;
+        _epoll_tcp_proc_push_evt_connect_fail(proc, sock_ptr, opt_val);
+        return;
+    }
+
     sock_ptr->state = SOCKET_STATE_ESTABLISH;
     _epoll_tcp_socket_get_sockaddr(sock_ptr);
     _epoll_tcp_proc_push_evt_establish(proc, 0, sock_ptr);
@@ -1948,6 +1963,32 @@ unsigned int _do_epoll_evt(epoll_tcp_proc* proc, int time_out)
 			sock_ptr = 0;
 		}
 
+        if (evt->events & EPOLLOUT)
+        {
+            do_epoll_evt_count++;
+
+            if (!sock_ptr)
+            {
+                CRUSH_CODE();
+            }
+
+            if (sock_ptr->state == SOCKET_STATE_CONNECT)
+            {
+                _epoll_tcp_socket_on_connect(proc, sock_ptr);
+            }
+            else
+            {
+                if (sock_ptr->ssl_data_ptr)
+                {
+                    _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
+                }
+                else
+                {
+                    _epoll_tcp_socket_on_send(proc, sock_ptr);
+                }
+            }
+        }
+
 		if (evt->events & EPOLLIN)
 		{
 			do_epoll_evt_count++;
@@ -1966,32 +2007,6 @@ unsigned int _do_epoll_evt(epoll_tcp_proc* proc, int time_out)
 			else
 			{
 				_epoll_tcp_listener_on_accept(proc, (epoll_tcp_listener*)evt->data.ptr);
-			}
-		}
-
-		if (evt->events & EPOLLOUT)
-		{
-			do_epoll_evt_count++;
-
-			if (!sock_ptr)
-			{
-				CRUSH_CODE();
-			}
-			
-			if (sock_ptr->state == SOCKET_STATE_CONNECT)
-			{
-                _epoll_tcp_socket_on_connect(proc, sock_ptr);
-			}
-			else
-			{
-                if (sock_ptr->ssl_data_ptr)
-                {
-                    _epoll_tcp_socket_on_ssl_send(proc, sock_ptr);
-                }
-                else
-                {
-                    _epoll_tcp_socket_on_send(proc, sock_ptr);
-                }
 			}
 		}
 
