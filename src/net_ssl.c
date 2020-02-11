@@ -220,6 +220,20 @@ bool init_server_ssl_data(net_ssl_core* core, SSL_CTX* ssl_ctx_data)
     if ((!core->bio[BIO_RECV]) ||
         (!core->bio[BIO_SEND]))
     {
+        if (core->bio[BIO_RECV])
+        {
+            BIO_free(core->bio[BIO_RECV]);
+            core->bio[BIO_RECV] = 0;
+        }
+
+        if (core->bio[BIO_SEND])
+        {
+            BIO_free(core->bio[BIO_SEND]);
+            core->bio[BIO_SEND] = 0;
+        }
+        SSL_free(core->ssl);
+        core->ssl = 0;
+
         return false;
     }
 
@@ -259,17 +273,20 @@ void uninit_ssl_data(net_ssl_core* core)
     if (core->ssl)
     {
         SSL_free(core->ssl);
+        core->ssl = 0;
     }
     else
     {
         if (core->bio[BIO_RECV])
         {
             BIO_free(core->bio[BIO_RECV]);
+            core->bio[BIO_RECV] = 0;
         }
 
         if (core->bio[BIO_SEND])
         {
             BIO_free(core->bio[BIO_SEND]);
+            core->bio[BIO_SEND] = 0;
         }
     }
 }
