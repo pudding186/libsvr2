@@ -1047,19 +1047,33 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
             sock_ptr->need_req_close = false;
         }
 
-        if (sock_ptr->send_req == sock_ptr->send_ack)
+        if (sock_ptr->send_req != sock_ptr->send_ack)
         {
-            if (sock_ptr->sock_fd == -1)
+            return;
+        }
+
+        if (sock_ptr->sock_fd != -1)
+        {
+            return;
+        }
+
+        if (sock_ptr->ssl_data_ptr)
+        {
+            if (sock_ptr->ssl_data_ptr->core.ssl)
             {
-                timer_del(sock_ptr->timer_close);
-                sock_ptr->timer_close = 0;
-                if (sock_ptr->ssl_data_ptr)
-                {
-                    _epoll_tcp_manager_free_ssl_data(sock_ptr->mgr, sock_ptr->ssl_data_ptr);
-                }
-                _epoll_tcp_manager_free_socket(sock_ptr->mgr, sock_ptr);
+                return;
+            }
+            else
+            {
+                _epoll_tcp_manager_free_ssl_data(sock_ptr->mgr, sock_ptr->ssl_data_ptr);
+                sock_ptr->ssl_data_ptr = 0;
             }
         }
+
+        timer_del(sock_ptr->timer_close);
+        sock_ptr->timer_close = 0;
+
+        _epoll_tcp_manager_free_socket(sock_ptr->mgr, sock_ptr);
     }
     break;
     default:
