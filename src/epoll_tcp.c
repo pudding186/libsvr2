@@ -1044,6 +1044,7 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
         if (sock_ptr->need_req_close)
         {
             _epoll_tcp_proc_push_req_close_socket(sock_ptr->proc, sock_ptr);
+            sock_ptr->send_req++;
             sock_ptr->need_req_close = false;
         }
 
@@ -1419,6 +1420,8 @@ void _epoll_tcp_socket_on_close(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr
         close(sock_ptr->sock_fd);
         sock_ptr->sock_fd = -1;
     }
+
+    sock_ptr->send_ack++;
 }
 
 void _epoll_tcp_socket_on_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error module_error, int system_error)
