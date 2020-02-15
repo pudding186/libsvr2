@@ -273,6 +273,8 @@ typedef struct st_epoll_tcp_socket
     unsigned int                    data_need_send;
     unsigned int                    data_has_send;
     unsigned int                    data_delay_send_size;
+
+    unsigned char                   state_terminate_count;
     bool                            need_send_active;
     bool                            need_req_close;
     bool                            need_recv_active;
@@ -392,6 +394,7 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->data_need_send = 0;
     sock_ptr->data_has_send = 0;
     sock_ptr->data_delay_send_size = 0;
+    sock_ptr->state_terminate_count = 0;
     sock_ptr->need_send_active = true;
     sock_ptr->need_req_close = true;
     sock_ptr->need_recv_active = false;
@@ -985,6 +988,7 @@ void _epoll_tcp_proc_push_req_close_socket(epoll_tcp_proc* proc, epoll_tcp_socke
     req->sock_ptr = sock_ptr;
     req->type = NET_REQUEST_CLOSE_SOCKET;
 
+    sock_ptr->send_req++;
     loop_cache_push(proc->list_net_req, req_len);
 }
 
@@ -1023,17 +1027,22 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
     {
     case SOCKET_STATE_TERMINATE:
     {
-        if (sock_ptr->data_has_send != sock_ptr->data_need_send)
+        if (sock_ptr->state_terminate_count < 4)
         {
-            if (sock_ptr->send_req == sock_ptr->send_ack)
-            {
-                if (sock_ptr->need_send_active)
-                {
-                    _epoll_tcp_proc_push_req_send(sock_ptr->proc, sock_ptr);
-                }
-            }
+            sock_ptr->state_terminate_count++;
 
-            return;
+            if (sock_ptr->data_has_send != sock_ptr->data_need_send)
+            {
+                if (sock_ptr->send_req == sock_ptr->send_ack)
+                {
+                    if (sock_ptr->need_send_active)
+                    {
+                        _epoll_tcp_proc_push_req_send(sock_ptr->proc, sock_ptr);
+                    }
+                }
+
+                return;
+            }
         }
 
         sock_ptr->state = SOCKET_STATE_DELETE;
@@ -1044,7 +1053,6 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
         if (sock_ptr->need_req_close)
         {
             _epoll_tcp_proc_push_req_close_socket(sock_ptr->proc, sock_ptr);
-            sock_ptr->send_req++;
             sock_ptr->need_req_close = false;
         }
 
@@ -1055,7 +1063,8 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
 
         if (sock_ptr->sock_fd != -1)
         {
-            return;
+            close(sock_ptr->sock_fd);
+            sock_ptr->sock_fd = -1;
         }
 
         if (sock_ptr->ssl_data_ptr)
