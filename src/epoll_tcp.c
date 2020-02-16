@@ -65,6 +65,7 @@
 
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
+#define MAX_TRY_CLOSE_SEND      4
 
 #define MAX_RUN_LOOP_CHECK		100
 
@@ -274,7 +275,7 @@ typedef struct st_epoll_tcp_socket
     unsigned int                    data_has_send;
     unsigned int                    data_delay_send_size;
 
-    unsigned char                   state_terminate_count;
+    unsigned char                   try_close_send_count;
     bool                            need_send_active;
     bool                            need_req_close;
     bool                            need_recv_active;
@@ -394,7 +395,7 @@ void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
     sock_ptr->data_need_send = 0;
     sock_ptr->data_has_send = 0;
     sock_ptr->data_delay_send_size = 0;
-    sock_ptr->state_terminate_count = 0;
+    sock_ptr->try_close_send_count = 0;
     sock_ptr->need_send_active = true;
     sock_ptr->need_req_close = true;
     sock_ptr->need_recv_active = false;
@@ -1027,9 +1028,9 @@ void _epoll_tcp_socket_on_timer_close(epoll_tcp_socket* sock_ptr)
     {
     case SOCKET_STATE_TERMINATE:
     {
-        if (sock_ptr->state_terminate_count < 4)
+        if (sock_ptr->try_close_send_count < MAX_TRY_CLOSE_SEND)
         {
-            sock_ptr->state_terminate_count++;
+            sock_ptr->try_close_send_count++;
 
             if (sock_ptr->data_has_send != sock_ptr->data_need_send)
             {
@@ -1608,6 +1609,7 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
             {
                 _epoll_tcp_proc_push_evt_data(proc, sock_ptr, data_push_len);
             }
+            sock_ptr->try_close_send_count = MAX_TRY_CLOSE_SEND;
             _epoll_tcp_socket_close(sock_ptr, error_ok, 0, true);
             return;
         }
@@ -1823,6 +1825,7 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
         else
         {
+            sock_ptr->try_close_send_count = MAX_TRY_CLOSE_SEND;
             error_type = error_ok;
             error_code = 0;
             break;

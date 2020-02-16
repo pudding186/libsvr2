@@ -46,6 +46,7 @@
 
 #define DELAY_CLOSE_SOCKET      15
 #define DELAY_SEND_CHECK        5
+#define MAX_TRY_CLOSE_SEND      4
 
 extern void* _multi_thread_alloc(mem_unit* unit);
 
@@ -200,6 +201,7 @@ typedef struct st_iocp_tcp_socket
     pfn_on_recv                 on_recv;
     net_tcp_error               error;
     int                         err_code;
+    unsigned int                try_close_send_count;
     struct st_iocp_tcp_manager* mgr;
     struct st_iocp_ssl_data*    ssl_data_ptr;
 }iocp_tcp_socket;
@@ -347,6 +349,7 @@ void _iocp_tcp_socket_reset(iocp_tcp_socket* sock_ptr)
     sock_ptr->data_has_recv = 0;
 
     sock_ptr->data_delay_send_size = 0;
+    sock_ptr->try_close_send_count = 0;
 
     memset(&sock_ptr->local_sockaddr, 0, sizeof(sock_ptr->local_sockaddr));
     memset(&sock_ptr->peer_sockaddr, 0, sizeof(sock_ptr->peer_sockaddr));
@@ -2199,17 +2202,22 @@ void _iocp_tcp_socket_on_timer_close(iocp_tcp_socket* sock_ptr)
     {
         if (sock_ptr->error == error_ok)
         {
-            if (sock_ptr->data_need_send != sock_ptr->data_has_send)
+            if (sock_ptr->try_close_send_count < MAX_TRY_CLOSE_SEND)
             {
-                if (sock_ptr->send_req == sock_ptr->send_ack)
-                {
-                    if (!_iocp_tcp_socket_post_send_req(sock_ptr))
-                    {
-                        sock_ptr->data_need_send = sock_ptr->data_has_send;
-                    }
-                }
+                sock_ptr->try_close_send_count++;
 
-                return;
+                if (sock_ptr->data_need_send != sock_ptr->data_has_send)
+                {
+                    if (sock_ptr->send_req == sock_ptr->send_ack)
+                    {
+                        if (!_iocp_tcp_socket_post_send_req(sock_ptr))
+                        {
+                            sock_ptr->try_close_send_count = MAX_TRY_CLOSE_SEND;
+                        }
+                    }
+
+                    return;
+                }
             }
         }
 
