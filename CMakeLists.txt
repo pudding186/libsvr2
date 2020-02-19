@@ -46,13 +46,21 @@ include_directories(
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   endif()
 elseif(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+set(
+    VCPKG_PATH
+    "/root/work/vcpkg"
+)
+
 include_directories(
 	include
+	${VCPKG_PATH}/installed/x64-linux/include
 	)
+	
   # Update if necessary
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-long-long -pedantic -std=gnu++11 -mcx16")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-long-long -pedantic -std=gnu11 -mcx16")
 endif()
+
 
 add_library(svr2 STATIC ${SRC_LIST})
 
