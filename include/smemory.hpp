@@ -6,8 +6,8 @@
 #include <limits>
 #include <cstdio>
 #include "./lib_svr_def.h"
-#include "../include/memory_pool.h"
-#include "../include/memory_trace.hpp"
+#include "./memory_pool.h"
+#include "./memory_trace.hpp"
 #ifdef  __cplusplus
 
 #ifdef _DEBUG
