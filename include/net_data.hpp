@@ -593,12 +593,10 @@ public:
 		if (!DelIntegral(str_len))
 			return 0;
 
-		//if (m_size - m_pos < str_len)
-		//	return 0;
 		if (m_cur_pos + str_len > m_end)
 			return 0;
 
-		if (str_len + 1 > max_str_size)
+		if (str_len + 1U > max_str_size)
 			return 0;
 
 		memcpy(str, m_cur_pos, str_len);
