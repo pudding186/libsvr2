@@ -57,6 +57,7 @@ template <class T>
 using special_decay_type = typename unwrap_refwrapper_type<typename std::decay<T>::type>::type;
 
 //////////////////////////////////////////////////////////////////////////
+extern HMEMORYMANAGER logger_mem_pool(void);
 
 template <typename... Args>
 struct SFormatArgs{};
@@ -66,6 +67,7 @@ struct SFormatArgs<>
 {
     char    str_cache[256];
     size_t  cache_use_size;
+
     SFormatArgs()
     {
         cache_use_size = 0;
@@ -73,6 +75,34 @@ struct SFormatArgs<>
 
     ~SFormatArgs()
     {
+    }
+
+    char* copy_str(const char* str_ptr, size_t str_len)
+    {
+        char* ptr = 0;
+
+        if (cache_use_size + str_len + 1 > sizeof(str_cache))
+        {
+            ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
+        }
+        else
+        {
+            ptr = str_cache + cache_use_size;
+        }
+
+        memcpy(ptr, str_ptr, str_len);
+        ptr[str_len] = 0;
+        cache_use_size += (str_len + 1);
+        return ptr;
+    }
+
+    void free_str(const char* str)
+    {
+        if (str > str_cache + sizeof(str_cache) ||
+            str < str_cache)
+        {
+            memory_manager_free(logger_mem_pool(), (void*)str);
+        }
     }
 
     virtual void format_to_buffer(fmt::memory_buffer& buffer) = 0;
@@ -85,8 +115,8 @@ struct SFormatArgs<First, Rest...>
 {
     SFormatArgs() :value(0) {}
     SFormatArgs(First&& first, Rest&&... rest)
-        :value(std::forward<First>(first)),
-        SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(std::forward<First>(first)){}
 
     size_t size() { return sizeof...(Rest); }
 
@@ -102,15 +132,13 @@ struct SFormatArgs<First*, Rest...>
 {
     SFormatArgs() :value(0) {}
     SFormatArgs(First*&& first, Rest&&... rest)
-        :value(std::forward<First*>(first)),
-        SFormatArgs<Rest...>(std::forward<Rest>(rest)...) {}
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(std::forward<First*>(first)){}
 
     size_t size() { return sizeof...(Rest); }
 
     void* value;
 };
-
-extern HMEMORYMANAGER logger_mem_pool(void);
 
 template <typename... Rest>
 struct SFormatArgs<std::string, Rest...>
@@ -118,37 +146,15 @@ struct SFormatArgs<std::string, Rest...>
 {
     SFormatArgs() :value(0) {}
     SFormatArgs(const std::string& str, Rest&&... rest)
-        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...)
-    {
-        size_t str_len = str.length();
-
-        char* ptr = SFormatArgs<>::str_cache + SFormatArgs<>::cache_use_size;
-
-        need_free = false;
-        if (SFormatArgs<>::cache_use_size + str_len + 1 >sizeof(SFormatArgs<>::str_cache))
-        {
-            ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
-            need_free = true;
-        }
-
-        memcpy(ptr, str.c_str(), str_len);
-        ptr[str_len] = 0;
-        SFormatArgs<>::cache_use_size += (str_len + 1);
-        value = ptr;
-    }
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(SFormatArgs<>::copy_str(str.c_str(), str.length())){}
 
     ~SFormatArgs()
     {
-        if (need_free)
-        {
-            memory_manager_free(logger_mem_pool(), (void*)value);
-        }
+        SFormatArgs<>::free_str(value);
     }
 
-
-
     const char* value;
-    bool need_free;
 };
 
 template <typename... Rest>
@@ -158,35 +164,15 @@ struct SFormatArgs<char*, Rest...>
     SFormatArgs() :value(0) {}
 
     SFormatArgs(const char* cstr, Rest&&... rest)
-        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...)
-    {
-        size_t str_len = strlen(cstr);
-
-        char* ptr = SFormatArgs<>::str_cache + SFormatArgs<>::cache_use_size;
-
-        need_free = false;
-        if (SFormatArgs<>::cache_use_size + str_len + 1 > sizeof(SFormatArgs<>::str_cache))
-        {
-            ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
-            need_free = true;
-        }
-
-        memcpy(ptr, cstr, str_len);
-        ptr[str_len] = 0;
-        SFormatArgs<>::cache_use_size += (str_len + 1);
-        value = ptr;
-    }
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(SFormatArgs<>::copy_str(cstr, strlen(cstr))){}
 
     ~SFormatArgs()
     {
-        if (need_free)
-        {
-            memory_manager_free(logger_mem_pool(), (void*)value);
-        }
+        SFormatArgs<>::free_str(value);
     }
 
     const char* value;
-    bool need_free;
 };
 
 template <typename... Rest>
@@ -195,31 +181,12 @@ struct SFormatArgs<const char*, Rest...>
 {
     SFormatArgs() :value(0) {}
     SFormatArgs(const char* cstr, Rest&&... rest)
-        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...)
-    {
-        size_t str_len = strlen(cstr);
-
-        char* ptr = SFormatArgs<>::str_cache + SFormatArgs<>::cache_use_size;
-
-        need_free = false;
-        if (SFormatArgs<>::cache_use_size + str_len + 1 > sizeof(SFormatArgs<>::str_cache))
-        {
-            ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
-            need_free = true;
-        }
-
-        memcpy(ptr, cstr, str_len);
-        ptr[str_len] = 0;
-        SFormatArgs<>::cache_use_size += (str_len + 1);
-        value = ptr;
-    }
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(SFormatArgs<>::copy_str(cstr, strlen(cstr))){}
 
     ~SFormatArgs()
     {
-        if (need_free)
-        {
-            memory_manager_free(logger_mem_pool(), (void*)value);
-        }
+        SFormatArgs<>::free_str(value);
     }
 
     virtual void format_to_buffer(fmt::memory_buffer& buffer)
@@ -233,7 +200,6 @@ struct SFormatArgs<const char*, Rest...>
     }
 
     const char* value;
-    bool need_free;
 };
 
 template <size_t N, typename FARGS> struct SFormatElement;
