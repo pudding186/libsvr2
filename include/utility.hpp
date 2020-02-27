@@ -159,22 +159,5 @@ inline void StrSafeCopy(char(&Destination)[N], const char* Source) throw() {
     Destination[N - 1] = '\0';
 }
 
-template <typename T>
-inline void StrSafeCopy(T& Destination, const char* Source, size_t len)
-{
-    // Use cast to ensure that we only allow character arrays
-    (static_cast<char[sizeof(Destination)]>(Destination));
-    size_t size = sizeof(Destination);
-
-    size_t l = size - 1;
-
-    if (l < len)
-    {
-        l = len;
-    }
-    strncpy(Destination, Source, l);
-    Destination[l] = 0;
-}
-
 #endif
 

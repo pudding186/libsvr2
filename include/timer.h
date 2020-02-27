@@ -20,6 +20,8 @@ extern void* (timer_get_data)(HTIMERINFO timer);
 
 extern int (timer_remain_count)(HTIMERINFO timer);
 
+extern HTIMERMANAGER (timer_get_manager)(HTIMERINFO timer);
+
 //////////////////////////////////////////////////////////////////////////
 extern unsigned int (get_tick)(void);
 

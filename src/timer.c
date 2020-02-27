@@ -384,6 +384,11 @@ int timer_remain_count(timer_info* timer)
     return timer->count;
 }
 
+timer_manager* timer_get_manager(timer_info* timer)
+{
+    return timer->manager;
+}
+
 //////////////////////////////////////////////////////////////////////////
 size_t time_to_string(time_t time, char* str, size_t str_len)
 {
