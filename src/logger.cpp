@@ -611,11 +611,14 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
         std::string err_msg;
+
+        bool check_ret = _check_log(cmd, proc, err_msg);
+
         fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_to_buffer(out_data);
         out_data.push_back('\n');
 
-        if (_check_log(cmd, proc, err_msg))
+        if (check_ret)
         {
             size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
             write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
@@ -654,11 +657,14 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         fmt::memory_buffer out_prefix;
         fmt::memory_buffer out_data;
         std::string err_msg;
+
+        bool check_ret = _check_log(cmd, proc, err_msg);
+
         fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
         cmd->fmt_args->format_c_to_buffer(out_data);
         out_data.push_back('\n');
 
-        if (_check_log(cmd, proc, err_msg))
+        if (check_ret)
         {
             size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
             write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
