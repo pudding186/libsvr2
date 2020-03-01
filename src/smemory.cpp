@@ -226,22 +226,21 @@ namespace SMemory
 
     bool IClassMemory::IsValidPtr(void* ptr)
     {
-        if (*(IClassMemory**)((unsigned char*)ptr - sizeof(IClassMemory**)) != this)
+        unsigned char* ptr_check = (unsigned char*)ptr - sizeof(IClassMemory**);
+
+        if ((*(IClassMemory**)(ptr_check)) != this)
         {
             return false;
         }
 
-        if (*(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)) != def_mem_mgr)
-        {
-            return false;
-        }
-
-        if (memory_unit_check(unit, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*)))
+        if (memory_unit_check(unit, ptr_check))
         {
             return true;
         }
 
-        return memory_manager_check(def_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+        HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)(ptr_check - sizeof(HMEMORYMANAGER*));
+
+        return memory_manager_check(check_mem_mgr, ptr_check - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
     }
 
     void* IClassMemory::Alloc(size_t mem_size)
