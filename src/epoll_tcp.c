@@ -370,6 +370,22 @@ bool _set_nonblock(int sock_fd)
     return true;
 }
 
+bool _set_nodelay(int sock_fd)
+{
+    int flag = 1;
+
+    if (setsockopt(sock_fd,            /* socket affected */
+        IPPROTO_TCP,     /* set option at TCP level */
+        TCP_NODELAY,     /* name of option */
+        (char*)&flag,  /* the cast is historical cruft */
+        sizeof(int)) < 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void _epoll_tcp_socket_reset(epoll_tcp_socket* sock_ptr)
 {
     sock_ptr->pkg_parser = 0;
@@ -439,6 +455,8 @@ bool _epoll_tcp_socket_proc_add(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr
     {
         return false;
     }
+
+    _set_nodelay(sock_ptr->sock_fd);
 
     struct epoll_event evt;
     evt.events = EPOLLOUT | EPOLLIN | EPOLLET;
