@@ -1,7 +1,13 @@
-//#include "../include/type_def.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "../include/client_mysql.h"
 #include "../include/memory_pool.h"
-#include <stdio.h>
+
+#ifdef __GNUC__
+#define _strtoui64 strtoull
+#define _strtoi64 strtoll
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -167,7 +173,7 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
     {
         if (err_info)
         {
-            sprintf_s(err_info, err_info_size, "character %s not support", charact_set);
+            snprintf(err_info, err_info_size, "character %s not support", charact_set);
             err_info[err_info_size - 1] = '\0';
         }
         destroy_client_mysql(client_mysql_ptr);
