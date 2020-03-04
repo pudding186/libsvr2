@@ -234,7 +234,7 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
 
     if (err_info)
     {
-        sprintf_s(err_info, err_info_size, "character_client: %s character_connection: %s character_result: %s",
+        snprintf(err_info, err_info_size, "character_client: %s character_connection: %s character_result: %s",
             character_client, character_connection, character_result);
     }
 
