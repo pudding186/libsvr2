@@ -1816,7 +1816,8 @@ json_struct* string_to_json(const char* str, char* err_info, size_t err_info_len
         break;
         case ']':
         {
-            if (current_json_struct->type != json_array)
+            if (!current_json_struct ||
+                current_json_struct->type != json_array)
             {
                 if (err_info && err_info_len)
                 {
@@ -1909,7 +1910,8 @@ json_struct* string_to_json(const char* str, char* err_info, size_t err_info_len
         break;
         case '}':
         {
-            if (current_json_struct->type != json_object)
+            if (!current_json_struct ||
+                current_json_struct->type != json_object)
             {
                 if (err_info && err_info_len)
                 {
