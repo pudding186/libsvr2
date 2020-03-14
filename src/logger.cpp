@@ -152,6 +152,8 @@ public:
     unsigned int _proc_print();
 
     void _proc_print_end();
+
+    bool _do_pt_cmd(HLOOPCACHE print_cache);
     
 protected:
 private:
@@ -602,10 +604,13 @@ const char* log_lv_to_str(file_logger_level lv)
     }
 }
 
+
+
 void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 {
     switch (cmd->option)
     {
+    case opt_write_c:
     case opt_write:
     {
         fmt::memory_buffer out_prefix;
@@ -615,13 +620,21 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         bool check_ret = _check_log(cmd, proc, err_msg);
 
         fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
-        cmd->fmt_args->format_to_buffer(out_data);
+        if (opt_write_c == cmd->option)
+        {
+            cmd->fmt_args->format_c_to_buffer(out_data);
+        }
+        else
+        {
+            cmd->fmt_args->format_to_buffer(out_data);
+        }
+        
         out_data.push_back('\n');
 
         if (check_ret)
         {
-            size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-            write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
+            size_t write_size = fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
+            write_size += fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
 
             cmd->logger->file_size += write_size;
         }
@@ -644,58 +657,20 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
         pt_cmd.data_len = out_prefix.size() + out_data.size();
         pt_cmd.lv = cmd->lv;
 
-        if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd)+pt_cmd.data_len)
+        if (loop_cache_free_size(m_print_data_cache) > sizeof(print_cmd) + pt_cmd.data_len)
         {
-            loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd));
-            loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size());
-            loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size());
-        }
-    }
-    break;
-    case opt_write_c:
-    {
-        fmt::memory_buffer out_prefix;
-        fmt::memory_buffer out_data;
-        std::string err_msg;
-
-        bool check_ret = _check_log(cmd, proc, err_msg);
-
-        fmt::format_to(out_prefix, "{}.{:<4}<{:<5}> {}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, log_lv_to_str(cmd->lv));
-        cmd->fmt_args->format_c_to_buffer(out_data);
-        out_data.push_back('\n');
-
-        if (check_ret)
-        {
-            size_t write_size = std::fwrite(out_prefix.data(), sizeof(char), out_prefix.size(), cmd->logger->file);
-            write_size += std::fwrite(out_data.data(), sizeof(char), out_data.size(), cmd->logger->file);
-
-            cmd->logger->file_size += write_size;
-        }
-        else
-        {
-            print_cmd err_pt_cmd;
-            err_pt_cmd.data_len = err_msg.length();
-            err_pt_cmd.lv = log_cri;
-
-            if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + err_pt_cmd.data_len)
+            if (!loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd)))
             {
-                loop_cache_push_data(m_print_data_cache, &err_pt_cmd, sizeof(print_cmd));
-                loop_cache_push_data(m_print_data_cache, err_msg.c_str(), err_msg.length());
+                CRUSH_CODE();
             }
-        }
-
-
-        cmd->logger->log_ack++;
-
-        print_cmd pt_cmd;
-        pt_cmd.data_len = out_prefix.size() + out_data.size();
-        pt_cmd.lv = cmd->lv;
-
-        if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + pt_cmd.data_len)
-        {
-            loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd));
-            loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size());
-            loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size());
+            if (!loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size()))
+            {
+                CRUSH_CODE();
+            }
+            if (!loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size()))
+            {
+                CRUSH_CODE();
+            }
         }
     }
     break;
@@ -841,6 +816,7 @@ print_thread::print_thread()
 {
     m_print_thread = std::thread(&print_thread::_print_func, this);
     m_last_level = log_nul;
+    
 }
 
 print_thread::~print_thread()
@@ -966,30 +942,8 @@ unsigned int print_thread::_proc_print()
 
     for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
     {
-        print_cmd cmd;
-
-        if (loop_cache_pop_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-            &cmd, sizeof(print_cmd)))
+        if (_do_pt_cmd(g_logger_manager->log_thread_array[i].print_data_cache()))
         {
-            _check_print(&cmd);
-
-            size_t print_len = cmd.data_len;
-            char* data = 0;
-            loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-                (void**)&data, &print_len);
-            std::fwrite(data, sizeof(char), print_len, stdout);
-
-            if (cmd.data_len > print_len)
-            {
-                print_len = cmd.data_len - print_len;
-                loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-                    (void**)&data, &print_len);
-                std::fwrite(data, sizeof(char), print_len, stdout);
-            }
-
-            loop_cache_pop(g_logger_manager->log_thread_array[i].print_data_cache(),
-                cmd.data_len);
-
             ++print_count;
         }
     }
@@ -999,50 +953,39 @@ unsigned int print_thread::_proc_print()
 
 void print_thread::_proc_print_end()
 {
-    for (;;)
+    while (_proc_print())
     {
-        bool busy = false;
-
-        for (size_t i = 0; i < g_logger_manager->log_thread_num; i++)
-        {
-            print_cmd cmd;
-
-            if (loop_cache_pop_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-                &cmd, sizeof(print_cmd)))
-            {
-                _check_print(&cmd);
-
-                size_t print_len = cmd.data_len;
-                char* data;
-                loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-                    (void**)&data, &print_len);
-                std::fwrite(data, sizeof(char), print_len, stdout);
-
-                if (cmd.data_len > print_len)
-                {
-                    print_len = cmd.data_len - print_len;
-                    loop_cache_get_data(g_logger_manager->log_thread_array[i].print_data_cache(),
-                        (void**)&data, &print_len);
-                    std::fwrite(data, sizeof(char), print_len, stdout);
-                }
-
-                loop_cache_pop(g_logger_manager->log_thread_array[i].print_data_cache(),
-                    cmd.data_len);
-
-                busy = true;
-            }
-        }
-
-        if (!busy)
-        {
-            break;
-        }
     }
 
     print_cmd end_print_cmd;
     end_print_cmd.data_len = 0;
     end_print_cmd.lv = log_nul;
     _check_print(&end_print_cmd);
+}
+
+bool print_thread::_do_pt_cmd(HLOOPCACHE print_cache)
+{
+    print_cmd cmd;
+
+    if (loop_cache_pop_data(print_cache, &cmd, sizeof(print_cmd)))
+    {
+        _check_print(&cmd);
+
+        size_t print_len = cmd.data_len;
+        char* data = 0;
+
+        while (cmd.data_len)
+        {
+            loop_cache_get_data(print_cache, (void**)&data, &print_len);
+            fwrite(data, sizeof(char), print_len, stdout);
+            loop_cache_pop(print_cache, print_len);
+            cmd.data_len -= print_len;
+            print_len = cmd.data_len;
+        }
+        
+        return true;
+    }
+    return false;
 }
 
 //////////////////////////////////////////////////////////////////////////
