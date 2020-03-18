@@ -18,12 +18,6 @@ extern "C"
 	extern TLS_VAR HMEMORYUNIT def_json_node_unit;
 }
 
-extern TLS_VAR HRBTREE trace_info_map;
-extern TLS_VAR HRBTREE trace_ptr_map;
-
-extern TLS_VAR HMEMORYUNIT trace_info_unit;
-extern TLS_VAR HMEMORYUNIT trace_ptr_unit;
-
 extern TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr;
 
 static TLS_VAR HMEMORYMANAGER   def_mem_mgr = 0;
@@ -84,56 +78,11 @@ namespace SMemory
             {
                 def_func_perf_mgr = CreateFuncPerfMgr();
             }
-
-#ifdef _DEBUG
-
-            if (!trace_info_map)
-            {
-                trace_info_map = create_rb_tree(trace_info_cmp);
-            }
-
-            if (!trace_ptr_map)
-            {
-                trace_ptr_map = create_rb_tree(trace_ptr_cmp);
-            }
-
-            if (!trace_info_unit)
-            {
-                trace_info_unit = create_memory_unit(sizeof(mem_trace_info));
-                memory_unit_set_grow_bytes(trace_info_unit, 1024);
-            }
-
-            if (!trace_ptr_unit)
-            {
-                trace_ptr_unit = create_memory_unit(sizeof(ptr_info));
-                memory_unit_set_grow_bytes(trace_ptr_unit, 40960);
-            }
-#endif
         }
         ~DefMemInit()
         {
             check_log_proc();
-#ifdef _DEBUG
-            if (trace_info_map)
-            {
-                destroy_rb_tree(trace_info_map);
-            }
 
-            if (trace_ptr_map)
-            {
-                destroy_rb_tree(trace_ptr_map);
-            }
-
-            if (trace_info_unit)
-            {
-                destroy_memory_unit(trace_info_unit);
-            }
-
-            if (trace_ptr_unit)
-            {
-                destroy_memory_unit(trace_ptr_unit);
-            }
-#endif
             if (def_func_perf_mgr)
             {
                 DestroyFuncPerfMgr(def_func_perf_mgr);
