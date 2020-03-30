@@ -19,7 +19,7 @@ typedef struct st_avl_tree* HAVLTREE;
 typedef struct st_rb_node* HRBNODE;
 typedef struct st_rb_tree* HRBTREE;
 
-typedef ptrdiff_t(*compare_func)(void* key1, void* key2);
+typedef ptrdiff_t(*compare_func)(const void* key1, const void* key2);
 
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_timer_manager* HTIMERMANAGER;

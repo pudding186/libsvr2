@@ -62,7 +62,7 @@ void free_bkdr_wstr(bkdr_wstr* str)
     libsvr_memory_manager_free(str);
 }
 
-ptrdiff_t bkdr_str_cmp(void* str1, void* str2)
+ptrdiff_t bkdr_str_cmp(const void* str1, const void* str2)
 {
     if (((bkdr_str*)str1)->hash_code < ((bkdr_str*)str2)->hash_code)
     {
@@ -76,7 +76,7 @@ ptrdiff_t bkdr_str_cmp(void* str1, void* str2)
     return strcmp(((bkdr_str*)str1)->str, ((bkdr_str*)str2)->str);
 }
 
-ptrdiff_t bkdr_wstr_cmp(void* str1, void* str2)
+ptrdiff_t bkdr_wstr_cmp(const void* str1, const void* str2)
 {
     if (((bkdr_wstr*)str1)->hash_code < ((bkdr_wstr*)str2)->hash_code)
     {

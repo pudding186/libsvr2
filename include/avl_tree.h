@@ -38,10 +38,10 @@ extern bool avl_tree_try_insert_integer(HAVLTREE tree, size_t key, void* user_da
 extern HAVLNODE avl_tree_find_integer(HAVLTREE tree, size_t key);
 extern size_t avl_node_key_integer(HAVLNODE node);
 
-extern HAVLNODE avl_tree_insert_user(HAVLTREE tree, void* key, void* user_data);
-extern bool avl_tree_try_insert_user(HAVLTREE tree, void* key, void* user_data, HAVLNODE* insert_or_exist_node);
-extern HAVLNODE avl_tree_find_user(HAVLTREE tree, void* key);
-extern void* avl_node_key_user(HAVLNODE node);
+extern HAVLNODE avl_tree_insert_user(HAVLTREE tree, const void* key, void* user_data);
+extern bool avl_tree_try_insert_user(HAVLTREE tree, const void* key, void* user_data, HAVLNODE* insert_or_exist_node);
+extern HAVLNODE avl_tree_find_user(HAVLTREE tree, const void* key);
+extern const void* avl_node_key_user(HAVLNODE node);
 
 #ifdef  __cplusplus
 }

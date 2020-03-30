@@ -81,7 +81,7 @@ typedef struct st_mem_pool
 union un_value
 {
     size_t      v_integer;
-    void*       v_pointer;
+    const void* v_pointer;
 };
 
 typedef struct st_avl_node
@@ -168,11 +168,11 @@ typedef struct st_bkdr_wstr
 
 extern bkdr_str* alloc_bkdr_str(const char* str, bool is_copy);
 extern void free_bkdr_str(bkdr_str* str);
-extern ptrdiff_t bkdr_str_cmp(void* str1, void* str2);
+extern ptrdiff_t bkdr_str_cmp(const void* str1, const void* str2);
 
 extern bkdr_wstr* alloc_bkdr_wstr(const wchar_t* str, bool is_copy);
 extern void free_bkdr_wstr(bkdr_wstr* str);
-extern ptrdiff_t bkdr_wstr_cmp(void* str1, void* str2);
+extern ptrdiff_t bkdr_wstr_cmp(const void* str1, const void* str2);
 
 typedef struct st_integer_key_group
 {

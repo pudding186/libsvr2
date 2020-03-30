@@ -38,10 +38,10 @@ extern bool rb_tree_try_insert_integer(HRBTREE tree, size_t key, void* user_data
 extern HRBNODE rb_tree_find_integer(HRBTREE tree, size_t key);
 extern size_t rb_node_key_integer(HRBNODE node);
 
-extern HRBNODE rb_tree_insert_user(HRBTREE tree, void* key, void* user_data);
-extern bool rb_tree_try_insert_user(HRBTREE tree, void* key, void* user_data, HRBNODE* insert_or_exist_node);
-extern HRBNODE rb_tree_find_user(HRBTREE tree, void* key);
-extern void* rb_node_key_user(HRBNODE node);
+extern HRBNODE rb_tree_insert_user(HRBTREE tree, const void* key, void* user_data);
+extern bool rb_tree_try_insert_user(HRBTREE tree, const void* key, void* user_data, HRBNODE* insert_or_exist_node);
+extern HRBNODE rb_tree_find_user(HRBTREE tree, const void* key);
+extern const void* rb_node_key_user(HRBNODE node);
 
 #ifdef  __cplusplus
 }

@@ -30,7 +30,7 @@ rb_node* str_rb_tree_insert(rb_tree* tree, const char* str, bool copy_str, void*
 
     if (!rb_tree_try_insert_user(tree, pt, user_data, &exist_node))
     {
-        free_bkdr_str(exist_node->key.v_pointer);
+        free_bkdr_str((bkdr_str*)exist_node->key.v_pointer);
 
         exist_node->key.v_pointer = pt;
         exist_node->value.v_pointer = user_data;
@@ -94,7 +94,7 @@ rb_node* wstr_rb_tree_insert(rb_tree* tree, const wchar_t* str, bool copy_str, v
 
     if (!rb_tree_try_insert_user(tree, pt, user_data, &exist_node))
     {
-        free_bkdr_wstr(exist_node->key.v_pointer);
+        free_bkdr_wstr((bkdr_wstr*)exist_node->key.v_pointer);
 
         exist_node->key.v_pointer = pt;
         exist_node->value.v_pointer = user_data;

@@ -61,7 +61,7 @@ protected:
 #endif
 
 
-ptrdiff_t trace_info_cmp(void* info1, void* info2)
+ptrdiff_t trace_info_cmp(const void* info1, const void* info2)
 {
     mem_trace_info* t1 = (mem_trace_info*)info1;
     mem_trace_info* t2 = (mem_trace_info*)info2;
@@ -87,7 +87,7 @@ ptrdiff_t trace_info_cmp(void* info1, void* info2)
     return (t1->name - t2->name);
 }
 
-ptrdiff_t trace_ptr_cmp(void* ptr1, void* ptr2)
+ptrdiff_t trace_ptr_cmp(const void* ptr1, const void* ptr2)
 {
     if (ptr1 < ptr2)
     {

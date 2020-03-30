@@ -491,7 +491,7 @@ size_t rb_node_key_integer(rb_node* node)
     return node->key.v_integer;
 }
 
-void* rb_node_key_user(rb_node* node)
+const void* rb_node_key_user(rb_node* node)
 {
     return node->key.v_pointer;
 }
@@ -522,7 +522,7 @@ size_t sizeof_rb_node(void)
 
 void* rb_node_value_user(rb_node* node)
 {
-    return node->value.v_pointer;
+    return (void*)node->value.v_pointer;
 }
 
 void rb_node_set_value_integer(rb_node* node, size_t new_value)
@@ -634,7 +634,7 @@ rb_node* rb_tree_find_integer(rb_tree* tree, size_t key)
     return 0;
 }
 
-rb_node* rb_tree_insert_user(rb_tree* tree, void* key, void* user_data)
+rb_node* rb_tree_insert_user(rb_tree* tree, const void* key, void* user_data)
 {
     rb_node* node;
     rb_node** test = &(tree->root);
@@ -698,7 +698,7 @@ rb_node* rb_tree_insert_user(rb_tree* tree, void* key, void* user_data)
     return node;
 }
 
-bool rb_tree_try_insert_user(rb_tree* tree, void* key, void* user_data, rb_node** insert_or_exist_node)
+bool rb_tree_try_insert_user(rb_tree* tree, const void* key, void* user_data, rb_node** insert_or_exist_node)
 {
     rb_node* node;
     rb_node** test = &(tree->root);
@@ -761,7 +761,7 @@ bool rb_tree_try_insert_user(rb_tree* tree, void* key, void* user_data, rb_node*
     return true;
 }
 
-rb_node* rb_tree_find_user(rb_tree* tree, void* key)
+rb_node* rb_tree_find_user(rb_tree* tree, const void* key)
 {
     rb_node* node = tree->root;
 

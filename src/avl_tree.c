@@ -300,7 +300,7 @@ size_t avl_node_key_integer(avl_node* node)
     return node->key.v_integer;
 }
 
-void* avl_node_key_user(avl_node* node)
+const void* avl_node_key_user(avl_node* node)
 {
     return node->key.v_pointer;
 }
@@ -331,7 +331,7 @@ size_t sizeof_avl_node(void)
 
 void* avl_node_value_user(avl_node* node)
 {
-    return node->value.v_pointer;
+    return (void*)node->value.v_pointer;
 }
 
 void avl_node_set_value_integer(avl_node* node, size_t new_value)
@@ -509,7 +509,7 @@ avl_node* avl_tree_find_integer(avl_tree* tree, size_t key)
     return 0;
 }
 
-avl_node* avl_tree_insert_user(avl_tree* tree, void* key, void* user_data)
+avl_node* avl_tree_insert_user(avl_tree* tree, const void* key, void* user_data)
 {
     avl_node* node;
     avl_node** test = &(tree->root);
@@ -574,7 +574,7 @@ avl_node* avl_tree_insert_user(avl_tree* tree, void* key, void* user_data)
     return node;
 }
 
-bool avl_tree_try_insert_user(avl_tree* tree, void* key, void* user_data, avl_node** insert_or_exist_node)
+bool avl_tree_try_insert_user(avl_tree* tree, const void* key, void* user_data, avl_node** insert_or_exist_node)
 {
     avl_node* node;
     avl_node** test = &(tree->root);
@@ -637,7 +637,7 @@ bool avl_tree_try_insert_user(avl_tree* tree, void* key, void* user_data, avl_no
     return true;
 }
 
-avl_node* avl_tree_find_user(avl_tree* tree, void* key)
+avl_node* avl_tree_find_user(avl_tree* tree, const void* key)
 {
     avl_node* node = tree->root;
 
