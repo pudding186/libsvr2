@@ -52,6 +52,7 @@ protected:
     bool __WriteItem(FILE* pHppFile, CMarkupSTL& rXml, EDataType eDataType, CItem& mapItem);
     bool __WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile, bool bProtocol);
     bool __WriteStructProtocolDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile, bool bProtocol);
+    bool __WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     bool __WriteUnionEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     bool __WriteUnionDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     bool __WriteProtocolClass(const std::string& strProtocolName, FILE* pHppFile, FILE* pCppFile);

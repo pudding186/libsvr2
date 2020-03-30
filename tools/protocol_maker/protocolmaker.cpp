@@ -510,6 +510,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
         if (strType == "struct")
         {
 			fprintf(pHppFile, u8"\tbool EnCode(NetEnCode& net_data);\r\n\tbool DeCode(NetDeCode& net_data);\r\n");
+            fprintf(pHppFile, u8"\tvoid Reset(void);\r\n");
             m_mapStruct[strName] = mapItem;
         }
         else if (strType == "union")
@@ -521,6 +522,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
             //fprintf(pHppFile, "\t%s():moudleid(%s),protocolid(%d){}\r\n", strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size());
             fprintf(pHppFile, u8"\t%s():protocol_base(%s, %d){}\r\n", strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size());
 			fprintf(pHppFile, u8"\tbool EnCode(NetEnCode& net_data);\r\n\tbool DeCode(NetDeCode& net_data);\r\n");
+            fprintf(pHppFile, u8"\tvoid Reset(void);\r\n");
             m_mapStruct[strName] = mapItem;
             m_mapProtocol[strName] = mapItem;
             m_vecProtocol.push_back(strName);
@@ -556,6 +558,11 @@ bool CProtocolMaker::__WriteDataFunction( FILE* pHppFile, FILE* pCppFile, CMarku
             {
                 return false;
             }
+            rXml.ResetChildPos();
+            if (!__WriteStructProtocolResetFunc(rXml, pHppFile, pCppFile))
+            {
+                return false;
+            }
         }
         else if (strType == "protocol")
         {
@@ -565,6 +572,11 @@ bool CProtocolMaker::__WriteDataFunction( FILE* pHppFile, FILE* pCppFile, CMarku
             }
             rXml.ResetChildPos();
             if (!__WriteStructProtocolDeCodeFunc(rXml, pHppFile, pCppFile, true))
+            {
+                return false;
+            }
+            rXml.ResetChildPos();
+            if (!__WriteStructProtocolResetFunc(rXml, pHppFile, pCppFile))
             {
                 return false;
             }
@@ -1001,6 +1013,78 @@ bool __is_integral(std::string& strType)
 	return false;
 }
 
+bool CProtocolMaker::__WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile)
+{
+    std::string strName = rXml.GetAttrib("name");
+    fprintf(pCppFile, u8"void %s::Reset()\r\n{\r\n", strName.c_str());
+
+    rXml.IntoElem();
+    while (rXml.FindElem("item"))
+    {
+        std::string strName = rXml.GetAttrib("name");
+        std::string strType = rXml.GetAttrib("type");
+        std::string strCount = rXml.GetAttrib("count");
+        std::string strRefer = rXml.GetAttrib("refer");
+        std::string strSelect = rXml.GetAttrib("select");
+        std::string strArray = rXml.GetAttrib("array");
+        std::string strEnFuncName = "";
+
+        if (strType == "string")
+        {
+            fprintf(pCppFile, u8"\t%s[0] = 0;\r\n\r\n", strName.c_str());
+        }
+        else if (strCount.empty() && strArray.empty())
+        {
+            if (__is_integral(strType))
+            {
+                fprintf(pCppFile, u8"\t%s = 0;\r\n\r\n", strName.c_str());
+            }
+            else
+            {
+                fprintf(pCppFile, u8"\t%s.Reset();\r\n\r\n", strName.c_str());
+            }
+        }
+        else
+        {
+            if (!strArray.empty())
+            {
+                fprintf(pCppFile, u8"\t%s.clear();\r\n\r\n", strName.c_str());
+            }
+
+            if (!strCount.empty())
+            {
+                if (__is_integral(strType))
+                {
+                    if (strRefer.empty())
+                    {
+                        fprintf(pCppFile, u8"\t{\r\n\t\tint iCount = %s;\r\n", strCount.c_str());
+                    }
+                    else
+                    {
+                        fprintf(pCppFile, u8"\t{\r\n\t\tint iCount = (((%s) < ((int)this->%s)) ? (%s) : ((int)this->%s));\r\n", strCount.c_str(), strRefer.c_str(), strCount.c_str(), strRefer.c_str());
+                    }
+
+                    fprintf(pCppFile, u8"\t\tmemset(this->%s, 0, iCount*sizeof(%s));\r\n\t}\r\n", strName.c_str(), __integral_to_c_type(strType).c_str());
+                }
+                else
+                {
+                    fprintf(pCppFile, u8"\tfor(int i = 0; i < %s; i++)\r\n\t{\r\n", strCount.c_str());
+                    if (!strRefer.empty())
+                    {
+                        fprintf(pCppFile, u8"\t\tif(i >= (int)this->%s)\r\n\t\t\tbreak;\r\n", strRefer.c_str());
+                    }
+
+                    fprintf(pCppFile, u8"\t\t%s[i].Reset();\r\n\t}\r\n\r\n", strName.c_str());
+                }
+            }
+        }
+    }
+    rXml.OutOfElem();
+
+    fprintf(pCppFile, u8"}\r\n");
+    return true;
+}
+
 bool CProtocolMaker::__WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile, bool bProtocol)
 {
 	std::string strName = rXml.GetAttrib("name");
@@ -1043,18 +1127,6 @@ bool CProtocolMaker::__WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHp
 		{
 			if (!strArray.empty())
 			{
-				//if (__is_integral(strType))
-				//{
-				//	fprintf(pCppFile, "\tnet_data.AddIntegral(%s.size());\r\n", strName.c_str());
-				//	fprintf(pCppFile, "\tnet_data.AddBlob(&%s[0], %s.size() * %s.size_of_data());", strName.c_str(), strName.c_str(), strName.c_str());
-				//}
-				//else
-				//{
-				//	fprintf(pCppFile, "\tfor (%s i = 0; i < %s.size(); i++)\r\n", __integral_to_c_type(strArray).c_str(), strName.c_str());
-				//	fprintf(pCppFile, "\t{\r\n");
-				//	fprintf(pCppFile, "\t\t%s[i].EnCode(net_data);\r\n", strName.c_str());
-				//	fprintf(pCppFile, "\t}\r\n\r\n");
-				//}
 				fprintf(pCppFile, u8"\tnet_data.AddArray(%s);\r\n\r\n", strName.c_str());
 			}
 
@@ -1133,27 +1205,6 @@ bool CProtocolMaker::__WriteStructProtocolDeCodeFunc(CMarkupSTL& rXml, FILE* pHp
 		{
 			if (!strArray.empty())
 			{
-				//if (__is_integral(strType))
-				//{
-				//	fprintf(pCppFile, "\t{\r\n");
-				//	fprintf(pCppFile, "\t\t%s array_size = 0;\r\n", __integral_to_c_type(strArray).c_str());
-				//	fprintf(pCppFile, "\t\tif (!net_data.DelIntegral(array_size))\r\n\t\t\treturn false;\r\n");
-				//	fprintf(pCppFile, "\t\t%s.resize(array_size);\r\n", strName.c_str());
-				//	fprintf(pCppFile, "\t\tif (!net_data.DelBlob(&%s[0], array_size*%s.size_of_data()))\r\n\t\t\treturn false;\r\n", strName.c_str(), strName.c_str());
-				//	fprintf(pCppFile, "\t}\r\n\r\n");
-				//}
-				//else
-				//{
-				//	fprintf(pCppFile, "\t{\r\n");
-				//	fprintf(pCppFile, "\t\t%s array_size = 0;\r\n", __integral_to_c_type(strArray).c_str());
-				//	fprintf(pCppFile, "\t\tif (!net_data.DelIntegral(array_size))\r\n\t\t\treturn false;\r\n");
-				//	fprintf(pCppFile, "\t\t%s.resize(array_size);\r\n", strName.c_str());
-				//	fprintf(pCppFile, "\t\tfor (%s i = 0; i < %s.size(); i++)\r\n", __integral_to_c_type(strArray).c_str(), strName.c_str());
-				//	fprintf(pCppFile, "\t\t{\r\n");
-				//	fprintf(pCppFile, "\t\t\tif (!%s[i].DeCode(net_data))\r\n\t\t\t\treturn false;\r\n", strName.c_str());
-				//	fprintf(pCppFile, "\t\t}\r\n\r\n");
-				//	fprintf(pCppFile, "\t}\r\n\r\n");
-				//}
 				fprintf(pCppFile, u8"\tif(!net_data.DelArray(%s))\r\n\t\treturn false;\r\n\r\n", strName.c_str());
 			}
 
