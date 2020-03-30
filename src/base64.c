@@ -43,8 +43,8 @@
 
 static const char encode_orig[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 			     "abcdefghijklmnopqrstuvwxyz0123456789+/";
-static const char encode_url[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			     "abcdefghijklmnopqrstuvwxyz0123456789-_";
+//static const char encode_url[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+//			     "abcdefghijklmnopqrstuvwxyz0123456789-_";
 static const char decode[] = "|$$$}rstuvwxyz{$$$$$$$>?@ABCDEFGHIJKLMNOPQRSTUVW"
 			     "$$$$$$XYZ[\\]^_`abcdefghijklmnopq";
 
