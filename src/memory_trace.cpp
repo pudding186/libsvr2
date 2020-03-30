@@ -177,6 +177,7 @@ void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t
     {
         exist_info = (mem_trace_info*)rb_node_key_user(node);
         exist_info->size += size;
+        exist_info->alloc++;
     }
     else
     {
@@ -185,6 +186,8 @@ void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t
         exist_info->line = line;
         exist_info->name = name;
         exist_info->size = size;
+        exist_info->alloc = 1;
+        exist_info->free = 0;
 
         if (!rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, exist_info, 0, &node))
         {
@@ -222,6 +225,7 @@ void trace_free(void* ptr)
         }
 
         _ptr_info->info->size -= _ptr_info->size;
+        _ptr_info->info->free++;
 
         rb_tree_erase(g_mem_trace.m_trace_ptr_map, node);
 
