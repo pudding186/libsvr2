@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <string.h>
 #include "./lib_svr_def.h"
 #include "./smemory.hpp"
@@ -61,7 +61,7 @@ public:
         return *this;
     }
 
-    T& operator[](U idx)
+    T& operator[](U idx) const
     {
         if (idx < m_size)
         {
@@ -133,25 +133,51 @@ public:
         m_size = 0;
     }
 
-    inline U size(void)
+    inline U size(void) const
     {
         return m_size;
     }
 
-	inline size_t size_of_data(void)
+	inline size_t size_of_data(void) const
 	{
 		return sizeof(T);
 	}
 
-    inline U capacity(void)
+    inline U capacity(void) const
     {
         return m_capacity;
     }
 
-	inline T* data(void)
+	inline T* data(void) const
 	{
 		return m_array;
 	}
+
+    template <size_t S>
+    inline void set_data(T(&datas)[S])
+    {
+        for (size_t i = 0; i < S; ++i)
+        {
+            push_back(datas[i]);
+        }
+    }
+
+    inline void set_data(const T *datas, size_t length)
+    {
+        for (size_t i = 0; i < length; ++i)
+        {
+            push_back(datas[i]);
+        }
+    }
+
+    template <typename STL>
+    inline void set_data(const STL &stl)
+    {
+        for (const auto &v : stl)
+        {
+            push_back(v);
+        }
+    }
 
 private:
     U   m_size;
@@ -230,7 +256,7 @@ public:
         return *this;
     }
 
-    T& operator[](U idx)
+    T& operator[](U idx) const
     {
         if (idx < m_size)
         {
@@ -354,25 +380,51 @@ public:
         }
     }
 
-    inline U size(void)
+    inline U size(void) const
     {
         return m_size;
     }
 
-	inline size_t size_of_data(void)
+	inline size_t size_of_data(void) const
 	{
 		return sizeof(T);
 	}
 
-    inline U capacity(void)
+    inline U capacity(void) const
     {
         return m_capacity;
     }
 
-	inline T* data(void)
+	inline T* data(void) const
 	{
 		return m_array;
 	}
+
+    template <size_t S>
+    inline void set_data(T(&datas)[S])
+    {
+        for (size_t i = 0; i < S; ++i)
+        {
+            push_back(datas[i]);
+        }
+    }
+
+    inline void set_data(const T *datas, size_t length)
+    {
+        for (size_t i = 0; i < length; ++i)
+        {
+            push_back(datas[i]);
+        }
+    }
+
+    template <typename STL>
+    inline void set_data(const STL &stl)
+    {
+        for (const auto &v : stl)
+        {
+            push_back(v);
+        }
+    }
 
 protected:
 private:

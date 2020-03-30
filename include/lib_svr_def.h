@@ -163,6 +163,8 @@ typedef struct st_mem_trace_info
     const char* file;
     size_t      line;
     size_t      size;
+    size_t      alloc;
+    size_t      free;
 }mem_trace_info;
 
 typedef struct st_ptr_info
