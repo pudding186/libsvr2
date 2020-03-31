@@ -53,13 +53,19 @@ bool str_bkdr_tree_try_insert(rb_tree* tree, const char* str, bool copy_str, voi
     return true;
 }
 
-rb_node* str_bkdr_tree_find(rb_tree* tree, const char* str)
+void* str_bkdr_tree_find(rb_tree* tree, const char* str)
 {
     bkdr_str pt;
     pt.hash_code = BKDRHash(str);
     pt.str = str;
 
-    return rb_tree_find_user(tree, &pt);
+    rb_node* node = rb_tree_find_user(tree, &pt);
+    if (node)
+    {
+        return rb_node_value_user(node);
+    }
+
+    return 0;
 }
 
 const char* str_bkdr_node_key(rb_node* node)
@@ -162,6 +168,8 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
 
     libsvr_memory_manager_free(value_segment);
 
+    destroy_rb_tree(tree);
+    
     return new_tree;
 }
 
@@ -219,6 +227,14 @@ void* tree_find_integer(rb_tree* tree, size_t key)
     }
 
     return 0;
+}
+
+size_t int_seg_tree_node_value(rb_node* node, void*** value_arry)
+{
+    integer_key_segment* key = (integer_key_segment*)rb_node_key_user(node);
+    *value_arry = (void**)rb_node_value_user(node);
+
+    return (key->key_end - key->key_begin + 1);
 }
 
 //////////////////////////////////////////////////////////////////////////
