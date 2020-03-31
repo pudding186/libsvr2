@@ -174,13 +174,13 @@ extern bkdr_wstr* alloc_bkdr_wstr(const wchar_t* str, bool is_copy);
 extern void free_bkdr_wstr(bkdr_wstr* str);
 extern ptrdiff_t bkdr_wstr_cmp(const void* str1, const void* str2);
 
-typedef struct st_integer_key_group
+typedef struct st_integer_key_segment
 {
     size_t key_begin;
     size_t key_end;
-}integer_key_group;
+}integer_key_segment;
 
-extern ptrdiff_t integer_key_group_cmp(void* key_group1, void* key_group2);
+extern ptrdiff_t integer_key_segment_cmp(const void* key_segment1, const void* key_segment2);
 //////////////////////////////////////////////////////////////////////////
 #define TVN_BITS 6
 #define TVR_BITS 8

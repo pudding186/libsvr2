@@ -90,13 +90,13 @@ ptrdiff_t bkdr_wstr_cmp(const void* str1, const void* str2)
     return wcscmp(((bkdr_wstr*)str1)->str, ((bkdr_wstr*)str2)->str);
 }
 
-ptrdiff_t integer_key_group_cmp(void* key_group1, void* key_group2)
+ptrdiff_t integer_key_segment_cmp(const void* key_segment1, const void* key_segment2)
 {
-    if (((integer_key_group*)key_group1)->key_end < ((integer_key_group*)key_group2)->key_begin)
+    if (((const integer_key_segment*)key_segment1)->key_end < ((const integer_key_segment*)key_segment2)->key_begin)
     {
         return -1;
     }
-    else if (((integer_key_group*)key_group1)->key_begin > ((integer_key_group*)key_group2)->key_end)
+    else if (((const integer_key_segment*)key_segment1)->key_begin > ((const integer_key_segment*)key_segment2)->key_end)
     {
         return 1;
     }
