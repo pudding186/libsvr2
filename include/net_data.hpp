@@ -219,7 +219,7 @@ public:
         m_capacity = src.m_capacity;
         m_size = src.m_size;
 
-        m_array = S_MALLOC(sizeof(T)*m_capacity);
+        m_array = (T *)S_MALLOC(sizeof(T)*m_capacity);
         for (U i = 0; i < m_size; i++)
         {
             new(m_array + i)T(src.m_array[i]);

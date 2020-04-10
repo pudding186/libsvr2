@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="gb2312" standalone="yes"?>
 <path>
-  <excel_path name="d:/aa" />
-  <code_path name="d:/aa/code" />
-  <xml_path name="d:/aa/xml" />
+  <excel_path name="d:/dt_data_config/config" />
+  <code_path name="D:/mt_2020/trunk/common/table" />
+  <xml_path name="D:/mt_2020/bin/envir/table" />
 </path>

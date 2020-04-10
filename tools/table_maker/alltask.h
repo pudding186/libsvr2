@@ -181,6 +181,9 @@ public:
         data_type_to_c["INT64"] = "long long";
 
         m_elapse = get_tick();
+
+        std::string cur_row_col_name = "";
+
         try
         {
             XLDocument doc;
@@ -224,10 +227,10 @@ public:
                     throw std::runtime_error(u8"没有找到 主键 列");
                 }
 
-                it_col_check = col_name_2_idx.find(u8"客户端用");
+                it_col_check = col_name_2_idx.find(u8"服务端用");
                 if (it_col_check == col_name_2_idx.end())
                 {
-                    throw std::runtime_error(u8"没有找到 客户端用 列");
+                    throw std::runtime_error(u8"没有找到 服务端用 列");
                 }
             }
 
@@ -239,8 +242,13 @@ public:
 
             for (long row = 2; row <= row_count; row++)
             {
+                cur_row_col_name = "";
+
                 auto data_row = def_sheet.Row(row);
                 info.m_col_name = data_row.Cell(col_name_2_idx[u8"字段名"]).Value().AsString();
+
+                cur_row_col_name = u8"加载字段:" + info.m_col_name;
+
                 info.m_col_note = data_row.Cell(col_name_2_idx[u8"中文"]).Value().AsString();
                 info.m_col_type = data_row.Cell(col_name_2_idx[u8"数据类型"]).Value().AsString();
 
@@ -250,11 +258,22 @@ public:
                     is_key = 1;
                 }
 
-                int gen_type = 3;
-                if (data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().ValueType() != XLValueType::Empty)
+                int gen_type = 0;
+                if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() != XLValueType::Empty)
                 {
-                    //std::string ff = data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().AsString();
-                    //gen_type = data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().Get<int>();
+                    if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() == XLValueType::String)
+                    {
+                        std::string gen_type_str = data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().AsString();
+
+                        if (gen_type_str.length())
+                        {
+                            gen_type = std::stoi(gen_type_str);
+                        }
+                    }
+                    else if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() == XLValueType::Integer)
+                    {
+                        gen_type = data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().Get<int>();
+                    }
                 }
 
                 if (info.m_col_name != "")
@@ -332,7 +351,7 @@ public:
                     }
                 }
 
-                if (gen_type == 1 || gen_type == 3)
+                if (gen_type == 2)
                 {
 
                     std::string err_info = m_table_client->add_column(info);
@@ -342,7 +361,7 @@ public:
                     }
                 }
 
-                if (gen_type == 2 || gen_type == 3)
+                if (gen_type == 1)
                 {
                     std::string err_info = m_table_server->add_column(info);
                     if (err_info.length())
@@ -376,7 +395,14 @@ public:
             m_table_client = 0;
             m_table_server = 0;
 
-            wchar_t* werr = U8ToUnicode(e.what());
+            if (cur_row_col_name.length())
+            {
+                cur_row_col_name += u8"失败! ";
+            }
+            
+            cur_row_col_name += e.what();
+
+            wchar_t* werr = U8ToUnicode(cur_row_col_name.c_str());
             m_err_info = werr;
             delete[] werr;
         }
