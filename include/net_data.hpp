@@ -61,6 +61,21 @@ public:
         return *this;
     }
 
+    bool operator== (const DataArray& src) const 
+    {
+        if (src.m_size != m_size)
+        {
+            return false;
+        }
+
+        return (0 == memcmp(m_array, src.m_array, sizeof(T)*m_size));
+    }
+
+    bool operator != (const DataArray& src) const
+    {
+        return !(*this == src);
+    }
+
     T& operator[](U idx) const
     {
         if (idx < m_size)
@@ -254,6 +269,29 @@ public:
         }
 
         return *this;
+    }
+
+    bool operator != (const DataArray& src) const
+    {
+        return !(*this == src);
+    }
+
+    bool operator== (const DataArray& src) const
+    {
+        if (src.m_size != m_size)
+        {
+            return false;
+        }
+
+        for (U i = 0; i < m_size; i++)
+        {
+            if (m_array[i] != src.m_array[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     T& operator[](U idx) const

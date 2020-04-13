@@ -6,8 +6,17 @@
 
 CProtocolMaker gProtocolMaker;
 
+void debug_protocol()
+{
+    gProtocolMaker.MakeProtocol("D:\\mt_2020\\trunk\\common\\protocol\\StructDef.xml", "D:\\mt_2020\\trunk\\common\\protocol\\");
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
+    //debug_protocol();
+
+    //return 1;
+
     char* pszXml = NULL;
     char* pszPath = NULL;
     if (3 == argc)

@@ -160,6 +160,10 @@ mem_trace g_mem_trace;
 
 void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t size)
 {
+    if (!ptr)
+    {
+        return;
+    }
     HRBNODE node;
     mem_trace_info info;
     mem_trace_info* exist_info;
@@ -209,6 +213,10 @@ void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t
 
 void trace_free(void* ptr)
 {
+    if (!ptr)
+    {
+        return;
+    }
     ptr_info* _ptr_info;
 
     g_mem_trace.m_lock.Lock();
