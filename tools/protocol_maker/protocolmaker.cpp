@@ -1665,7 +1665,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 
 	for (size_t i = 0; i < m_vecProtocol.size(); i++)
 	{
-		fprintf(pCppFile, u8"\tcase %zu:\r\n", i);
+		fprintf(pCppFile, u8"\tcase %zu:\r\n", i+1);
 		fprintf(pCppFile, u8"\t{\r\n");
 		//fprintf(pCppFile, "\t\t%s* proto = (%s*)m_protocol_buffer;\r\n", m_vecProtocol[i].c_str(), m_vecProtocol[i].c_str());
 		//fprintf(pCppFile, "\t\tnew(proto)%s();\r\n", m_vecProtocol[i].c_str());
