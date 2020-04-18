@@ -332,6 +332,12 @@ public:
                         }
                     }
                 }
+                else
+                {
+                    char err[512];
+                    sprintf_s(err, u8"读取字段名失败! 行数%d", row);
+                    throw std::runtime_error(err);
+                }
 
                 if (is_key == 1)
                 {

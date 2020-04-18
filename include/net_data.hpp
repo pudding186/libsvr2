@@ -168,21 +168,37 @@ public:
 		return m_array;
 	}
 
-    template <size_t S>
+    template <U S>
     inline void set_data(T(&datas)[S])
     {
-        for (size_t i = 0; i < S; ++i)
+        if ((std::numeric_limits<U>::max)() - m_size < S)
         {
-            push_back(datas[i]);
+            throw "capacity is max";
         }
+
+        if (m_size + S > m_capacity)
+        {
+            reserve(m_size + S);
+        }
+
+        memcpy(m_array+m_size, datas, S*sizeof(T));
+        m_size += S;
     }
 
-    inline void set_data(const T *datas, size_t length)
+    inline void set_data(const T *datas, U length)
     {
-        for (size_t i = 0; i < length; ++i)
+        if ((std::numeric_limits<U>::max)() - m_size < length)
         {
-            push_back(datas[i]);
+            throw "capacity is max";
         }
+
+        if (m_size + length > m_capacity)
+        {
+            reserve(m_size + length);
+        }
+
+        memcpy(m_array + m_size, datas, length * sizeof(T));
+        m_size += length;
     }
 
     template <typename STL>
