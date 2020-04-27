@@ -46,6 +46,8 @@ public:
 
     std::string add_column(column_info& info);
     std::string add_key(key_info& info);
+
+    bool is_key_column(const column_info& info);
     bool gen_code(const std::string& path, std::string& err);
 
     table_column_info get_table_columns(void){return m_table_column;}

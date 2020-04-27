@@ -232,6 +232,12 @@ public:
                 {
                     throw std::runtime_error(u8"没有找到 服务端用 列");
                 }
+
+                it_col_check = col_name_2_idx.find(u8"客户端用");
+                if (it_col_check == col_name_2_idx.end())
+                {
+                    throw std::runtime_error(u8"没有找到 客户端用 列");
+                }
             }
 
             column_info info;
@@ -258,7 +264,9 @@ public:
                     is_key = 1;
                 }
 
-                int gen_type = 0;
+                //int gen_type = 0;
+                bool gen_client = false;
+                bool gen_server = false;
                 if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() != XLValueType::Empty)
                 {
                     if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() == XLValueType::String)
@@ -267,12 +275,45 @@ public:
 
                         if (gen_type_str.length())
                         {
-                            gen_type = std::stoi(gen_type_str);
+                            if (std::stoi(gen_type_str) == 1)
+                            {
+                                gen_server = true;
+                            }
+                            //gen_type = std::stoi(gen_type_str);
                         }
                     }
                     else if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().ValueType() == XLValueType::Integer)
                     {
-                        gen_type = data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().Get<int>();
+                        if (data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().Get<int>() == 1)
+                        {
+                            gen_server = true;
+                        }
+                        //gen_type = data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().Get<int>();
+                    }
+                }
+
+                if (data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().ValueType() != XLValueType::Empty)
+                {
+                    if (data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().ValueType() == XLValueType::String)
+                    {
+                        std::string gen_type_str = data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().AsString();
+
+                        if (gen_type_str.length())
+                        {
+                            if (std::stoi(gen_type_str) == 1)
+                            {
+                                gen_client = true;
+                            }
+                            //gen_type = std::stoi(gen_type_str);
+                        }
+                    }
+                    else if (data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().ValueType() == XLValueType::Integer)
+                    {
+                        if (data_row.Cell(col_name_2_idx[u8"客户端用"]).Value().Get<int>() == 1)
+                        {
+                            gen_client = true;
+                        }
+                        //gen_type = data_row.Cell(col_name_2_idx[u8"服务端用"]).Value().Get<int>();
                     }
                 }
 
@@ -357,7 +398,7 @@ public:
                     }
                 }
 
-                if (gen_type == 2)
+                if (gen_client)
                 {
 
                     std::string err_info = m_table_client->add_column(info);
@@ -367,7 +408,7 @@ public:
                     }
                 }
 
-                if (gen_type == 1)
+                if (gen_server)
                 {
                     std::string err_info = m_table_server->add_column(info);
                     if (err_info.length())
@@ -550,6 +591,21 @@ public:
                 for (long col = 1; col <= col_count; col++)
                 {
                     auto cell = first_row.Cell(col);
+
+                    if (cell.Value().AsString() == u8"")
+                    {
+                        char err[512];
+                        sprintf_s(err, u8"content 第 %d 列 是空值", col);
+                        throw std::runtime_error(err);
+                    }
+
+                    if (col_name_2_idx.find(cell.Value().AsString()) != col_name_2_idx.end())
+                    {
+                        char err[512];
+                        sprintf_s(err, u8"content 第 %d 列 <%s> 有重复", col, cell.Value().AsString().c_str());
+                        throw std::runtime_error(err);
+                    }
+
                     col_name_2_idx[cell.Value().AsString()] = col;
                     col_idx_2_name[col] = cell.Value().AsString();
                 }
@@ -600,7 +656,25 @@ public:
                 for (std::map<long, std::string>::iterator it = col_idx_2_name.begin();
                     it != col_idx_2_name.end(); ++it)
                 {
-                    std::string content = it->second + u8"=\"" + content_sheet.Row(row).Cell(it->first).Value().AsString() + u8"\" ";
+                    auto it_col = col_info.find(it->second);
+                    if (it_col == col_info.end())
+                    {
+                        continue;
+                    }
+
+                    std::string value = content_sheet.Row(row).Cell(it->first).Value().AsString();
+
+                    if (m_table_maker->is_key_column(it_col->second))
+                    {
+                        if (value.empty() || value == "")
+                        {
+                            char err[512];
+                            sprintf_s(err, u8"主键 %s ! 不能为空 行数%d",it->second.c_str(), row);
+                            throw std::runtime_error(err);
+                        }
+                    }
+
+                    std::string content = it->second + u8"=\"" + value + u8"\" ";
 
                     if (content.find("EXCEL_STRING") != std::string::npos)
                     {

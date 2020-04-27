@@ -11,6 +11,8 @@
 #define IDC_BUTTON_LOAD                 1004
 #define IDC_BUTTON_CODE                 1005
 #define IDC_BUTTON_XML                  1006
+#define IDC_BUTTON_XML_EX               1007        
+#define IDC_PROGRESS                    1008
 #define ID_MENU_ALL_CANCEL              32773
 #define ID_MENU_ALL_SELECT              32775
 #define ID_MENU_ALL_REVERSE             32776

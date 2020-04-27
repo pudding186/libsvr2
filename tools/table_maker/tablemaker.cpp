@@ -97,6 +97,19 @@ std::string CTableMaker::add_key( key_info& info )
     return "";
 }
 
+bool CTableMaker::is_key_column(const column_info& info)
+{
+    for (auto it = m_table_key.begin(); it != m_table_key.end(); ++it)
+    {
+        if (it->first.find(info.m_col_name) != it->first.end())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool CTableMaker::gen_code( const std::string& path, std::string& err )
 {
     std::string hpp_file_path = path + m_table_name + "_table.hpp";
@@ -259,8 +272,6 @@ void CTableMaker::_print_data_struct( FILE* hpp_file )
         fprintf(hpp_file, u8"    %-*s %s;%-*s/// %s\r\n", 19, 
             info->m_col_type.c_str(), info->m_col_name.c_str(), (int)(max_name_length - info->m_col_name.length()), " ", info->m_col_note.c_str());
     }
-
-    fprintf(hpp_file, u8"\r\n");
 
     fprintf(hpp_file, u8"}%s;\r\n\r\n", m_struct_name.c_str());
 }
@@ -809,7 +820,10 @@ void CTableMaker::_print_func_QuickMapping( FILE* hpp_file )
 
         fprintf(hpp_file, u8"    void QuickMapping%zu(HRBTREE& tree)\r\n", key_count);
         fprintf(hpp_file, u8"    {\r\n");
-        fprintf(hpp_file, u8"        tree;\r\n");
+        fprintf(hpp_file, u8"        if (tree_is_int_seg(tree))\r\n");
+        fprintf(hpp_file, u8"        {\r\n");
+        fprintf(hpp_file, u8"            return;\r\n");
+        fprintf(hpp_file, u8"        }\r\n");
 
         size_t key_idx = 1;
         std::list<column_info*> key_list;

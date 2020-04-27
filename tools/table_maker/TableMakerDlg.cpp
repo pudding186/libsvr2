@@ -52,11 +52,13 @@ void CTableMakerDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CTableMakerDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+    ON_WM_CLOSE()
+    ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST_EXCEL, &CTableMakerDlg::OnLvnItemchangedListExcel)
     ON_BN_CLICKED(IDCANCEL, &CTableMakerDlg::OnClose)
     ON_BN_CLICKED(IDC_BUTTON_LOAD, &CTableMakerDlg::OnBnClickedButtonLoad)
-    ON_WM_CLOSE()
     ON_BN_CLICKED(IDC_BUTTON_CODE, &CTableMakerDlg::OnBnClickedButtonCode)
     ON_BN_CLICKED(IDC_BUTTON_XML, &CTableMakerDlg::OnBnClickedButtonXml)
+    ON_BN_CLICKED(IDC_BUTTON_XML_EX, &CTableMakerDlg::OnBnClickedButtonXmlEx)
     ON_WM_CONTEXTMENU()
     ON_COMMAND(ID_MENU_ALL_CANCEL, &CTableMakerDlg::OnMenuAllCancel)
     ON_COMMAND(ID_MENU_ALL_SELECT, &CTableMakerDlg::OnMenuAllSelect)
@@ -170,6 +172,11 @@ BOOL CTableMakerDlg::OnInitDialog()
 
     m_task_timer = SetTimer(1, 30, 0);
 
+    GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(TRUE);
+    GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
+    GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
+    GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
+
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -209,7 +216,7 @@ HCURSOR CTableMakerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-void CTableMakerDlg::OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult)
+void CTableMakerDlg::OnLvnItemchangedListExcel(NMHDR* pNMHDR, LRESULT* pResult)
 {
     LPNMLISTVIEW pNMLV = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
     // TODO: Add your control notification handler code here
@@ -249,8 +256,53 @@ void CTableMakerDlg::OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult)
         TRACE(L"Item %d does't change the check-status\n", pNMLV->iItem);
     }
 
+    bool all_excel_load_success = true;
+
+    for (size_t i = 0; i < m_excel_file_list.size(); i++)
+    {
+        if (m_excel_list.GetCheck(i))
+        {
+            std::wstring load_excel = m_excel_file_list[i];
+
+            load_excel = load_excel.substr(0, load_excel.length() - wcslen(L".xlsx"));
+
+            if (m_maker_client_list.find(load_excel) == m_maker_client_list.end())
+            {
+                all_excel_load_success = false;
+                break;
+            }
+
+            if (m_maker_server_list.find(load_excel) == m_maker_server_list.end())
+            {
+                all_excel_load_success = false;
+                break;
+            }
+        }
+    }
+
+    if (all_excel_load_success && m_maker_server_list.size() && m_maker_client_list.size())
+    {
+        GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(TRUE);
+        GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(TRUE);
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(TRUE);
+        GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(TRUE);
+    }
+    else
+    {
+        GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(TRUE);
+        GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
+        GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
+    }
 
     *pResult = 0;
+}
+
+void CTableMakerDlg::OnClose()
+{
+    KillTimer(m_task_timer);
+    g_task_mgr.Uninit();
+    CDialog::OnCancel();
 }
 
 void CTableMakerDlg::OnBnClickedButtonLoad()
@@ -288,13 +340,29 @@ void CTableMakerDlg::OnBnClickedButtonLoad()
         }
     }
 
-}
+    if (m_selected_table.size() > 0)
+    {
+        GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(FALSE);
 
-void CTableMakerDlg::OnClose()
-{
-    KillTimer(m_task_timer);
-    g_task_mgr.Uninit();
-	CDialog::OnCancel();
+        //CRect rect, progress_rect;
+        //m_result_box.GetWindowRect(&rect);
+
+        //progress_rect.left = rect.left;
+        //progress_rect.right = rect.right;
+
+        //progress_rect.top = 200;// rect.bottom + 5;
+        //progress_rect.bottom = progress_rect.top + 10;
+        ////CRect rect, progress_rect;
+        ////GetClientRect(&rect);
+        ////progress_rect.left = rect.left + rect.Width() / 4 + 40;
+        ////progress_rect.top = rect.top + 410;
+        ////progress_rect.right = rect.right - rect.Width() / 4;
+        ////progress_rect.bottom = progress_rect.top + 10;
+
+
+        //m_progress.Create(WS_CHILD | WS_VISIBLE, progress_rect, this, IDC_PROGRESS);
+        //m_progress.SetRange(0, (short)m_selected_table.size());
+    }
 }
 
 void CTableMakerDlg::OnBnClickedButtonCode()
@@ -327,6 +395,48 @@ void CTableMakerDlg::OnBnClickedButtonCode()
             int idx = m_result_box.AddLine(CXListBox::Blue, CXListBox::White, msg.c_str());
             g_task_mgr.AddTask(g_task_mgr.CreateTask<GenCodeTask>(idx, m_code_path, tmp, table_maker));
         }
+    }
+
+    if (m_selected_table.size() > 0)
+    {
+        GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
+    }
+}
+void CTableMakerDlg::OnBnClickedButtonXmlEx()
+{
+    m_selected_table.clear();
+    m_xml_gen_list.clear();
+    m_gen_xml_tick = get_tick();
+
+    for (size_t i = 0; i < m_excel_file_list.size(); i++)
+    {
+        if (m_excel_list.GetCheck(i))
+        {
+            std::wstring tmp = m_excel_file_list[i];
+            tmp = tmp.substr(0, tmp.length() - wcslen(L".xlsx"));
+            m_selected_table.insert(tmp);
+            std::wstring msg = L"生成";
+            msg += m_excel_file_list[i];
+            msg += L"  对应XML";
+
+            CTableMaker* table_maker = 0;
+            m_selected_table.insert(tmp);
+
+            auto it_maker = m_maker_client_list.find(tmp);
+
+            if (it_maker != m_maker_client_list.end())
+            {
+                table_maker = it_maker->second;
+            }
+
+            int idx = m_result_box.AddLine(CXListBox::Blue, CXListBox::White, msg.c_str());
+            g_task_mgr.AddTask(g_task_mgr.CreateTask<GenXmlTask>(idx, m_excel_path, tmp, m_xml_path, table_maker));
+        }
+    }
+
+    if (m_selected_table.size() > 0)
+    {
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
     }
 }
 
@@ -362,6 +472,10 @@ void CTableMakerDlg::OnBnClickedButtonXml()
         }
     }
 
+    if (m_selected_table.size() > 0)
+    {
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
+    }
 }
 
 void CTableMakerDlg::OnContextMenu(CWnd* pWnd, CPoint point)
@@ -529,6 +643,8 @@ void CTableMakerDlg::AddExcelResult(
         m_excel_load_list[table_name] = true;
     }
 
+    //m_progress.SetPos((int)m_excel_load_list.size());
+
     msg.append(L"耗时");
     wchar_t wsz_tmp[256];
     _snwprintf(wsz_tmp, 256, L"%.2f秒", f_elapse / 1000);
@@ -549,18 +665,31 @@ void CTableMakerDlg::AddExcelResult(
             }
         }
 
+        GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(TRUE);
+
         if (all_load_success)
         {
             tc = CXListBox::Green;
             _snwprintf(wsz_tmp, 256, L"所有文件加载成功,耗时%.2f秒", real_elapse / 1000);
             m_result_box.AddLine(tc, bc, wsz_tmp);
+
+            GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(TRUE);
+            GetDlgItem(IDC_BUTTON_XML)->EnableWindow(TRUE);
+            GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(TRUE);
         }
         else
         {
             tc = CXListBox::Red;
             _snwprintf(wsz_tmp, 256, L"所有文件加载完毕,耗时%.2f秒 有文件出错请检查！", real_elapse / 1000);
             m_result_box.AddLine(tc, bc, wsz_tmp);
+
+            GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
+            GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
+            GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
         }
+        //m_progress.DestroyWindow();
+        //m_progress.DestroyWindow();
+       
     }
 }
 
@@ -598,6 +727,8 @@ void CTableMakerDlg::AddCodeResult(
         m_code_gen_list[table_name] = true;
     }
 
+    //m_progress.SetPos((int)m_code_gen_list.size());
+
     msg.append(L"耗时");
     wchar_t wsz_tmp[256];
     _snwprintf(wsz_tmp, 256, L"%.2f秒", elapse/ 1000);
@@ -631,6 +762,9 @@ void CTableMakerDlg::AddCodeResult(
             _snwprintf(wsz_tmp, 256, L"所有文件生成代码完毕,耗时%.2f秒 有文件出错请检查！", real_elapse / 1000);
             m_result_box.AddLine(tc, bc, wsz_tmp);
         }
+
+        //m_progress.DestroyWindow();
+        GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(TRUE);
     }
 }
 
@@ -666,6 +800,8 @@ void CTableMakerDlg::AddXmlResult(int idx, const std::wstring& err_msg, float el
         m_xml_gen_list[table_name] = true;
     }
 
+    //m_progress.SetPos((int)m_xml_gen_list.size());
+
     msg.append(L"耗时");
     wchar_t wsz_tmp[256];
     _snwprintf(wsz_tmp, 256, L"%.2f秒", elapse / 1000);
@@ -699,6 +835,8 @@ void CTableMakerDlg::AddXmlResult(int idx, const std::wstring& err_msg, float el
             _snwprintf(wsz_tmp, 256, L"所有文件生成xml完毕,耗时%.2f秒 有文件出错请检查！", real_elapse / 1000);
             m_result_box.AddLine(tc, bc, wsz_tmp);
         }
+        //m_progress.DestroyWindow();
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(TRUE);
     }
 }
 

@@ -28,7 +28,7 @@ protected:
 protected:
     CListCtrl   m_excel_list;
     CXListBox   m_result_box;
-
+    CProgressCtrl m_progress;
     UINT_PTR    m_task_timer;
 	// 生成的消息映射函数
 	virtual BOOL OnInitDialog();
@@ -37,12 +37,13 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 
-    afx_msg void OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnLvnItemchangedListExcel(NMHDR* pNMHDR, LRESULT* pResult);
 public:
     afx_msg void OnBnClickedButtonLoad();
     afx_msg void OnClose();
     afx_msg void OnBnClickedButtonCode();
     afx_msg void OnBnClickedButtonXml();
+    afx_msg void OnBnClickedButtonXmlEx();
     afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
     afx_msg void OnMenuAllCancel();
     afx_msg void OnMenuAllSelect();
