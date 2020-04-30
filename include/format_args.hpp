@@ -11,6 +11,8 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <fmt/printf.h>
+
+using my_fmt_memory_buffer = fmt::basic_memory_buffer<char, 1024>;
 // the type holding sequences
 template <size_t... N>
 struct idx_seq {};
@@ -105,8 +107,8 @@ struct SFormatArgs<>
         }
     }
 
-    virtual void format_to_buffer(fmt::memory_buffer& buffer) = 0;
-    virtual void format_c_to_buffer(fmt::memory_buffer& buffer) = 0;
+    virtual void format_to_buffer(my_fmt_memory_buffer& buffer) = 0;
+    virtual void format_c_to_buffer(my_fmt_memory_buffer& buffer) = 0;
 };
 
 template <typename First, typename... Rest>
@@ -189,12 +191,12 @@ struct SFormatArgs<const char*, Rest...>
         SFormatArgs<>::free_str(value);
     }
 
-    virtual void format_to_buffer(fmt::memory_buffer& buffer)
+    virtual void format_to_buffer(my_fmt_memory_buffer& buffer)
     {
         format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
 
-    virtual void format_c_to_buffer(fmt::memory_buffer& buffer)
+    virtual void format_c_to_buffer(my_fmt_memory_buffer& buffer)
     {
         format_c_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
     }
@@ -250,24 +252,24 @@ typename SFormatElement<N, SFormatArgs<Rest...>>::type& get(SFormatArgs<Rest...>
 }
 
 template<typename... Rest, size_t... I>
-void format_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
+void format_to_buffer_impl(my_fmt_memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
     fmt::format_to(buffer, get<I>(args)...);
 }
 
-inline void vprintf_to_buffer(fmt::memory_buffer& buffer, fmt::string_view format_str, fmt::printf_args args)
+inline void vprintf_to_buffer(my_fmt_memory_buffer& buffer, fmt::string_view format_str, fmt::printf_args args)
 {
     fmt::printf(buffer, format_str, args);
 }
 
 template <typename... Args>
-inline void printf_to_buffer(fmt::memory_buffer& buffer, fmt::string_view format_str, const Args & ... args)
+inline void printf_to_buffer(my_fmt_memory_buffer& buffer, fmt::string_view format_str, const Args & ... args)
 {
     vprintf_to_buffer(buffer, format_str, fmt::make_printf_args(args...));
 }
 
 template<typename... Rest, size_t... I>
-void format_c_to_buffer_impl(fmt::memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
+void format_c_to_buffer_impl(my_fmt_memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
     printf_to_buffer(buffer, get<I>(args)...);
 }

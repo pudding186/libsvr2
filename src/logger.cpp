@@ -613,8 +613,8 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
     case opt_write_c:
     case opt_write:
     {
-        fmt::memory_buffer out_prefix;
-        fmt::memory_buffer out_data;
+        fmt::basic_memory_buffer<char, 64> out_prefix;
+        my_fmt_memory_buffer out_data;
         std::string err_msg;
 
         bool check_ret = _check_log(cmd, proc, err_msg);
