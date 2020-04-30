@@ -285,7 +285,6 @@ void timer_del(timer_info* timer)
     {
         _detach_timer(timer);
         timer->data = 0;
-        //memory_unit_free(_get_timer_info_unit(), timer);
         memory_unit_free(timer->manager->timer_info_unit, timer);
     }
     else

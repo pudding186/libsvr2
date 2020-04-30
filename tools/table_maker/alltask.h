@@ -595,7 +595,7 @@ public:
                     if (cell.Value().AsString() == u8"")
                     {
                         char err[512];
-                        sprintf_s(err, u8"content 第 %d 列 是空值", col);
+                        sprintf_s(err, u8"content 第 1 行 %d 列 读取失败", col);
                         throw std::runtime_error(err);
                     }
 
@@ -649,9 +649,13 @@ public:
             std::vector<std::string> row_content;
             row_content.reserve(col_name_2_idx.size());
 
+            std::map<std::string, std::string> m_key_check;
+
             for (long row = 2; row <= row_count; row++)
             {
                 row_content.clear();
+
+                std::string all_key;
 
                 for (std::map<long, std::string>::iterator it = col_idx_2_name.begin();
                     it != col_idx_2_name.end(); ++it)
@@ -672,6 +676,9 @@ public:
                             sprintf_s(err, u8"主键 %s ! 不能为空 行数%d",it->second.c_str(), row);
                             throw std::runtime_error(err);
                         }
+
+                        all_key.append(value);
+                        all_key.append(u8" ");
                     }
 
                     std::string content = it->second + u8"=\"" + value + u8"\" ";
@@ -685,6 +692,17 @@ public:
                     {
                         row_content.push_back(content);
                     }
+                }
+
+                if (m_key_check.find(all_key) != m_key_check.end())
+                {
+                    char err[512];
+                    sprintf_s(err, u8"content 中主键 [ %s ] 重复 行数%d", all_key.c_str(), row);
+                    throw std::runtime_error(err);
+                }
+                else
+                {
+                    m_key_check[all_key] = all_key;
                 }
 
                 if (row_content.size())
