@@ -40,13 +40,13 @@ extern HMEMORYMANAGER (logger_mem_pool)(void);
 
 extern bool file_logger_async_log(HFILELOGGER file_logger, bool is_c_format, file_logger_level lv, SFormatArgs<>* fmt_args, bool is_block);
 
-template<typename... Args>
-void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
-{
-    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...> >()->New(1, fmt, (special_decay_type<Args>&&)(args)...);
-
-    file_logger_async_log(file_logger, false, lv, fmt_args, true);
-}
+//template<typename... Args>
+//void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
+//{
+//    SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...> >()->New(1, fmt, (special_decay_type<Args>&&)(args)...);
+//
+//    file_logger_async_log(file_logger, false, lv, fmt_args, true);
+//}
 
 template<typename... Args>
 void file_logger_print(HFILELOGGER file_logger, file_logger_level lv, const char* fmt, Args&&... args)
@@ -54,5 +54,13 @@ void file_logger_print(HFILELOGGER file_logger, file_logger_level lv, const char
     SFormatArgs<>* fmt_args = logger_obj_pool<SFormatArgs<const char*, special_decay_type<Args>...> >()->New(1, fmt, (special_decay_type<Args>&&)(args)...);
 
     file_logger_async_log(file_logger, true, lv, fmt_args, true);
+}
+
+template<size_t N, typename... Args>
+void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char(&fmt)[N], Args&&... args)
+{
+    SFormatArgs<>* fmt_args = logger_obj_pool< SFormatArgs<const char(&)[N], special_decay_type<Args>...> >()->New(1, fmt, (special_decay_type<Args>&&)(args)...);
+
+    file_logger_async_log(file_logger, false, lv, fmt_args, true);
 }
 #endif

@@ -568,6 +568,20 @@ public:
 		m_cur_pos += data_size;
 	}
 
+    void* Reserve(size_t reserve_size)
+    {
+        void* cur_pos = m_cur_pos;
+
+        if (m_cur_pos + reserve_size > m_end)
+        {
+            __extend(reserve_size);
+        }
+
+        m_cur_pos += reserve_size;
+
+        return cur_pos;
+    }
+
 	inline void* Data()
 	{
 		return m_buffer;
@@ -722,6 +736,18 @@ public:
 
 		return m_cur_pos;
 	}
+
+    const void* Discard(size_t discard_size)
+    {
+        const void* cur_pos = m_cur_pos;
+
+        if (m_cur_pos + discard_size > m_end)
+            return 0;
+
+        m_cur_pos += discard_size;
+
+        return cur_pos;
+    }
 
 	inline void Reset(size_t pos = 0)
 	{

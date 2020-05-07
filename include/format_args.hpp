@@ -191,6 +191,23 @@ struct SFormatArgs<const char*, Rest...>
         SFormatArgs<>::free_str(value);
     }
 
+    const char* value;
+};
+
+template <size_t N, typename... Rest>
+struct SFormatArgs<const char(&)[N], Rest...>
+    :public SFormatArgs<Rest...>
+{
+    SFormatArgs() :value(0) {}
+    SFormatArgs(const char (&fmt)[N], Rest&&... rest)
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(SFormatArgs<>::copy_str(fmt, N-1)) {}
+
+    ~SFormatArgs()
+    {
+        SFormatArgs<>::free_str(value);
+    }
+
     virtual void format_to_buffer(my_fmt_memory_buffer& buffer)
     {
         format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
@@ -236,6 +253,13 @@ struct SFormatElement<0, SFormatArgs<char*, Rest...>>
 
 template <typename... Rest>
 struct SFormatElement<0, SFormatArgs<const char*, Rest...>>
+{
+    typedef const char* type;
+    typedef SFormatArgs<const char*, Rest...> SFormatType;
+};
+
+template <size_t N, typename... Rest>
+struct SFormatElement<0, SFormatArgs<const char(&)[N], Rest...>>
 {
     typedef const char* type;
     typedef SFormatArgs<const char*, Rest...> SFormatType;
