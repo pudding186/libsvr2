@@ -68,6 +68,26 @@ void* str_bkdr_tree_find(rb_tree* tree, const char* str)
     return 0;
 }
 
+void* str_bkdr_tree_erase(rb_tree* tree, const char* str)
+{
+    bkdr_str pt;
+    pt.hash_code = BKDRHash(str);
+    pt.str = str;
+
+    rb_node* node = rb_tree_find_user(tree, &pt);
+    if (node)
+    {
+        bkdr_str* del_pt = (bkdr_str*)rb_node_key_user(node);
+        free_bkdr_str(del_pt);
+
+        void* data = rb_node_value_user(node);
+        rb_tree_erase(tree, node);
+        return data;
+    }
+
+    return 0;
+}
+
 const char* str_bkdr_node_key(rb_node* node)
 {
     return ((bkdr_str*)rb_node_key_user(node))->str;

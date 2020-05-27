@@ -710,10 +710,20 @@ const char* client_mysql_err(HCLIENTMYSQL connection)
 
 unsigned long long client_mysql_rows_num(HCLIENTMYSQLRES result)
 {
-    return mysql_num_rows(result->record_set);
+    if (result->record_set)
+    {
+        return mysql_num_rows(result->record_set);
+    }
+    
+    return 0;
 }
 
 unsigned int client_mysql_fields_num(HCLIENTMYSQLRES result)
 {
-    return mysql_num_fields(result->record_set);
+    if (result->record_set)
+    {
+        return mysql_num_fields(result->record_set);
+    }
+    
+    return 0;
 }

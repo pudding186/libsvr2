@@ -978,6 +978,9 @@ bool print_thread::_do_pt_cmd(HLOOPCACHE print_cache)
         {
             loop_cache_get_data(print_cache, (void**)&data, &print_len);
             fwrite(data, sizeof(char), print_len, stdout);
+#ifdef _DEBUG
+            fflush(stdout);
+#endif
             loop_cache_pop(print_cache, print_len);
             cmd.data_len -= print_len;
             print_len = cmd.data_len;

@@ -16,6 +16,8 @@ extern "C" {
 
     extern void* (str_bkdr_tree_find)(HRBTREE tree, const char* str);
 
+    extern void* (str_bkdr_tree_erase)(HRBTREE tree, const char* str);
+
     extern const char* (str_bkdr_node_key)(HRBNODE node);
 
     extern bool (tree_is_str_bkdr)(HRBTREE tree);

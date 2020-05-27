@@ -656,6 +656,24 @@ public:
                 row_content.clear();
 
                 std::string all_key;
+                std::string all_value;
+
+                for (std::map<long, std::string>::iterator it = col_idx_2_name.begin();
+                    it != col_idx_2_name.end(); ++it)
+                {
+                    auto it_col = col_info.find(it->second);
+                    if (it_col == col_info.end())
+                    {
+                        continue;
+                    }
+
+                    all_value.append(content_sheet.Row(row).Cell(it->first).Value().AsString());
+                }
+
+                if (all_value.empty() || all_value == "")
+                {
+                    continue;
+                }
 
                 for (std::map<long, std::string>::iterator it = col_idx_2_name.begin();
                     it != col_idx_2_name.end(); ++it)
