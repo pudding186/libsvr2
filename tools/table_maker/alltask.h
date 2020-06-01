@@ -540,6 +540,68 @@ protected:
 private:
 };
 
+bool stringToLL(const std::string& str, long long& val)
+{
+    bool isOK = false;
+    const char* nptr = str.c_str();
+    char* endptr = NULL;
+    errno = 0;
+    val = strtoll(nptr, &endptr, 10);
+    //error ocur
+    if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN))
+        || (errno != 0 && val == 0))
+    {
+
+    }
+    //no digit find
+    else if (endptr == nptr)
+    {
+
+    }
+    else if (*endptr != '\0')
+    {
+        // printf("Further characters after number: %s\n", endptr);
+    }
+    else
+    {
+        isOK = true;
+    }
+
+    return isOK;
+}
+
+
+bool stringToULL(const std::string& str, unsigned long long& val)
+{
+    bool isOK = false;
+    const char* nptr = str.c_str();
+    char* endptr = NULL;
+    errno = 0;
+    val = strtoull(nptr, &endptr, 10);
+    //error ocur
+    if ((errno == ERANGE && (val == ULLONG_MAX))
+        || (errno != 0 && val == 0))
+    {
+
+    }
+    //no digit find
+    else if (endptr == nptr)
+    {
+
+    }
+    else if (*endptr != '\0')
+    {
+        // printf("Further characters after number: %s\n", endptr);
+    }
+    else
+    {
+        isOK = true;
+    }
+
+    return isOK;
+}
+
+
 class GenXmlTask:
     public ITask
 {
@@ -595,14 +657,14 @@ public:
                     if (cell.Value().AsString() == u8"")
                     {
                         char err[512];
-                        sprintf_s(err, u8"content 第 1 行 %d 列 读取失败", col);
+                        snprintf(err, sizeof(err), u8"content 第 1 行 %d 列 读取失败", col);
                         throw std::runtime_error(err);
                     }
 
                     if (col_name_2_idx.find(cell.Value().AsString()) != col_name_2_idx.end())
                     {
                         char err[512];
-                        sprintf_s(err, u8"content 第 %d 列 <%s> 有重复", col, cell.Value().AsString().c_str());
+                        snprintf(err, sizeof(err), u8"content 第 %d 列 <%s> 有重复", col, cell.Value().AsString().c_str());
                         throw std::runtime_error(err);
                     }
 
@@ -691,12 +753,139 @@ public:
                         if (value.empty() || value == "")
                         {
                             char err[512];
-                            sprintf_s(err, u8"主键 %s ! 不能为空 行数%d",it->second.c_str(), row);
+                            snprintf(err, sizeof(err), u8"主键 %s ! 不能为空 行数%d",it->second.c_str(), row);
                             throw std::runtime_error(err);
                         }
 
                         all_key.append(value);
                         all_key.append(u8" ");
+                    }
+
+                    switch (it_col->second.m_data_type)
+                    {
+                    case col_uint8:
+                    case col_int8:
+                    case col_uint16:
+                    case col_int16:
+                    case col_uint32:
+                    case col_int32:
+                    {
+                        long long integer_value;
+                        if (!stringToLL(value, integer_value))
+                        {
+                            char err[512];
+                            snprintf(err, sizeof(err), u8"%s 转化为数字失败 行数%d", it->second.c_str(), row);
+                            throw std::runtime_error(err);
+                        }
+
+                        if (it_col->second.m_data_type == col_uint8)
+                        {
+                            if (integer_value > (std::numeric_limits<unsigned char>::max)() ||
+                                integer_value < (std::numeric_limits<unsigned char>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %u-%u 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<unsigned char>::min)(),
+                                    (std::numeric_limits<unsigned char>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                        else if (it_col->second.m_data_type == col_int8)
+                        {
+                            if (integer_value > (std::numeric_limits<char>::max)() ||
+                                integer_value < (std::numeric_limits<char>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %d-%d 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<char>::min)(),
+                                    (std::numeric_limits<char>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                        else if (it_col->second.m_data_type == col_uint16)
+                        {
+                            if (integer_value > (std::numeric_limits<unsigned short>::max)() ||
+                                integer_value < (std::numeric_limits<unsigned short>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %u-%u 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<unsigned short>::min)(),
+                                    (std::numeric_limits<unsigned short>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                        else if (it_col->second.m_data_type == col_int16)
+                        {
+                            if (integer_value > (std::numeric_limits<short>::max)() ||
+                                integer_value < (std::numeric_limits<short>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %d-%d 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<short>::min)(),
+                                    (std::numeric_limits<short>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                        else if (it_col->second.m_data_type == col_uint32)
+                        {
+                            if (integer_value > (std::numeric_limits<unsigned int>::max)() ||
+                                integer_value < (std::numeric_limits<unsigned int>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %u-%u 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<unsigned int>::min)(),
+                                    (std::numeric_limits<unsigned int>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                        else if (it_col->second.m_data_type == col_int32)
+                        {
+                            if (integer_value > (std::numeric_limits<int>::max)() ||
+                                integer_value < (std::numeric_limits<int>::min)())
+                            {
+                                char err[512];
+                                snprintf(err, sizeof(err), u8"%s=%s must in %d-%d 行数%d", it->second.c_str(), value.c_str(),
+                                    (std::numeric_limits<int>::min)(),
+                                    (std::numeric_limits<int>::max)(), row);
+                                throw std::runtime_error(err);
+                            }
+                        }
+                    }
+                    break;
+                    case col_uint64:
+                    {
+                        long long integer_value;
+                        if (!stringToLL(value, integer_value))
+                        {
+                            char err[512];
+                            snprintf(err, sizeof(err), u8"%s=%s 转化为数字失败 行数%d", it->second.c_str(), value.c_str(), row);
+                            throw std::runtime_error(err);
+                        }
+                    }
+                    break;
+                    case col_int64:
+                    {
+                        unsigned long long integer_value;
+                        if (!stringToULL(value, integer_value))
+                        {
+                            char err[512];
+                            snprintf(err, sizeof(err), u8"%s=%s 转化为数字失败 行数%d", it->second.c_str(), value.c_str(), row);
+                            throw std::runtime_error(err);
+                        }
+                    }
+                    break;
+                    case col_string:
+                    {
+
+                    }
+                        break;
+                    default:
+                    {
+                        char err[512];
+                        snprintf(err, sizeof(err), u8"%s=%s ! 未知的数据类型 %d", it->second.c_str(), value.c_str(), row);
+                        throw std::runtime_error(err);
+                    }
+
                     }
 
                     std::string content = it->second + u8"=\"" + value + u8"\" ";
@@ -715,7 +904,7 @@ public:
                 if (m_key_check.find(all_key) != m_key_check.end())
                 {
                     char err[512];
-                    sprintf_s(err, u8"content 中主键 [ %s ] 重复 行数%d", all_key.c_str(), row);
+                    snprintf(err, sizeof(err), u8"content 中主键 [ %s ] 重复 行数%d", all_key.c_str(), row);
                     throw std::runtime_error(err);
                 }
                 else

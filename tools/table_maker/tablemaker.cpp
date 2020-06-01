@@ -291,7 +291,7 @@ void CTableMaker::_print_class( FILE* hpp_file )
     for (table_key_info::iterator it = m_table_key.begin();
         it != m_table_key.end(); ++it, ++key_count)
     {
-        key_info& info = it->second;
+        //key_info& info = it->second;
         fprintf(hpp_file, u8"    %-*s m_data_map%zu;\r\n", (int)(max_member_length), "HRBTREE", key_count);
     }
 
@@ -347,7 +347,7 @@ void CTableMaker::_print_func_At( FILE* hpp_file )
 
 void CTableMaker::_print_func_FillData(FILE* hpp_file)
 {
-    fprintf(hpp_file, u8"    void FillData(%s* row, pugi::xml_node& element)\r\n", m_struct_name.c_str());
+    fprintf(hpp_file, u8"    bool FillData(%s* row, pugi::xml_node& element, char* err, size_t err_len)\r\n", m_struct_name.c_str());
     fprintf(hpp_file, u8"    {\r\n");
     fprintf(hpp_file, u8"        pugi::xml_attribute attr;\r\n");
     fprintf(hpp_file, u8"        pugi::xml_attribute cur_attr = element.first_attribute();\r\n");
@@ -365,7 +365,8 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            return false;\r\n");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
@@ -386,56 +387,100 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         case col_uint16:
         case col_int16:
         case col_int32:
-        {
-            fprintf(hpp_file, u8"        if (!attr)\r\n");
-            fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"        }\r\n");
-            fprintf(hpp_file, u8"        else\r\n");
-            fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = (%s)attr.as_int();\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"        }\r\n");
-        }
-        break;
         case col_uint32:
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            return false;\r\n");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = (%s)attr.as_uint();\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"            if (strcmp(attr.value(), \"0\"))\r\n");
+            fprintf(hpp_file, u8"            {\r\n");
+
+            if (info.m_data_type == col_int32 ||
+                info.m_data_type == col_uint32)
+            {
+            fprintf(hpp_file, u8"                long long value = attr.as_llong();\r\n");
+            }
+            else
+            {
+            fprintf(hpp_file, u8"                int value = attr.as_int();\r\n");
+            }
+            
+            fprintf(hpp_file, u8"                if (value)\r\n");
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    if (value > (std::numeric_limits<%s>::max)())\r\n", info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    {\r\n");
+            fprintf(hpp_file, u8"                        snprintf(err, err_len, u8\"attribute %s value > %s max\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                        return false;\r\n");
+            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                    else if (value < (std::numeric_limits<%s>::min)())\r\n", info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    {\r\n");
+            fprintf(hpp_file, u8"                        snprintf(err, err_len, u8\"attribute %s value < %s min\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                        return false;\r\n");
+            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                    else\r\n");
+            fprintf(hpp_file, u8"                    {\r\n");
+            fprintf(hpp_file, u8"                        row->%s = (%s)value;\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"                else\r\n");
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s= %%s to %s fail\", attr.value());\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    return false;\r\n");
+            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"            }\r\n");
+            fprintf(hpp_file, u8"            else\r\n");
+            fprintf(hpp_file, u8"            {\r\n");
+            fprintf(hpp_file, u8"                row->%s = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            }\r\n");
             fprintf(hpp_file, u8"        }\r\n");
         }
         break;
         case col_uint64:
-        {
-            fprintf(hpp_file, u8"        if (!attr)\r\n");
-            fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"        }\r\n");
-            fprintf(hpp_file, u8"        else\r\n");
-            fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = (%s)attr.as_ullong();\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"        }\r\n");
-        }
-        break;
         case col_int64:
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            return false;");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            row->%s = (%s)attr.as_llong();\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"            if (strcmp(attr.value(), \"0\"))\r\n");
+            fprintf(hpp_file, u8"            {\r\n");
+
+            if (info.m_data_type == col_int64)
+            {
+                fprintf(hpp_file, u8"                long long value = attr.as_llong();\r\n");
+            }
+            else if (info.m_data_type == col_uint64)
+            {
+                fprintf(hpp_file, u8"                unsigned long long value = attr.as_ullong();\r\n");
+            }
+
+            fprintf(hpp_file, u8"                if (value)\r\n");
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    row->%s = value;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"                else\r\n");
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s= %%s to %s fail\", attr.value());\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    return false;\r\n");
+            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"            }\r\n");
+            fprintf(hpp_file, u8"            else\r\n");
+            fprintf(hpp_file, u8"            {\r\n");
+            fprintf(hpp_file, u8"                row->%s = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            }\r\n");
             fprintf(hpp_file, u8"        }\r\n");
         }
         break;
         }
     }
-
+    fprintf(hpp_file, u8"        return true;\r\n");
     fprintf(hpp_file, u8"    }\r\n");
 }
 
@@ -725,7 +770,7 @@ void CTableMaker::_print_func_ReleaseMapping( FILE* hpp_file )
 
         while (!key_list.empty())
         {
-            column_info* col_info = key_list.front();
+            //column_info* col_info = key_list.front();
 
             fprintf(hpp_file, space_str.c_str());
 
@@ -1186,9 +1231,18 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
     fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
     fprintf(hpp_file, u8"        {\r\n");
     fprintf(hpp_file, u8"            %s* row = AllocRow();\r\n", m_struct_name.c_str());
-    fprintf(hpp_file, u8"            FillData(row, content);\r\n");
-    fprintf(hpp_file, u8"            m_data_arry[m_data_arry_size] = row;\r\n");
-    fprintf(hpp_file, u8"            ++m_data_arry_size;\r\n");
+    fprintf(hpp_file, u8"            if (FillData(row, content, err, err_len))\r\n");
+    fprintf(hpp_file, u8"            {\r\n");
+    fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
+    fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+    fprintf(hpp_file, u8"            }\r\n");
+    fprintf(hpp_file, u8"            else\r\n");
+    fprintf(hpp_file, u8"            {\r\n");
+    fprintf(hpp_file, u8"                std::string strError;\r\n");
+    fprintf(hpp_file, u8"                strError.append(err);\r\n");
+    fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_arry_size+1, strError.c_str());\r\n");
+    fprintf(hpp_file, u8"                return false;\r\n");
+    fprintf(hpp_file, u8"            }\r\n");
 
     key_count = 1;
     for (table_key_info::iterator it = m_table_key.begin();
@@ -1397,9 +1451,18 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
         fprintf(hpp_file, u8"            {\r\n");
         fprintf(hpp_file, u8"                row = AllocRow();\r\n");
         fprintf(hpp_file, u8"            }\r\n");
-        fprintf(hpp_file, u8"            FillData(row, content);\r\n");
-        fprintf(hpp_file, u8"            m_data_arry[m_data_arry_size] = row;\r\n");
-        fprintf(hpp_file, u8"            ++m_data_arry_size;\r\n");
+        fprintf(hpp_file, u8"            if (FillData(row, content, err, err_len))\r\n");
+        fprintf(hpp_file, u8"            {\r\n");
+        fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
+        fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+        fprintf(hpp_file, u8"            }\r\n");
+        fprintf(hpp_file, u8"            else\r\n");
+        fprintf(hpp_file, u8"            {\r\n");
+        fprintf(hpp_file, u8"                std::string strError;\r\n");
+        fprintf(hpp_file, u8"                strError.append(err);\r\n");
+        fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_arry_size+1, strError.c_str());\r\n");
+        fprintf(hpp_file, u8"                return false;\r\n");
+        fprintf(hpp_file, u8"            }\r\n");
         key_count = 1;
         for (table_key_info::iterator it = m_table_key.begin();
             it != m_table_key.end(); ++it, ++key_count)
