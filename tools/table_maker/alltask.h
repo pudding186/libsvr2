@@ -679,11 +679,16 @@ public:
             }
 
             table_column_info col_info = m_table_maker->get_table_columns();
-
+            bool check_key_name = false;
             for (auto it = col_info.begin();
                 it != col_info.end(); ++it)
             {
                 column_info& info = it->second;
+
+                if (info.m_col_name == "KeyName")
+                {
+                    check_key_name = true;
+                }
 
                 if (col_name_2_idx.find(info.m_col_name) == col_name_2_idx.end())
                 {
@@ -712,6 +717,7 @@ public:
             row_content.reserve(col_name_2_idx.size());
 
             std::map<std::string, std::string> m_key_check;
+            std::set<std::string> m_key_name_check;
 
             for (long row = 2; row <= row_count; row++)
             {
@@ -719,6 +725,7 @@ public:
 
                 std::string all_key;
                 std::string all_value;
+                std::string all_key_name;
 
                 for (std::map<long, std::string>::iterator it = col_idx_2_name.begin();
                     it != col_idx_2_name.end(); ++it)
@@ -756,9 +763,16 @@ public:
                             snprintf(err, sizeof(err), u8"主键 %s ! 不能为空 行数%d",it->second.c_str(), row);
                             throw std::runtime_error(err);
                         }
-
-                        all_key.append(value);
-                        all_key.append(u8" ");
+                        if (it_col->second.m_col_name == "KeyName")
+                        {
+                            all_key_name.append(value);
+                            all_key.append(u8" ");
+                        }
+                        else
+                        {
+                            all_key.append(value);
+                            all_key.append(u8" ");
+                        }
                     }
 
                     switch (it_col->second.m_data_type)
@@ -910,6 +924,20 @@ public:
                 else
                 {
                     m_key_check[all_key] = all_key;
+                }
+
+                if (check_key_name)
+                {
+                    if (m_key_name_check.find(all_key_name) != m_key_name_check.end())
+                    {
+                        char err[512];
+                        snprintf(err, sizeof(err), u8"content 中KeyName [ %s ] 重复 行数%d", all_key_name.c_str(), row);
+                        throw std::runtime_error(err);
+                    }
+                    else
+                    {
+                        m_key_name_check.insert(all_key_name);
+                    }
                 }
 
                 if (row_content.size())

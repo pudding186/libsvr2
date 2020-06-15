@@ -59,19 +59,24 @@ protected:
     void _print_func_GetFieldCount(FILE* hpp_file);
     void _print_func_At(FILE* hpp_file);
     void _print_func_FillData(FILE* hpp_file);
+    void _print_func_FillLuaData(FILE* hpp_file);
     void _print_func_FillMapping(FILE* hpp_file);
+    void _print_func_FillLuaMapping(FILE* hpp_file);
     void _print_func_AllocRow(FILE* hpp_file);
     void _print_func_FreeRow(FILE* hpp_file);
     void _print_func_QuickMapping(FILE* hpp_file);
     void _print_func_ReleaseMapping(FILE* hpp_file);
     void _print_func_Release(FILE* hpp_file);
     void _print_func_Get(FILE* hpp_file);
+    void _print_func_Lua_Get(FILE* hpp_file);
     void _print_func_Load(FILE* hpp_file);
     void _print_func_ReLoad(FILE* hpp_file);
     void _print_func_Construct_Destruct(FILE* hpp_file);
     void _print_func_ReLoadEx(FILE* hpp_file);
     void _print_func_OrderAttribute(FILE* hpp_file);
     void _print_func_InitColInfo_UnInitColInfo_GetColVar(FILE* hpp_file);
+    void _print_func_RegLuaDelegate(FILE* hpp_file);
+    void _print_func_ReLoadLua(FILE* hpp_file);
 protected:
     std::string         m_table_name;
     table_column_info   m_table_column;

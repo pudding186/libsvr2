@@ -137,6 +137,11 @@ bool CTableMaker::gen_code( const std::string& path, std::string& err )
     fprintf(hpp_file, u8"#include \"smemory.hpp\"\r\n");
     fprintf(hpp_file, u8"#include \"pugixml.hpp\"\r\n");
     fprintf(hpp_file, u8"#include \"pugiconfig.hpp\"\r\n");
+    fprintf(hpp_file, u8"#include \"lua_table.hpp\"\r\n");
+    fprintf(hpp_file, u8"#include \"lua_table_context.hpp\"\r\n");
+    fprintf(hpp_file, u8"#include \"lua_table_sugar.hpp\"\r\n");
+    fprintf(hpp_file, u8"#include \"lua_readonly.hpp\"\r\n");
+    fprintf(hpp_file, u8"#include \"lua_system.hpp\"\r\n");
     fprintf(hpp_file, u8"\r\n");
     fprintf(hpp_file, u8"namespace DATA\r\n");
     fprintf(hpp_file, u8"{\r\n");
@@ -159,6 +164,7 @@ bool CTableMaker::gen_code( const std::string& path, std::string& err )
         fwrite(bom, 1, 3, cpp_file);
     }
 
+    fprintf(cpp_file, u8"#include \"pch.h\"\r\n");
     fprintf(cpp_file, u8"#include \"%s_table.hpp\"\r\n", m_table_name.c_str());
     fprintf(cpp_file, u8"namespace DATA\r\n");
     fprintf(cpp_file, u8"{\r\n");
@@ -298,6 +304,16 @@ void CTableMaker::_print_class( FILE* hpp_file )
     fprintf(hpp_file, u8"    %-*s m_col_info_map;\r\n", (int)(max_member_length), "HRBTREE");
     fprintf(hpp_file, u8"    %-*s m_data_arry;\r\n", (int)(max_member_length), tmp.c_str());
     fprintf(hpp_file, u8"    %-*s m_data_arry_size;\r\n", (int)(max_member_length), "size_t");
+
+    //key_count = 1;
+    //for (table_key_info::iterator it = m_table_key.begin();
+    //    it != m_table_key.end(); ++it, ++key_count)
+    //{
+    //    //key_info& info = it->second;
+    //    fprintf(hpp_file, u8"    %-*s m_lua_data_map%zu;\r\n", (int)(max_member_length), "Lua::Table", key_count);
+    //}
+    fprintf(hpp_file, u8"    %-*s m_lua_data_map;\r\n", (int)(max_member_length), "Lua::Table");
+
     fprintf(hpp_file, u8"public:\r\n");
     _print_func_At(hpp_file);
     _print_func_GetFieldCount(hpp_file);
@@ -305,15 +321,20 @@ void CTableMaker::_print_class( FILE* hpp_file )
     _print_func_OrderAttribute(hpp_file);
     _print_func_FillData(hpp_file);
     _print_func_FillMapping(hpp_file);
+    _print_func_FillLuaData(hpp_file);
+    _print_func_FillLuaMapping(hpp_file);
     _print_func_AllocRow(hpp_file);
     _print_func_FreeRow(hpp_file);
     _print_func_QuickMapping(hpp_file);
     _print_func_ReleaseMapping(hpp_file);
     _print_func_Release(hpp_file);
     _print_func_Get(hpp_file);
+    _print_func_Lua_Get(hpp_file);
     _print_func_Load(hpp_file);
     _print_func_ReLoad(hpp_file);
     _print_func_ReLoadEx(hpp_file);
+    _print_func_ReLoadLua(hpp_file);
+    _print_func_RegLuaDelegate(hpp_file);
     _print_func_Construct_Destruct(hpp_file);
     _print_func_InitColInfo_UnInitColInfo_GetColVar(hpp_file);
     fprintf(hpp_file, u8"};\r\n");
@@ -481,6 +502,20 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         }
     }
     fprintf(hpp_file, u8"        return true;\r\n");
+    fprintf(hpp_file, u8"    }\r\n");
+}
+
+void CTableMaker::_print_func_FillLuaData(FILE* hpp_file)
+{
+    fprintf(hpp_file, u8"    void FillLuaData(Lua::Table& table, const %s* row)\r\n", m_struct_name.c_str());
+    fprintf(hpp_file, u8"    {\r\n");
+    for (size_t i = 0; i < m_table_column_arry.size(); i++)
+    {
+        column_info& info = m_table_column.find(m_table_column_arry[i])->second;
+
+        fprintf(hpp_file, u8"        table[\"%s\"] = row->%s;\r\n", info.m_col_name.c_str(), info.m_col_name.c_str());
+    }
+
     fprintf(hpp_file, u8"    }\r\n");
 }
 
@@ -660,6 +695,82 @@ void CTableMaker::_print_func_Get( FILE* hpp_file )
             fprintf(hpp_file, u8"        return 0;\r\n");
         }
         
+        fprintf(hpp_file, u8"    }\r\n");
+    }
+}
+
+void CTableMaker::_print_func_Lua_Get(FILE* hpp_file)
+{
+    if (m_table_key.empty())
+    {
+        return;
+    }
+
+    size_t key_count = 1;
+    for (table_key_info::iterator it = m_table_key.begin();
+        it != m_table_key.end(); ++it, ++key_count)
+    {
+        key_info& k_info = it->second;
+
+        fprintf(hpp_file, u8"    static int GetBy");
+        size_t param_idx = 1;
+        for (std::list<std::string>::iterator it_key = k_info.m_key_order.begin();
+            it_key != k_info.m_key_order.end(); ++it_key, ++param_idx)
+        {
+            table_column_info::iterator it_col = m_table_column.find(*it_key);
+            std::list<std::string>::iterator it_key_next = it_key;
+            ++it_key_next;
+            column_info& info = it_col->second;
+            fprintf(hpp_file, u8"%s", info.m_col_name.c_str());
+
+            if (param_idx == k_info.m_key_order.size())
+            {
+                fprintf(hpp_file, u8"(lua_State* state)\r\n");
+                fprintf(hpp_file, u8"    {\r\n");
+            }
+        }
+
+        fprintf(hpp_file, u8"        lua_checkstack(state, 2);\r\n");
+        fprintf(hpp_file, u8"        lua_getglobal(state, \"%s\");\r\n", m_class_name.c_str());
+        param_idx = 1;
+        for (std::list<std::string>::iterator it_key = k_info.m_key_order.begin();
+            it_key != k_info.m_key_order.end(); ++it_key, ++param_idx)
+        {
+            table_column_info::iterator it_col = m_table_column.find(*it_key);
+            std::list<std::string>::iterator it_key_next = it_key;
+            ++it_key_next;
+            column_info& info = it_col->second;
+
+            switch (info.m_data_type)
+            {
+            case col_string:
+            {
+                fprintf(hpp_file, u8"        lua_pushstring(state, luaL_checkstring(state, %zu));\r\n", param_idx);
+            }
+            break;
+            case col_int8:
+            case col_uint8:
+            case col_int16:
+            case col_uint16:
+            case col_int32:
+            case col_uint32:
+            case col_int64:
+            case col_uint64:
+            {
+                fprintf(hpp_file, u8"        lua_pushinteger(state, luaL_checkinteger(state, %zu));\r\n", param_idx);
+            }
+            break;
+            default:
+            {
+            }
+            }
+
+            fprintf(hpp_file, u8"        lua_gettable(state, -2);\r\n");
+            fprintf(hpp_file, u8"        luaL_checktype(state, -1, LUA_TTABLE);\r\n");
+            fprintf(hpp_file, u8"        lua_remove(state, -2);\r\n");
+        }
+
+        fprintf(hpp_file, u8"        return 1;\r\n");
         fprintf(hpp_file, u8"    }\r\n");
     }
 }
@@ -1117,6 +1228,50 @@ void CTableMaker::_print_func_FillMapping( FILE* hpp_file )
     }
 }
 
+void CTableMaker::_print_func_FillLuaMapping(FILE* hpp_file)
+{
+    if (m_table_key.empty())
+    {
+        return;
+    }
+
+    size_t key_count = 1;
+    for (table_key_info::iterator it = m_table_key.begin();
+        it != m_table_key.end(); ++it, ++key_count)
+    {
+        key_info& k_info = it->second;
+
+
+        fprintf(hpp_file, u8"    void FillLuaMapping%zu(Lua::Table& lua_map0, Lua::Table& lua_row, %s* row)\r\n", key_count, m_struct_name.c_str());
+        fprintf(hpp_file, u8"    {\r\n");
+
+        size_t key_idx = 0;
+        for (std::list<std::string>::iterator it_key = k_info.m_key_order.begin();
+            it_key != k_info.m_key_order.end(); ++it_key, ++key_idx)
+        {
+            table_column_info::iterator it_col = m_table_column.find(*it_key);
+            std::list<std::string>::iterator it_key_next = it_key;
+            ++it_key_next;
+            column_info& info = it_col->second;
+
+            if (it_key_next == k_info.m_key_order.end())
+            {
+                fprintf(hpp_file, u8"        lua_map%zu[row->%s] = lua_row;\r\n", key_idx, info.m_col_name.c_str());
+            }
+            else
+            {
+                fprintf(hpp_file, u8"        if (!lua_map%zu[row->%s].Check<Lua::Table>())\r\n", key_idx, info.m_col_name.c_str());
+                fprintf(hpp_file, u8"        {\r\n");
+                fprintf(hpp_file, u8"            lua_map%zu[row->%s] = Lua::Table::NewTable(LuaState);\r\n", key_idx, info.m_col_name.c_str());
+                fprintf(hpp_file, u8"        }\r\n");
+                fprintf(hpp_file, u8"        Lua::Table lua_map%zu = lua_map%zu[row->%s].Get<Lua::Table>();\r\n", key_idx+1, key_idx, info.m_col_name.c_str());
+            }
+        }
+
+        fprintf(hpp_file, u8"    }\r\n");
+    }
+}
+
 void CTableMaker::_print_func_AllocRow( FILE* hpp_file )
 {
     fprintf(hpp_file, u8"    %s* AllocRow(void)\r\n", m_struct_name.c_str());
@@ -1227,6 +1382,14 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
         }
     }
 
+    //key_count = 1;
+    //for (table_key_info::iterator it = m_table_key.begin();
+    //    it != m_table_key.end(); ++it, ++key_count)
+    //{
+    //    fprintf(hpp_file, u8"        m_lua_data_map%zu = Lua::Table::NewTable(LuaState);\r\n", key_count);
+    //}
+    fprintf(hpp_file, u8"        m_lua_data_map = Lua::Table::NewTable(LuaState);\r\n");
+
     fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
     fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
     fprintf(hpp_file, u8"        {\r\n");
@@ -1254,6 +1417,15 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
         fprintf(hpp_file, u8"            }\r\n");
     }
 
+    fprintf(hpp_file, u8"            Lua::Table lua_row = Lua::Table::NewTable(LuaState);\r\n");
+    fprintf(hpp_file, u8"            FillLuaData(lua_row, row);\r\n");
+
+    key_count = 1;
+    for (table_key_info::iterator it = m_table_key.begin();
+        it != m_table_key.end(); ++it, ++key_count)
+    {
+        fprintf(hpp_file, u8"            FillLuaMapping%zu(m_lua_data_map, lua_row, row);\r\n", key_count);
+    }
 
     fprintf(hpp_file, u8"        }\r\n");
     key_count = 1;
@@ -1262,6 +1434,7 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
     {
         fprintf(hpp_file, u8"        QuickMapping%zu(m_data_map%zu);\r\n", key_count, key_count);
     }
+    fprintf(hpp_file, u8"        RegLuaDelegate();\r\n");
     fprintf(hpp_file, u8"        return true;\r\n");
 
     fprintf(hpp_file, u8"    }\r\n");
@@ -1305,6 +1478,16 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
             fprintf(hpp_file, u8"        HRBTREE tmp_data_map%zu = create_rb_tree(0);\r\n", key_count);
         }
     }
+
+    //key_count = 1;
+    //for (table_key_info::iterator it = m_table_key.begin();
+    //    it != m_table_key.end(); ++it, ++key_count)
+    //{
+    //    fprintf(hpp_file, u8"        m_lua_data_map%zu = Lua::Table::NewTable(LuaState);\r\n", key_count);
+    //}
+
+    fprintf(hpp_file, u8"        m_lua_data_map = Lua::Table::NewTable(LuaState);\r\n");
+
     fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
     fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
     fprintf(hpp_file, u8"        {\r\n");
@@ -1463,6 +1646,7 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
         fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_arry_size+1, strError.c_str());\r\n");
         fprintf(hpp_file, u8"                return false;\r\n");
         fprintf(hpp_file, u8"            }\r\n");
+        
         key_count = 1;
         for (table_key_info::iterator it = m_table_key.begin();
             it != m_table_key.end(); ++it, ++key_count)
@@ -1471,6 +1655,16 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
             fprintf(hpp_file, u8"            {\r\n");
             fprintf(hpp_file, u8"                return false;\r\n");
             fprintf(hpp_file, u8"            }\r\n");
+        }
+
+        fprintf(hpp_file, u8"            Lua::Table lua_row = Lua::Table::NewTable(LuaState);\r\n");
+        fprintf(hpp_file, u8"            FillLuaData(lua_row, row);\r\n");
+
+        key_count = 1;
+        for (table_key_info::iterator it = m_table_key.begin();
+            it != m_table_key.end(); ++it, ++key_count)
+        {
+            fprintf(hpp_file, u8"            FillLuaMapping%zu(m_lua_data_map, lua_row, row);\r\n", key_count);
         }
 
         for (size_t i = 0; i < del_key_string.size(); i++)
@@ -1490,6 +1684,7 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
         fprintf(hpp_file, u8"        m_data_map%zu = tmp_data_map%zu;\r\n", key_count, key_count);
     }
 
+    fprintf(hpp_file, u8"        RegLuaDelegate();\r\n");
     fprintf(hpp_file, u8"        return true;\r\n");
 
     fprintf(hpp_file, u8"    }\r\n");
@@ -1648,7 +1843,74 @@ void CTableMaker::_print_func_InitColInfo_UnInitColInfo_GetColVar( FILE* hpp_fil
     //fprintf(hpp_file, "    }\r\n");
 }
 
+void CTableMaker::_print_func_RegLuaDelegate(FILE* hpp_file)
+{
+    if (m_table_key.empty())
+    {
+        return;
+    }
 
+    fprintf(hpp_file, u8"    void RegLuaDelegate(void)\r\n");
+    fprintf(hpp_file, u8"    {\r\n");
+    fprintf(hpp_file, u8"        m_lua_data_map.Set();\r\n");
+
+    size_t key_count = 1;
+    for (table_key_info::iterator it = m_table_key.begin();
+        it != m_table_key.end(); ++it, ++key_count)
+    {
+        std::string get_func_name = u8"GetBy";
+
+        key_info& k_info = it->second;
+
+        size_t key_idx = 0;
+        for (std::list<std::string>::iterator it_key = k_info.m_key_order.begin();
+            it_key != k_info.m_key_order.end(); ++it_key, ++key_idx)
+        {
+            table_column_info::iterator it_col = m_table_column.find(*it_key);
+            std::list<std::string>::iterator it_key_next = it_key;
+            ++it_key_next;
+            column_info& info = it_col->second;
+
+            get_func_name += info.m_col_name;
+        }
+
+        fprintf(hpp_file, u8"        lua_pushcfunction(LuaState, %s);\r\n", get_func_name.c_str());
+        fprintf(hpp_file, u8"        lua_setfield(LuaState, -2, \"%s\");\r\n", get_func_name.c_str());
+    }
+
+    fprintf(hpp_file, u8"        lua_pop(LuaState, 1);\r\n");
+
+    fprintf(hpp_file, u8"        Lua::ReadOnly::SetReadOnly(m_lua_data_map);\r\n");
+
+    fprintf(hpp_file, u8"        m_lua_data_map.Set();\r\n");
+
+    fprintf(hpp_file, u8"        lua_setglobal(LuaState, \"%s\");\r\n", m_class_name.c_str());
+
+    fprintf(hpp_file, u8"    }\r\n");
+}
+
+void CTableMaker::_print_func_ReLoadLua(FILE* hpp_file)
+{
+    fprintf(hpp_file, u8"    void ReLoadLua(void)\r\n");
+    fprintf(hpp_file, u8"    {\r\n");
+    fprintf(hpp_file, u8"        m_lua_data_map.Disable();\r\n");
+    fprintf(hpp_file, u8"        m_lua_data_map = Lua::Table::NewTable(LuaState);\r\n");
+    fprintf(hpp_file, u8"        for (size_t i = 0; i < m_data_arry_size; i++)\r\n");
+    fprintf(hpp_file, u8"        {\r\n");
+    fprintf(hpp_file, u8"            %s* row = m_data_arry[i];\r\n", m_struct_name.c_str());
+    fprintf(hpp_file, u8"            Lua::Table lua_row = Lua::Table::NewTable(LuaState);\r\n");
+    fprintf(hpp_file, u8"            FillLuaData(lua_row, row);\r\n");
+
+    size_t key_count = 1;
+    for (table_key_info::iterator it = m_table_key.begin();
+        it != m_table_key.end(); ++it, ++key_count)
+    {
+        fprintf(hpp_file, u8"            FillLuaMapping%zu(m_lua_data_map, lua_row, row);\r\n", key_count);
+    }
+    fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        RegLuaDelegate();\r\n");
+    fprintf(hpp_file, u8"    }\r\n");
+}
 
 
 
