@@ -36,6 +36,8 @@ typedef struct st_mem_seg
 
 extern const void* (memmem_s)(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
 
+extern unsigned long long (get_cycle)(void);
+
 #ifdef _MSC_VER
 
 #elif __GNUC__
@@ -109,6 +111,7 @@ public:
     const char* func_name;
     unsigned long long elapse_cycles;
     unsigned long long hit_count;
+    unsigned long long once_cycles;
     CFuncPerformanceInfo(const char* func_name, HFUNCPERFMGR mgr);
     inline CFuncPerformanceInfo* NextInfo(void)
     {
@@ -122,7 +125,6 @@ public:
     CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr);
     ~CFuncPerformanceCheck(void);
 protected:
-    unsigned long long      m_cycles;
     CFuncPerformanceInfo*   m_parent_func_perf_info;
     CFuncPerformanceInfo*   m_func_perf_info;
     HFUNCPERFMGR	        m_mgr;

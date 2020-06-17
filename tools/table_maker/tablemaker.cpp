@@ -766,7 +766,7 @@ void CTableMaker::_print_func_Lua_Get(FILE* hpp_file)
             }
 
             fprintf(hpp_file, u8"        lua_gettable(state, -2);\r\n");
-            fprintf(hpp_file, u8"        luaL_checktype(state, -1, LUA_TTABLE);\r\n");
+            //fprintf(hpp_file, u8"        luaL_checktype(state, -1, LUA_TTABLE);\r\n");
             fprintf(hpp_file, u8"        lua_remove(state, -2);\r\n");
         }
 

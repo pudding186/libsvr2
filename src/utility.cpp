@@ -370,6 +370,11 @@ const void *memmem_s(const void *haystack, size_t haystacklen,
 		return memchr(haystack, *(char*)needle, haystacklen);
 }
 
+unsigned long long get_cycle(void)
+{
+    return __rdtsc();
+}
+
 #ifdef _MSC_VER
 bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, void* user_data)
 {
@@ -710,17 +715,19 @@ CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPE
     m_parent_func_perf_info = mgr->m_cur_func_perf_info;
     mgr->m_cur_func_perf_info = info;
     mgr->m_func_stack->Push(info);
-    m_cycles = __rdtsc();
+    //m_cycles = __rdtsc();
+    info->once_cycles = __rdtsc();
 }
 
 CFuncPerformanceCheck::~CFuncPerformanceCheck(void)
 {
-    m_cycles = __rdtsc() - m_cycles;
+    //m_cycles = __rdtsc() - m_cycles;
+    m_func_perf_info->once_cycles = __rdtsc() - m_func_perf_info->once_cycles;
     m_mgr->m_func_stack->Pop();
-    m_func_perf_info->elapse_cycles += m_cycles;
+    m_func_perf_info->elapse_cycles += m_func_perf_info->once_cycles;//m_cycles;
     if (m_parent_func_perf_info)
     {
-        m_parent_func_perf_info->elapse_cycles -= m_cycles;
+        m_parent_func_perf_info->elapse_cycles -= m_func_perf_info->once_cycles;//m_cycles;
     }
     m_mgr->m_cur_func_perf_info = m_parent_func_perf_info;
 }
@@ -825,3 +832,4 @@ size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
 
     return total_len;
 }
+
