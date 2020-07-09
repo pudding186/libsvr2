@@ -1224,17 +1224,18 @@ bool CProtocolMaker::__WriteStructProtocolOperatorEqual(CMarkupSTL& rXml, FILE* 
                     fprintf(pCppFile, u8"\t\tif (memcmp(this->%s, src.%s, iCount * sizeof(%s)))", strName.c_str(), strName.c_str(), __integral_to_c_type(strType).c_str());
                     fprintf(pCppFile, u8"\t\t{\r\n");
                     fprintf(pCppFile, u8"\t\t\treturn false;\r\n");
-                    fprintf(pCppFile, u8"\t\t}\r\n\r\n");
+                    fprintf(pCppFile, u8"\t\t}\r\n");
+                    fprintf(pCppFile, u8"\t}\r\n\r\n");
                 }
                 else
                 {
-                    if (!strRefer.empty())
-                    {
-                        fprintf(pCppFile, u8"\tif (this->%s != src.%s)\r\n", strRefer.c_str(), strRefer.c_str());
-                        fprintf(pCppFile, u8"\t{\r\n");
-                        fprintf(pCppFile, u8"\t\treturn false;\r\n");
-                        fprintf(pCppFile, u8"\t}\r\n\r\n");
-                    }
+                    //if (!strRefer.empty())
+                    //{
+                    //    fprintf(pCppFile, u8"\tif (this->%s != src.%s)\r\n", strRefer.c_str(), strRefer.c_str());
+                    //    fprintf(pCppFile, u8"\t{\r\n");
+                    //    fprintf(pCppFile, u8"\t\treturn false;\r\n");
+                    //    fprintf(pCppFile, u8"\t}\r\n\r\n");
+                    //}
 
                     fprintf(pCppFile, u8"\tfor(int i = 0; i < %s; i++)\r\n\t{\r\n", strCount.c_str());
                     if (!strRefer.empty())
@@ -1246,7 +1247,8 @@ bool CProtocolMaker::__WriteStructProtocolOperatorEqual(CMarkupSTL& rXml, FILE* 
                     fprintf(pCppFile, u8"\t\tif (%s[i] != src.%s[i])\r\n", strName.c_str(), strName.c_str());
                     fprintf(pCppFile, u8"\t\t{\r\n");
                     fprintf(pCppFile, u8"\t\t\treturn false;\r\n");
-                    fprintf(pCppFile, u8"\t\t}\r\n\r\n");
+                    fprintf(pCppFile, u8"\t\t}\r\n");
+                    fprintf(pCppFile, u8"\t}\r\n\r\n");
                 }
             }
         }
