@@ -147,29 +147,35 @@ void _add_timer(struct st_timer_info* info)
         i = (expires >> (TVR_BITS + 2 * TVN_BITS))& TVN_MASK;
         vec = info->manager->tv4 + i;
     }
-    else if ((int)idx < 0)
-    {
-        /*
-         * Can happen if you add a timer with expires == jiffies,
-         * or you set a timer to go off in the past
-         */
-        vec = info->manager->tv1 + (info->manager->last_tick & TVR_MASK);
-    }
     else
     {
-        /* If the timeout is larger than 0xffffffff on 64-bit
-         * architectures then we use the maximum timeout:
-         */
-        if (idx > 0xffffffffUL)
-        {
-            idx = 0xffffffffUL;
-            expires = idx + info->manager->last_tick;
-        }
-
-        i = (expires >> (TVR_BITS + 3 * TVN_BITS))& TVN_MASK;
+        i = (expires >> (TVR_BITS + 3 * TVN_BITS)) & TVN_MASK;
 
         vec = info->manager->tv5 + i;
     }
+    //else if ((int)idx < 0)
+    //{
+    //    /*
+    //     * Can happen if you add a timer with expires == jiffies,
+    //     * or you set a timer to go off in the past
+    //     */
+    //    vec = info->manager->tv1 + (info->manager->last_tick & TVR_MASK);
+    //}
+    //else
+    //{
+    //    /* If the timeout is larger than 0xffffffff on 64-bit
+    //     * architectures then we use the maximum timeout:
+    //     */
+    //    if (idx > 0xffffffffUL)
+    //    {
+    //        idx = 0xffffffffUL;
+    //        expires = idx + info->manager->last_tick;
+    //    }
+
+    //    i = (expires >> (TVR_BITS + 3 * TVN_BITS))& TVN_MASK;
+
+    //    vec = info->manager->tv5 + i;
+    //}
 
     LIST_ADD_TAIL(&info->entry, vec);
 }
