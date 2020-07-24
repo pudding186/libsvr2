@@ -52,6 +52,7 @@ extern size_t (split_mem_to_segments)(const void* mem, size_t mem_size, const vo
 }
 
 #include <algorithm>
+#include <string>
 //////////////////////////////////////////////////////////////////////////
 #define DECLARE_SINGLETON(cls)\
 private:\
