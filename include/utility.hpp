@@ -161,5 +161,19 @@ inline void StrSafeCopy(char(&Destination)[N], const char* Source) throw() {
     Destination[N - 1] = '\0';
 }
 
+template <size_t N>
+inline void StrSafeCopy(char(&Destination)[N], const std::string& Source) throw() {
+    //static_assert(N > 0, "StrSafeCopy dst size == 0");
+    // initialize for check below
+    if (Source.empty()) {
+        Destination[0] = '\0';
+        return;
+    }
+
+    size_t nSrcLen = std::min(N - 1, Source.length());
+    memcpy(Destination, Source.c_str(), nSrcLen + 1);
+    Destination[N - 1] = '\0';
+}
+
 #endif
 
