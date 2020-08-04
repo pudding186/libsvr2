@@ -2514,7 +2514,7 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
     proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 16);
     proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 16);
 
-    proc->timer_mgr = create_timer_manager(on_timer);
+    proc->timer_mgr = create_timer_manager(on_timer, 0);
     //proc->do_net_evt = do_net_evt;
 
     proc->do_proc_count = 0;

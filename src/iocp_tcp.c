@@ -2462,7 +2462,7 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
         goto ERROR_DEAL;
     }
 
-    mgr->timer_mgr = create_timer_manager(_iocp_tcp_on_timer);
+    mgr->timer_mgr = create_timer_manager(_iocp_tcp_on_timer, 0);
     if (!mgr->timer_mgr)
     {
         goto ERROR_DEAL;

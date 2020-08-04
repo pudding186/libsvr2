@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-extern HTIMERMANAGER(create_timer_manager)(pfn_on_timer func_on_timer);
+extern HTIMERMANAGER(create_timer_manager)(pfn_on_timer func_on_timer, pfn_get_tick func_get_tick);
 
 extern void (destroy_timer_manager)(HTIMERMANAGER mgr);
 

@@ -213,6 +213,7 @@ typedef struct st_timer_manager
 
     unsigned            last_tick;
     pfn_on_timer        func_on_timer;
+    pfn_get_tick        func_get_tick;
     HMEMORYUNIT         timer_info_unit;
 }timer_manager;
 

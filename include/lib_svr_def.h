@@ -26,6 +26,7 @@ typedef struct st_timer_manager* HTIMERMANAGER;
 typedef struct st_timer_info* HTIMERINFO;
 
 typedef void(*pfn_on_timer)(HTIMERINFO timer);
+typedef unsigned int (*pfn_get_tick)(void);
 
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_loop_cache* HLOOPCACHE;

@@ -197,7 +197,7 @@ unsigned _cascade(struct list_head* vec, unsigned index)
     return index;
 }
 
-timer_manager* create_timer_manager(pfn_on_timer func_on_timer)
+timer_manager* create_timer_manager(pfn_on_timer func_on_timer, pfn_get_tick func_get_tick)
 {
     int i = 0;
 
@@ -220,8 +220,19 @@ timer_manager* create_timer_manager(pfn_on_timer func_on_timer)
         }
 
         mgr->func_on_timer = func_on_timer;
-        mgr->last_tick = get_tick();
 
+        if (func_get_tick)
+        {
+            mgr->func_get_tick = func_get_tick;
+        }
+        else
+        {
+            mgr->func_get_tick = get_tick;
+        }
+        
+
+        mgr->last_tick = mgr->func_get_tick();
+        
         return mgr;
     }
 
@@ -301,7 +312,7 @@ void timer_update(timer_manager* mgr, unsigned run_time)
 {
     struct st_timer_info* info;
 
-    unsigned int tick = get_tick();
+    unsigned int tick = mgr->func_get_tick();
 
     bool time_out = false;
 
@@ -356,7 +367,7 @@ void timer_update(timer_manager* mgr, unsigned run_time)
                 {
                     if (!time_out)
                     {
-                        if (get_tick() - tick > run_time)
+                        if (mgr->func_get_tick() - tick > run_time)
                         {
                             time_out = true;
                         }
