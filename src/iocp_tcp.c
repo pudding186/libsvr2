@@ -3108,6 +3108,11 @@ unsigned int net_tcp_get_send_free_size(iocp_tcp_socket* sock_ptr)
     return (unsigned int)loop_cache_free_size(sock_ptr->send_loop_cache);
 }
 
+unsigned int net_tcp_get_recv_max_size(iocp_tcp_socket* sock_ptr)
+{
+    return (unsigned int)(loop_cache_size(sock_ptr->recv_loop_cache) - 1);
+}
+
 void net_tcp_set_send_control(iocp_tcp_socket* sock_ptr, unsigned int pkg_size, unsigned int delay_time)
 {
     sock_ptr->data_delay_send_size = pkg_size;

@@ -95,6 +95,8 @@ extern bool (net_tcp_get_local_sock_addr)(HSESSION session, addr_info* info);
 
 extern unsigned int (net_tcp_get_send_free_size)(HSESSION session);
 
+extern unsigned int (net_tcp_get_recv_max_size)(HSESSION session);
+
 extern void (net_tcp_set_send_control)(HSESSION session, unsigned int pkg_size, unsigned int delay_time);
 
 
