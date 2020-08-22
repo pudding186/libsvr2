@@ -479,15 +479,7 @@ void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 
 void memory_unit_free(mem_unit* unit, void* mem)
 {
-    void** ptr_mem_unit = memory_unit_get_sign(mem);
-
-    if (!memory_unit_check_sign(unit, ptr_mem_unit))
-    {
-        CRUSH_CODE();
-        return;
-    }
-
-    memory_unit_quick_free(unit, ptr_mem_unit);
+    memory_unit_quick_free(unit, memory_unit_get_sign(mem));
 }
 
 bool memory_unit_check(mem_unit* unit, void* mem)
