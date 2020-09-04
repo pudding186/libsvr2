@@ -2501,7 +2501,7 @@ void _uninit_epoll_tcp_proc(epoll_tcp_proc* proc)
 
 
 
-epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_manager* mgr, pfn_proc_func proc_func, pfn_on_timer on_timer)
+epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, unsigned int max_event_num, epoll_tcp_manager* mgr, pfn_proc_func proc_func, pfn_on_timer on_timer)
 {
     epoll_tcp_proc* proc = (epoll_tcp_proc*)malloc(sizeof(epoll_tcp_proc));
 
@@ -2511,8 +2511,8 @@ epoll_tcp_proc* _init_epoll_tcp_proc(unsigned int max_socket_num, epoll_tcp_mana
     proc->arry_epoll_events = (struct epoll_event*)malloc(sizeof(struct epoll_event)*max_socket_num);
     proc->size_epoll_events = max_socket_num;
 
-    proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_socket_num * 16);
-    proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_socket_num * 16);
+    proc->list_net_evt = create_loop_cache(0, sizeof(net_event)*max_event_num);
+    proc->list_net_req = create_loop_cache(0, sizeof(net_request)*max_event_num);
 
     proc->timer_mgr = create_timer_manager(on_timer, 0);
     //proc->do_net_evt = do_net_evt;
@@ -2651,7 +2651,7 @@ void destroy_net_tcp(epoll_tcp_manager* mgr)
 
 epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet,
-    unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num)
+    unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num, unsigned int max_event_num)
 {
     epoll_tcp_socket** arry_socket_ptr = 0;
 
@@ -2705,10 +2705,17 @@ epoll_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_ter
     mgr->max_pkg_buf_size = 64 * 1024;
     mgr->max_pkg_buf = (char*)malloc(mgr->max_pkg_buf_size);
 
+    if (max_event_num < max_socket_num * 16)
+    {
+        max_event_num = max_socket_num * 16;
+    }
+
 	for (unsigned int i = 0; i < mgr->net_proc_num; i++)
 	{
 		mgr->tcp_proc_array[i] = _init_epoll_tcp_proc(
-			max_socket_num, mgr,
+			max_socket_num, 
+            max_event_num,
+            mgr,
 			_epoll_tcp_net_proc_func,
 			_epoll_tcp_net_on_timer);
 	}

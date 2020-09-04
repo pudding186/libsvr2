@@ -2391,7 +2391,7 @@ void destroy_net_tcp(iocp_tcp_manager* mgr)
 
 iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_terminate func_on_terminate,
     pfn_on_error func_on_error, pfn_on_recv func_on_recv, pfn_parse_packet func_parse_packet,
-    unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num)
+    unsigned int max_socket_num, unsigned int max_io_thread_num, unsigned int max_accept_ex_num, unsigned int max_event_num)
 {
     WORD version_requested;
     WSADATA wsa_data;
@@ -2455,8 +2455,12 @@ iocp_tcp_manager* create_net_tcp(pfn_on_establish func_on_establish, pfn_on_term
     free(sock_ptr_array);
     sock_ptr_array = 0;
 
+    if (max_event_num < mgr->max_socket_num * 16)
+    {
+        max_event_num = mgr->max_socket_num * 16;
+    }
 
-    mgr->evt_queue = create_loop_cache(0, mgr->max_socket_num * 5 * sizeof(struct st_net_event));
+    mgr->evt_queue = create_loop_cache(0, max_event_num * sizeof(struct st_net_event));
     if (!mgr->evt_queue)
     {
         goto ERROR_DEAL;

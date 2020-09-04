@@ -24,7 +24,8 @@ extern HTCPMANAGER (create_net_tcp)(
 	pfn_parse_packet func_parse_packet,
 	unsigned int max_socket_num,
 	unsigned int max_io_thread_num,
-	unsigned int max_accept_ex_num
+	unsigned int max_accept_ex_num,
+	unsigned int max_event_num
 	);
 
 extern void (destroy_net_tcp)(HTCPMANAGER mgr);
