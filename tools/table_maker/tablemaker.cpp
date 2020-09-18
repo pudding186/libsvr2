@@ -284,6 +284,11 @@ void CTableMaker::_print_data_struct( FILE* hpp_file )
 
 void CTableMaker::_print_class( FILE* hpp_file )
 {
+    if (m_table_column.empty())
+    {
+        return;
+    }
+
     fprintf(hpp_file, u8"class %s\r\n", m_class_name.c_str());
     fprintf(hpp_file, u8"{\r\n");
     fprintf(hpp_file, u8"    DECLARE_SINGLETON(%s)\r\n", m_class_name.c_str());
@@ -330,6 +335,7 @@ void CTableMaker::_print_class( FILE* hpp_file )
     _print_func_Release(hpp_file);
     _print_func_Get(hpp_file);
     _print_func_Lua_Get(hpp_file);
+    _print_func_Lua_TableData(hpp_file);
     _print_func_Load(hpp_file);
     _print_func_ReLoad(hpp_file);
     _print_func_ReLoadEx(hpp_file);
@@ -766,7 +772,13 @@ void CTableMaker::_print_func_Lua_Get(FILE* hpp_file)
             }
 
             fprintf(hpp_file, u8"        lua_gettable(state, -2);\r\n");
-            //fprintf(hpp_file, u8"        luaL_checktype(state, -1, LUA_TTABLE);\r\n");
+
+            fprintf(hpp_file, u8"        if (lua_isnil(state, -1))\r\n");
+            fprintf(hpp_file, u8"        {\r\n");
+            fprintf(hpp_file, u8"            lua_remove(state, -2);\r\n");
+            fprintf(hpp_file, u8"            return 1;\r\n");
+            fprintf(hpp_file, u8"        }\r\n");
+
             fprintf(hpp_file, u8"        lua_remove(state, -2);\r\n");
         }
 
@@ -1878,6 +1890,9 @@ void CTableMaker::_print_func_RegLuaDelegate(FILE* hpp_file)
         fprintf(hpp_file, u8"        lua_setfield(LuaState, -2, \"%s\");\r\n", get_func_name.c_str());
     }
 
+    fprintf(hpp_file, u8"        lua_pushcfunction(LuaState, GetTableData);\r\n");
+    fprintf(hpp_file, u8"        lua_setfield(LuaState, -2, \"GetTableData\");\r\n");
+
     fprintf(hpp_file, u8"        lua_pop(LuaState, 1);\r\n");
 
     fprintf(hpp_file, u8"        Lua::ReadOnly::SetReadOnly(m_lua_data_map);\r\n");
@@ -1912,6 +1927,24 @@ void CTableMaker::_print_func_ReLoadLua(FILE* hpp_file)
     fprintf(hpp_file, u8"    }\r\n");
 }
 
+void CTableMaker::_print_func_Lua_TableData(FILE* hpp_file)
+{
+    fprintf(hpp_file, u8"    static int GetTableData(lua_State* state)\r\n");
+    fprintf(hpp_file, u8"    {\r\n");
+    fprintf(hpp_file, u8"        Lua::Table tbl = Lua::Table::NewTable(state);\r\n");
+    fprintf(hpp_file, u8"        if (%s::Instance())\r\n", m_class_name.c_str());
+    fprintf(hpp_file, u8"        {\r\n");
+    fprintf(hpp_file, u8"            for (size_t i = 0; i < %s::Instance()->GetSize(); i++)\r\n", m_class_name.c_str());
+    fprintf(hpp_file, u8"            {\r\n");
+    fprintf(hpp_file, u8"                Lua::Table row = Lua::Table::NewTable(state);\r\n");
+    fprintf(hpp_file, u8"                %s::Instance()->FillLuaData(row, %s::Instance()->At(i));\r\n", m_class_name.c_str(), m_class_name.c_str());
+    fprintf(hpp_file, u8"                tbl[i+1] = row;\r\n");
+    fprintf(hpp_file, u8"            }\r\n");
+    fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        tbl.Set();\r\n");
+    fprintf(hpp_file, u8"        return 1;\r\n");
+    fprintf(hpp_file, u8"    }\r\n");
+}
 
 
 

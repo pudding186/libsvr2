@@ -584,7 +584,7 @@ size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split
 
 //////////////////////////////////////////////////////////////////////////
 
-#define MAX_STACK_CAPACITY	1000
+#define MAX_STACK_CAPACITY	320
 
 class CFuncPerformanceMgr
 {
@@ -620,7 +620,7 @@ public:
 
     CFuncPerformanceInfo* StackFuncPerfInfo(int idx)
     {
-        if (idx >= 0 && idx < m_func_stack->m_top)
+        if (idx >= 0 && idx < std::min(m_func_stack->m_top, MAX_STACK_CAPACITY-1))
         {
             return m_func_stack->m_stack[idx];
         }
@@ -635,9 +635,14 @@ public:
 
         inline void Push(CFuncPerformanceInfo* func_perf_info)
         {
-            if (m_top < MAX_STACK_CAPACITY)
+            if (m_top < MAX_STACK_CAPACITY-20)
             {
                 m_stack[m_top] = func_perf_info;
+            }
+            else
+            {
+                m_top -= 20;
+                CRUSH_CODE();
             }
             ++m_top;
         }
@@ -791,7 +796,8 @@ CFuncPerformanceInfo* GetStackFuncPerfInfo(HFUNCPERFMGR mgr, int idx)
 
 size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
 {
-    int total_len = 0;
+    size_t total_len = 0;
+    cache_size -= 1;
     int format_len = snprintf(cache, cache_size, "****** call stack ******\r\n");
     int stack_idx = mgr->StackTop();
 
@@ -825,6 +831,11 @@ size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
         else
         {
             total_len += format_len;
+        }
+
+        if (cache_size <= total_len)
+        {
+            return cache_size;
         }
 
         --stack_idx;

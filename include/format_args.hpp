@@ -210,12 +210,38 @@ struct SFormatArgs<const char(&)[N], Rest...>
 
     virtual void format_to_buffer(my_fmt_memory_buffer& buffer)
     {
-        format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        try
+        {
+            format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        }
+        catch (fmt::format_error e)
+        {
+            buffer.clear();
+            fmt::format_to(buffer, u8"fmt::error=[{}] data=[{}]", e.what(), value);
+        }
+        catch (...)
+        {
+            buffer.clear();
+            fmt::format_to(buffer, u8"fmt::error=[unknow] data=[{}]", value);
+        }
     }
 
     virtual void format_c_to_buffer(my_fmt_memory_buffer& buffer)
     {
-        format_c_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        try
+        {
+            format_c_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
+        }
+        catch (fmt::format_error e)
+        {
+            buffer.clear();
+            fmt::format_to(buffer, u8"fmt::error=[{}] data=[{}]", e.what(), value);
+        }
+        catch (...)
+        {
+            buffer.clear();
+            fmt::format_to(buffer, u8"fmt::error=[unknow] data=[{}]", value);
+        }
     }
 
     const char* value;
@@ -283,7 +309,7 @@ void format_to_buffer_impl(my_fmt_memory_buffer& buffer, SFormatArgs<Rest...> &a
 
 inline void vprintf_to_buffer(my_fmt_memory_buffer& buffer, fmt::string_view format_str, fmt::printf_args args)
 {
-    fmt::printf(buffer, format_str, args);
+    fmt::vprintf(buffer, format_str, args);
 }
 
 template <typename... Args>

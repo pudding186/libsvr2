@@ -653,23 +653,26 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
 
         cmd->logger->log_ack++;
 
-        print_cmd pt_cmd;
-        pt_cmd.data_len = out_prefix.size() + out_data.size();
-        pt_cmd.lv = cmd->lv;
-
-        if (loop_cache_free_size(m_print_data_cache) > sizeof(print_cmd) + pt_cmd.data_len)
+        if (cmd->lv != log_nul)
         {
-            if (!loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd)))
+            print_cmd pt_cmd;
+            pt_cmd.data_len = out_prefix.size() + out_data.size();
+            pt_cmd.lv = cmd->lv;
+
+            if (loop_cache_free_size(m_print_data_cache) > sizeof(print_cmd) + pt_cmd.data_len)
             {
-                CRUSH_CODE();
-            }
-            if (!loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size()))
-            {
-                CRUSH_CODE();
-            }
-            if (!loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size()))
-            {
-                CRUSH_CODE();
+                if (!loop_cache_push_data(m_print_data_cache, &pt_cmd, sizeof(print_cmd)))
+                {
+                    CRUSH_CODE();
+                }
+                if (!loop_cache_push_data(m_print_data_cache, out_prefix.data(), out_prefix.size()))
+                {
+                    CRUSH_CODE();
+                }
+                if (!loop_cache_push_data(m_print_data_cache, out_data.data(), out_data.size()))
+                {
+                    CRUSH_CODE();
+                }
             }
         }
     }

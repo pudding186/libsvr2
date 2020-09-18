@@ -44,6 +44,7 @@ public:
     afx_msg void OnBnClickedButtonCode();
     afx_msg void OnBnClickedButtonXml();
     afx_msg void OnBnClickedButtonXmlEx();
+    afx_msg void OnBnClickedButtonXmlAll();
     afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
     afx_msg void OnMenuAllCancel();
     afx_msg void OnMenuAllSelect();
@@ -67,7 +68,8 @@ public:
         unsigned int elapse,
         std::wstring table_name,
         CTableMaker* server_table,
-        CTableMaker* client_table);
+        CTableMaker* client_table,
+        CTableMaker* all_table);
 
     void AddCodeResult(
         int idx,
@@ -88,6 +90,7 @@ protected:
     std::vector<std::wstring> m_excel_file_list;
     std::map<std::wstring, CTableMaker*>m_maker_server_list;
     std::map<std::wstring, CTableMaker*>m_maker_client_list;
+    std::map<std::wstring, CTableMaker*>m_maker_all_list;
     std::set<std::wstring> m_selected_table;
     std::map<std::wstring, bool> m_excel_load_list;
     std::map<std::wstring, bool> m_code_gen_list;

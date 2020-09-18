@@ -59,6 +59,7 @@ BEGIN_MESSAGE_MAP(CTableMakerDlg, CDialogEx)
     ON_BN_CLICKED(IDC_BUTTON_CODE, &CTableMakerDlg::OnBnClickedButtonCode)
     ON_BN_CLICKED(IDC_BUTTON_XML, &CTableMakerDlg::OnBnClickedButtonXml)
     ON_BN_CLICKED(IDC_BUTTON_XML_EX, &CTableMakerDlg::OnBnClickedButtonXmlEx)
+    ON_BN_CLICKED(IDC_BUTTON_XML_ALL, &CTableMakerDlg::OnBnClickedButtonXmlAll)
     ON_WM_CONTEXTMENU()
     ON_COMMAND(ID_MENU_ALL_CANCEL, &CTableMakerDlg::OnMenuAllCancel)
     ON_COMMAND(ID_MENU_ALL_SELECT, &CTableMakerDlg::OnMenuAllSelect)
@@ -176,6 +177,8 @@ BOOL CTableMakerDlg::OnInitDialog()
     GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
     GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
     GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
+    GetDlgItem(IDC_BUTTON_XML_ALL)->EnableWindow(FALSE);
+
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -277,15 +280,22 @@ void CTableMakerDlg::OnLvnItemchangedListExcel(NMHDR* pNMHDR, LRESULT* pResult)
                 all_excel_load_success = false;
                 break;
             }
+
+            if (m_maker_all_list.find(load_excel) == m_maker_all_list.end())
+            {
+                all_excel_load_success = false;
+                break;
+            }
         }
     }
 
-    if (all_excel_load_success && m_maker_server_list.size() && m_maker_client_list.size())
+    if (all_excel_load_success && m_maker_server_list.size() && m_maker_client_list.size() && m_maker_all_list.size())
     {
         GetDlgItem(IDC_BUTTON_LOAD)->EnableWindow(TRUE);
         GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(TRUE);
         GetDlgItem(IDC_BUTTON_XML)->EnableWindow(TRUE);
         GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(TRUE);
+        GetDlgItem(IDC_BUTTON_XML_ALL)->EnableWindow(TRUE);
     }
     else
     {
@@ -293,6 +303,7 @@ void CTableMakerDlg::OnLvnItemchangedListExcel(NMHDR* pNMHDR, LRESULT* pResult)
         GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
         GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
         GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
+        GetDlgItem(IDC_BUTTON_XML_ALL)->EnableWindow(FALSE);
     }
 
     *pResult = 0;
@@ -322,6 +333,16 @@ void CTableMakerDlg::OnBnClickedButtonLoad()
     }
 
     m_maker_server_list.clear();
+
+    for (auto it = m_maker_all_list.begin();
+        it != m_maker_all_list.end(); ++it)
+    {
+        delete it->second;
+    }
+
+    m_maker_all_list.clear();
+
+
     m_excel_load_list.clear();
     m_selected_table.clear();
     m_excel_load_tick = get_tick();
@@ -425,6 +446,44 @@ void CTableMakerDlg::OnBnClickedButtonXmlEx()
             auto it_maker = m_maker_client_list.find(tmp);
 
             if (it_maker != m_maker_client_list.end())
+            {
+                table_maker = it_maker->second;
+            }
+
+            int idx = m_result_box.AddLine(CXListBox::Blue, CXListBox::White, msg.c_str());
+            g_task_mgr.AddTask(g_task_mgr.CreateTask<GenXmlTask>(idx, m_excel_path, tmp, m_xml_path, table_maker));
+        }
+    }
+
+    if (m_selected_table.size() > 0)
+    {
+        GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
+    }
+}
+
+void CTableMakerDlg::OnBnClickedButtonXmlAll()
+{
+    m_selected_table.clear();
+    m_xml_gen_list.clear();
+    m_gen_xml_tick = get_tick();
+
+    for (size_t i = 0; i < m_excel_file_list.size(); i++)
+    {
+        if (m_excel_list.GetCheck(i))
+        {
+            std::wstring tmp = m_excel_file_list[i];
+            tmp = tmp.substr(0, tmp.length() - wcslen(L".xlsx"));
+            m_selected_table.insert(tmp);
+            std::wstring msg = L"生成";
+            msg += m_excel_file_list[i];
+            msg += L"  对应XML";
+
+            CTableMaker* table_maker = 0;
+            m_selected_table.insert(tmp);
+
+            auto it_maker = m_maker_all_list.find(tmp);
+
+            if (it_maker != m_maker_all_list.end())
             {
                 table_maker = it_maker->second;
             }
@@ -609,7 +668,8 @@ void CTableMakerDlg::AddExcelResult(
     unsigned int elapse, 
     std::wstring table_name, 
     CTableMaker* server_table, 
-    CTableMaker* client_table)
+    CTableMaker* client_table,
+    CTableMaker* all_table)
 {
     float real_elapse = (float)(get_tick() - m_excel_load_tick);
 
@@ -640,6 +700,7 @@ void CTableMakerDlg::AddExcelResult(
 
         m_maker_server_list[table_name] = server_table;
         m_maker_client_list[table_name] = client_table;
+        m_maker_all_list[table_name] = all_table;
         m_excel_load_list[table_name] = true;
     }
 
@@ -676,6 +737,7 @@ void CTableMakerDlg::AddExcelResult(
             GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(TRUE);
             GetDlgItem(IDC_BUTTON_XML)->EnableWindow(TRUE);
             GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(TRUE);
+            GetDlgItem(IDC_BUTTON_XML_ALL)->EnableWindow(TRUE);
         }
         else
         {
@@ -686,6 +748,7 @@ void CTableMakerDlg::AddExcelResult(
             GetDlgItem(IDC_BUTTON_CODE)->EnableWindow(FALSE);
             GetDlgItem(IDC_BUTTON_XML)->EnableWindow(FALSE);
             GetDlgItem(IDC_BUTTON_XML_EX)->EnableWindow(FALSE);
+            GetDlgItem(IDC_BUTTON_XML_ALL)->EnableWindow(FALSE);
         }
         //m_progress.DestroyWindow();
         //m_progress.DestroyWindow();

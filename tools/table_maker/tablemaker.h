@@ -77,6 +77,7 @@ protected:
     void _print_func_InitColInfo_UnInitColInfo_GetColVar(FILE* hpp_file);
     void _print_func_RegLuaDelegate(FILE* hpp_file);
     void _print_func_ReLoadLua(FILE* hpp_file);
+    void _print_func_Lua_TableData(FILE* hpp_file);
 protected:
     std::string         m_table_name;
     table_column_info   m_table_column;

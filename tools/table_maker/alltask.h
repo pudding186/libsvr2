@@ -148,6 +148,7 @@ public:
         m_err_info = L"";
         m_table_client = 0;
         m_table_server = 0;
+        m_table_all = 0;
     }
 
     virtual void OnProc(TaskProc* proc) override
@@ -243,8 +244,9 @@ public:
             column_info info;
             key_info info_k;
 
-            m_table_server = new CTableMaker(table_name_local.substr(0, table_name_local.length()-strlen(".xlsx")));
+            m_table_server = new CTableMaker(table_name_local.substr(0, table_name_local.length() - strlen(".xlsx")));
             m_table_client = new CTableMaker(table_name_local.substr(0, table_name_local.length() - strlen(".xlsx")));
+            m_table_all = new CTableMaker(table_name_local.substr(0, table_name_local.length() - strlen(".xlsx")));
 
             for (long row = 2; row <= row_count; row++)
             {
@@ -395,6 +397,7 @@ public:
                         info_key_name.m_key_order.push_back(info.m_col_name);
                         m_table_server->add_key(info_key_name);
                         m_table_client->add_key(info_key_name);
+                        m_table_all->add_key(info_key_name);
                     }
                 }
 
@@ -406,11 +409,23 @@ public:
                     {
                         std::runtime_error(err_info.c_str());
                     }
+
+                    err_info = m_table_all->add_column(info);
+                    if (err_info.length())
+                    {
+                        std::runtime_error(err_info.c_str());
+                    }
                 }
 
                 if (gen_server)
                 {
                     std::string err_info = m_table_server->add_column(info);
+                    if (err_info.length())
+                    {
+                        std::runtime_error(err_info.c_str());
+                    }
+
+                    err_info = m_table_all->add_column(info);
                     if (err_info.length())
                     {
                         std::runtime_error(err_info.c_str());
@@ -425,6 +440,7 @@ public:
             }
             m_table_server->add_key(info_k);
             m_table_client->add_key(info_k);
+            m_table_all->add_key(info_k);
 
         }
         catch (std::runtime_error& e)
@@ -438,9 +454,15 @@ public:
             {
                 delete m_table_server;
             }
+
+            if (m_table_all)
+            {
+                delete m_table_all;
+            }
             
             m_table_client = 0;
             m_table_server = 0;
+            m_table_all = 0;
 
             if (cur_row_col_name.length())
             {
@@ -467,7 +489,8 @@ public:
             m_elapse, 
             m_table_name.substr(0, m_table_name.length() - wcslen(L".xlsx")),
             m_table_server, 
-            m_table_client);
+            m_table_client,
+            m_table_all);
     }
 protected:
     int         m_idx;
@@ -477,6 +500,7 @@ protected:
     std::wstring    m_table_name;
     CTableMaker*    m_table_server;
     CTableMaker*    m_table_client;
+    CTableMaker*    m_table_all;
 
 private:
 };
@@ -601,6 +625,41 @@ bool stringToULL(const std::string& str, unsigned long long& val)
     return isOK;
 }
 
+void xml_escape_string(std::string& value)
+{
+    std::string escape_str;
+
+    const char* ptr = value.c_str();
+
+    const char* end = ptr + value.length();
+
+    while (ptr < end)
+    {
+        switch (*ptr)
+        {
+        case '&':
+            escape_str.append(u8"&amp;");
+        	break;
+        case '>':
+            escape_str.append(u8"&gt;");
+            break;
+        case '<':
+            escape_str.append(u8"&lt;");
+            break;
+        case '\"':
+            escape_str.append(u8"&quot;");
+            break;
+        case '\'':
+            escape_str.append(u8"&apos;");
+            break;
+        default:
+            escape_str.append(ptr, 1);
+        }
+        ++ptr;
+    }
+
+    value = escape_str;
+}
 
 class GenXmlTask:
     public ITask
@@ -902,6 +961,8 @@ public:
 
                     }
 
+                    xml_escape_string(value);
+
                     std::string content = it->second + u8"=\"" + value + u8"\" ";
 
                     if (content.find("EXCEL_STRING") != std::string::npos)
@@ -991,3 +1052,4 @@ protected:
     CTableMaker*    m_table_maker;
 private:
 };
+
