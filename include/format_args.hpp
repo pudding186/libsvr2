@@ -120,8 +120,6 @@ struct SFormatArgs<First, Rest...>
         :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
         value(std::forward<First>(first)){}
 
-    size_t size() { return sizeof...(Rest); }
-
     typename std::enable_if <
         std::is_integral<First>::value ||
         std::is_floating_point<First>::value ||
@@ -136,8 +134,6 @@ struct SFormatArgs<First*, Rest...>
     SFormatArgs(First*&& first, Rest&&... rest)
         :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
         value(std::forward<First*>(first)){}
-
-    size_t size() { return sizeof...(Rest); }
 
     void* value;
 };
@@ -214,7 +210,7 @@ struct SFormatArgs<const char(&)[N], Rest...>
         {
             format_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
         }
-        catch (fmt::format_error e)
+        catch (const fmt::format_error& e)
         {
             buffer.clear();
             fmt::format_to(buffer, u8"fmt::error=[{}] data=[{}]", e.what(), value);
@@ -232,7 +228,7 @@ struct SFormatArgs<const char(&)[N], Rest...>
         {
             format_c_to_buffer_impl(buffer, *this, idx_seq_type<sizeof...(Rest) + 1>());
         }
-        catch (fmt::format_error e)
+        catch (const fmt::format_error& e)
         {
             buffer.clear();
             fmt::format_to(buffer, u8"fmt::error=[{}] data=[{}]", e.what(), value);
@@ -296,7 +292,7 @@ struct SFormatElement<N, SFormatArgs<T, Rest...>>
     :public SFormatElement<N - 1, SFormatArgs<Rest...>> {};
 
 template <size_t N, typename... Rest>
-typename SFormatElement<N, SFormatArgs<Rest...>>::type& get(SFormatArgs<Rest...> &stp) {
+typename SFormatElement<N, SFormatArgs<Rest...>>::type& SFormatArgsGet(SFormatArgs<Rest...> &stp) {
     typedef typename SFormatElement<N, SFormatArgs<Rest...>>::SFormatType type;
     return ((type &)stp).value;
 }
@@ -304,7 +300,7 @@ typename SFormatElement<N, SFormatArgs<Rest...>>::type& get(SFormatArgs<Rest...>
 template<typename... Rest, size_t... I>
 void format_to_buffer_impl(my_fmt_memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
-    fmt::format_to(buffer, get<I>(args)...);
+    fmt::format_to(buffer, SFormatArgsGet<I>(args)...);
 }
 
 inline void vprintf_to_buffer(my_fmt_memory_buffer& buffer, fmt::string_view format_str, fmt::printf_args args)
@@ -321,7 +317,7 @@ inline void printf_to_buffer(my_fmt_memory_buffer& buffer, fmt::string_view form
 template<typename... Rest, size_t... I>
 void format_c_to_buffer_impl(my_fmt_memory_buffer& buffer, SFormatArgs<Rest...> &args, idx_seq<I...>)
 {
-    printf_to_buffer(buffer, get<I>(args)...);
+    printf_to_buffer(buffer, SFormatArgsGet<I>(args)...);
 }
 
 //////////////////////////////////////////////////////////////////////////

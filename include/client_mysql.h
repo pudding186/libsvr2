@@ -13,9 +13,9 @@ extern "C" {
 
     typedef struct st_client_mysql_result
     {
-        unsigned int    error_code;
         MYSQL*          cur_mysql;
         MYSQL_RES*      record_set;
+        unsigned int    error_code;
         my_ulonglong    affect_row;
     }CLIENTMYSQLRES, *HCLIENTMYSQLRES;
 
@@ -77,7 +77,7 @@ extern "C" {
 
     extern long long (client_mysql_value_int64)(CLIENTMYSQLVALUE data);
 
-    extern unsigned long (client_mysql_escape_string)(HCLIENTMYSQL connection, char* src, unsigned long src_size, char* dst, unsigned long dst_size);
+    extern unsigned long (client_mysql_escape_string)(HCLIENTMYSQL connection, const char* src, unsigned long src_size, char* dst, unsigned long dst_size);
 
     extern const char* (client_mysql_err)(HCLIENTMYSQL connection);
 

@@ -112,22 +112,22 @@ class mem_trace
 public:
     CThreadLock m_lock;
     HRBTREE     m_trace_info_map;
-    HRBTREE     m_trace_ptr_map;
+    //HRBTREE     m_trace_ptr_map;
     HMEMORYUNIT m_trace_info_unit;
-    HMEMORYUNIT m_trace_ptr_unit;
+    //HMEMORYUNIT m_trace_ptr_unit;
 
     mem_trace()
     {
         m_trace_info_map = create_rb_tree_ex(trace_info_cmp,
             create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
 
-        m_trace_ptr_map = create_rb_tree_ex(trace_ptr_cmp,
-            create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
+        //m_trace_ptr_map = create_rb_tree_ex(trace_ptr_cmp,
+        //    create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
 
         m_trace_info_unit = create_memory_unit(sizeof(mem_trace_info));
         memory_unit_set_grow_count(m_trace_info_unit, 128);
-        m_trace_ptr_unit = create_memory_unit(sizeof(ptr_info));
-        memory_unit_set_grow_count(m_trace_ptr_unit, 8192);
+        //m_trace_ptr_unit = create_memory_unit(sizeof(ptr_info));
+        //memory_unit_set_grow_count(m_trace_ptr_unit, 8192);
     }
 
     ~mem_trace()
@@ -138,114 +138,181 @@ public:
             destroy_memory_unit(rb_tree_unit(m_trace_info_map));
         }
 
-        if (m_trace_ptr_map)
-        {
-            destroy_memory_unit(rb_node_unit(m_trace_ptr_map));
-            destroy_memory_unit(rb_tree_unit(m_trace_ptr_map));
-        }
+        //if (m_trace_ptr_map)
+        //{
+        //    destroy_memory_unit(rb_node_unit(m_trace_ptr_map));
+        //    destroy_memory_unit(rb_tree_unit(m_trace_ptr_map));
+        //}
 
         if (m_trace_info_unit)
         {
             destroy_memory_unit(m_trace_info_unit);
         }
 
-        if (m_trace_ptr_unit)
-        {
-            destroy_memory_unit(m_trace_ptr_unit);
-        }
+        //if (m_trace_ptr_unit)
+        //{
+        //    destroy_memory_unit(m_trace_ptr_unit);
+        //}
     }
 };
 
 mem_trace g_mem_trace;
 
-void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t size)
+void _trace_memory(const char* name, const char* file, int line, trace_sign* sign)
 {
-    if (!ptr)
-    {
-        return;
-    }
     HRBNODE node;
-    mem_trace_info info;
-    mem_trace_info* exist_info;
-    ptr_info* _ptr_info;
+    //mem_trace_info* exist_info;
 
-    info.file = file;
-    info.line = line;
-    info.name = name;
+    mem_trace_info find_info;
 
-    g_mem_trace.m_lock.Lock();
+    find_info.file = file;
+    find_info.line = line;
+    find_info.name = name;
 
-    node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &info);
+    node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &find_info);
 
-    if (node)
+    if (!node)
     {
-        exist_info = (mem_trace_info*)rb_node_key_user(node);
-        exist_info->size += size;
-        exist_info->alloc++;
+        sign->m_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
+        sign->m_info->file = file;
+        sign->m_info->line = line;
+        sign->m_info->name = name;
+        sign->m_info->size = sign->m_size;
+        sign->m_info->alloc = 1;
+        sign->m_info->free = 0;
+
+        g_mem_trace.m_lock.Lock();
+        bool ret = rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, sign->m_info, 0, &node);
+        g_mem_trace.m_lock.UnLock();
+
+        if (ret)
+        {
+            return;
+        }
+        else
+        {
+            memory_unit_free(g_mem_trace.m_trace_info_unit, sign->m_info);
+            sign->m_info = (mem_trace_info*)rb_node_key_user(node);
+        }
     }
     else
     {
-        exist_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
-        exist_info->file = file;
-        exist_info->line = line;
-        exist_info->name = name;
-        exist_info->size = size;
-        exist_info->alloc = 1;
-        exist_info->free = 0;
-
-        if (!rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, exist_info, 0, &node))
-        {
-            CRUSH_CODE();
-        }
+        sign->m_info = (mem_trace_info*)rb_node_key_user(node);
     }
 
-    _ptr_info = (ptr_info*)memory_unit_alloc(g_mem_trace.m_trace_ptr_unit);
-
-    _ptr_info->info = exist_info;
-    _ptr_info->size = size;
-
-    if (!rb_tree_try_insert_user(g_mem_trace.m_trace_ptr_map, ptr, _ptr_info, &node))
-    {
-        CRUSH_CODE();
-    }
-    g_mem_trace.m_lock.UnLock();
+#ifdef _MSC_VER
+    InterlockedAdd64((LONG64*)(&sign->m_info->size), sign->m_size);
+    InterlockedIncrement64((LONG64*)(&sign->m_info->alloc));
+#elif __GNUC__
+    __atomic_add_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
+    __atomic_add_fetch(&(sign->m_info->alloc), 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
 }
 
-void trace_free(void* ptr)
+extern void _check_memory(trace_sign* sign)
 {
-    if (!ptr)
-    {
-        return;
-    }
-    ptr_info* _ptr_info;
-
-    g_mem_trace.m_lock.Lock();
-
-    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_ptr_map, ptr);
-
-    if (node)
-    {
-        _ptr_info = (ptr_info*)rb_node_value_user(node);
-
-        if (_ptr_info->info->size < _ptr_info->size)
-        {
-            CRUSH_CODE();
-        }
-
-        _ptr_info->info->size -= _ptr_info->size;
-        _ptr_info->info->free++;
-
-        rb_tree_erase(g_mem_trace.m_trace_ptr_map, node);
-
-        memory_unit_free(g_mem_trace.m_trace_ptr_unit, _ptr_info);
-    }
-    else
-    {
-        CRUSH_CODE();
-    }
-
-    g_mem_trace.m_lock.UnLock();
+#ifdef _MSC_VER
+    LONG64 s_size = sign->m_size;
+    InterlockedAdd64((LONG64*)(&sign->m_info->size), -s_size);
+    InterlockedIncrement64((LONG64*)(&sign->m_info->free));
+#elif __GNUC__
+    __atomic_sub_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
+    __atomic_add_fetch(&(sign->m_info->free), 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
 }
+
+//void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t size)
+//{
+//    if (!ptr)
+//    {
+//        return;
+//    }
+//    HRBNODE node;
+//    mem_trace_info info;
+//    mem_trace_info* exist_info;
+//    ptr_info* _ptr_info;
+//
+//    info.file = file;
+//    info.line = line;
+//    info.name = name;
+//
+//    g_mem_trace.m_lock.Lock();
+//
+//    node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &info);
+//
+//    if (node)
+//    {
+//        exist_info = (mem_trace_info*)rb_node_key_user(node);
+//        exist_info->size += size;
+//        exist_info->alloc++;
+//    }
+//    else
+//    {
+//        exist_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
+//        exist_info->file = file;
+//        exist_info->line = line;
+//        exist_info->name = name;
+//        exist_info->size = size;
+//        exist_info->alloc = 1;
+//        exist_info->free = 0;
+//
+//        if (!rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, exist_info, 0, &node))
+//        {
+//            CRUSH_CODE();
+//        }
+//    }
+//
+//    _ptr_info = (ptr_info*)memory_unit_alloc(g_mem_trace.m_trace_ptr_unit);
+//
+//    _ptr_info->info = exist_info;
+//    _ptr_info->size = size;
+//
+//    if (!rb_tree_try_insert_user(g_mem_trace.m_trace_ptr_map, ptr, _ptr_info, &node))
+//    {
+//        CRUSH_CODE();
+//    }
+//    g_mem_trace.m_lock.UnLock();
+//}
+//
+//void trace_free(void* ptr)
+//{
+//    if (!ptr)
+//    {
+//        return;
+//    }
+//    ptr_info* _ptr_info;
+//
+//    g_mem_trace.m_lock.Lock();
+//
+//    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_ptr_map, ptr);
+//
+//    if (node)
+//    {
+//        _ptr_info = (ptr_info*)rb_node_value_user(node);
+//
+//        if (_ptr_info->info->size < _ptr_info->size)
+//        {
+//            CRUSH_CODE();
+//        }
+//
+//        _ptr_info->info->size -= _ptr_info->size;
+//        _ptr_info->info->free++;
+//
+//        rb_tree_erase(g_mem_trace.m_trace_ptr_map, node);
+//
+//        memory_unit_free(g_mem_trace.m_trace_ptr_unit, _ptr_info);
+//    }
+//    else
+//    {
+//        CRUSH_CODE();
+//    }
+//
+//    g_mem_trace.m_lock.UnLock();
+//}
 
 HRBNODE mem_trace_info_head(void)
 {

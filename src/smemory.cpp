@@ -18,8 +18,6 @@ extern "C"
 	extern TLS_VAR HMEMORYUNIT def_json_node_unit;
 }
 
-extern TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr;
-
 static TLS_VAR HMEMORYMANAGER   def_mem_mgr = 0;
 
 extern void check_log_proc(void);
@@ -73,21 +71,10 @@ namespace SMemory
             {
                 def_json_node_unit = create_memory_unit(sizeof(json_node));
             }
-
-            if (!def_func_perf_mgr)
-            {
-                def_func_perf_mgr = CreateFuncPerfMgr();
-            }
         }
         ~DefMemInit()
         {
             check_log_proc();
-
-            if (def_func_perf_mgr)
-            {
-                DestroyFuncPerfMgr(def_func_perf_mgr);
-                def_func_perf_mgr = 0;
-            }
 
             if (def_json_node_unit)
             {
@@ -159,8 +146,22 @@ namespace SMemory
 
     void TraceDelete(void* ptr)
     {
-        trace_free(ptr);
-        Delete(ptr);
+        if (!ptr)
+        {
+            return;
+        }
+        IClassMemory** pool = (IClassMemory**)((unsigned char*)ptr - sizeof(trace_sign) - sizeof(IClassMemory**));
+
+        trace_sign* sign = (trace_sign*)((unsigned char*)ptr - sizeof(trace_sign));
+
+        if (!(*pool)->IsValidPtr(sign))
+        {
+            CRUSH_CODE();
+        }
+
+        _check_memory(sign);
+
+        Delete(sign);
     }
 
     IClassMemory::IClassMemory(void)
@@ -214,27 +215,59 @@ namespace SMemory
 
     void* IClassMemory::TraceAlloc(size_t mem_size, const char* file, int line)
     {
-        void* mem = memory_manager_alloc(def_mem_mgr, mem_size);
-        trace_alloc("alloc", file, line, mem, mem_size);
+        //void* mem = memory_manager_alloc(def_mem_mgr, mem_size);
+        //trace_alloc("alloc", file, line, mem, mem_size);
 
-        return mem;
+        void* mem = memory_manager_alloc(def_mem_mgr, mem_size + sizeof(trace_sign));
+
+        trace_sign* sign = (trace_sign*)mem;
+        sign->m_size = mem_size;
+
+        _trace_memory("alloc", file, line, sign);
+
+        return ((unsigned char*)mem + sizeof(trace_sign));
     }
 
     void* IClassMemory::TraceRealloc(void* old_mem, size_t new_size, const char* file, int line)
     {
         if (old_mem)
         {
-            trace_free(old_mem);
+            trace_sign* sign = (trace_sign*)((unsigned char*)old_mem - sizeof(trace_sign));
+            old_mem = sign;
+
+            if (!IsValidMem(sign))
+            {
+                CRUSH_CODE();
+            }
+
+            _check_memory(sign);
         }
-        void* new_mem = memory_manager_realloc(def_mem_mgr, old_mem, new_size);
-        trace_alloc("realloc", file, line, new_mem, new_size);
-        return new_mem;
+        void* new_mem = memory_manager_realloc(def_mem_mgr, old_mem, new_size + sizeof(trace_sign));
+        
+        trace_sign* sign = (trace_sign*)new_mem;
+        sign->m_size = new_size;
+        
+        _trace_memory("alloc", file, line, sign);
+
+        //trace_alloc("realloc", file, line, new_mem, new_size);
+        return ((unsigned char*)new_mem + sizeof(trace_sign));
     }
 
     void IClassMemory::TraceFree(void* mem)
     {
-        trace_free(mem);
-        memory_manager_free(def_mem_mgr, mem);
+        if (!mem)
+        {
+            return;
+        }
+        trace_sign* sign = (trace_sign*)((unsigned char*)mem - sizeof(trace_sign));
+
+        if (!IsValidMem(sign))
+        {
+            CRUSH_CODE();
+        }
+
+        _check_memory(sign);
+        memory_manager_free(def_mem_mgr, sign);
     }
 
     HMEMORYMANAGER IClassMemory::DefMemMgr(void)

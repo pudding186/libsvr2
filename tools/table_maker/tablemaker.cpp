@@ -1376,6 +1376,11 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
     fprintf(hpp_file, u8"        {\r\n");
     fprintf(hpp_file, u8"            data_count++;\r\n");
     fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        if (!data_count)\r\n");
+    fprintf(hpp_file, u8"        {\r\n");
+    fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"table row count = 0!\");\r\n");
+    fprintf(hpp_file, u8"            return false;\r\n");
+    fprintf(hpp_file, u8"        }\r\n");
     fprintf(hpp_file, u8"        m_data_arry = S_NEW(%s*, data_count);\r\n", m_struct_name.c_str());
     fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
     size_t key_count = 1;
@@ -1467,6 +1472,11 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
     fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
     fprintf(hpp_file, u8"        {\r\n");
     fprintf(hpp_file, u8"            data_count++;\r\n");
+    fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        if (data_count < m_data_arry_size)\r\n");
+    fprintf(hpp_file, u8"        {\r\n");
+    fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"reload fail row count old = %%zu > new = %%zu\", m_data_arry_size, data_count);\r\n");
+    fprintf(hpp_file, u8"            return false;\r\n");
     fprintf(hpp_file, u8"        }\r\n");
     fprintf(hpp_file, u8"        if (m_data_arry)\r\n");
     fprintf(hpp_file, u8"        {\r\n");

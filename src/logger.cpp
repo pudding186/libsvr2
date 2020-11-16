@@ -29,7 +29,7 @@
 #define MAX_LOG_FILE_PATH       1024
 #define MAX_LOG_FILE_SIZE       1024*1024*1024
 
-typedef enum st_log_option
+typedef enum e_log_option
 {
     opt_write   = 0x00000001,
     opt_write_c = (0x00000001 << 1),
@@ -55,12 +55,12 @@ typedef struct st_log_queue
 typedef struct st_log_obj_pool
 {
     struct st_log_obj_pool* next_pool;
-    SMemory::IClassMemory* obj_pool;
+    SMemory::IClassMemory*  obj_pool;
 }log_obj_pool;
 typedef struct st_log_mem_pool
 {
     struct st_log_mem_pool* next_pool;
-    HMEMORYMANAGER              mem_pool;
+    HMEMORYMANAGER          mem_pool;
 }log_mem_pool;
 
 typedef struct st_log_proc

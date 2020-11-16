@@ -5,6 +5,8 @@
 #include "../../include/timer.h"
 #include "TableMakerDlg.h"
 #include <vector>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string>
 #include "../../../dmxlsx/include/dmxlsx.h"
 
@@ -243,6 +245,7 @@ public:
 
             column_info info;
             key_info info_k;
+            key_info info_kc;
 
             m_table_server = new CTableMaker(table_name_local.substr(0, table_name_local.length() - strlen(".xlsx")));
             m_table_client = new CTableMaker(table_name_local.substr(0, table_name_local.length() - strlen(".xlsx")));
@@ -384,8 +387,17 @@ public:
 
                 if (is_key == 1)
                 {
-                    info_k.m_key_list.insert(info.m_col_name);
-                    info_k.m_key_order.push_back(info.m_col_name);
+                    if (gen_server)
+                    {
+                        info_k.m_key_list.insert(info.m_col_name);
+                        info_k.m_key_order.push_back(info.m_col_name);
+                    }
+
+                    if (gen_client)
+                    {
+                        info_kc.m_key_list.insert(info.m_col_name);
+                        info_kc.m_key_order.push_back(info.m_col_name);
+                    }
                 }
                 else
                 {
@@ -395,8 +407,17 @@ public:
                         key_info info_key_name;
                         info_key_name.m_key_list.insert(info.m_col_name);
                         info_key_name.m_key_order.push_back(info.m_col_name);
-                        m_table_server->add_key(info_key_name);
-                        m_table_client->add_key(info_key_name);
+
+                        if (gen_server)
+                        {
+                            m_table_server->add_key(info_key_name);
+                        }
+
+                        if (gen_client)
+                        {
+                            m_table_client->add_key(info_key_name);
+                        }
+
                         m_table_all->add_key(info_key_name);
                     }
                 }
@@ -405,12 +426,6 @@ public:
                 {
 
                     std::string err_info = m_table_client->add_column(info);
-                    if (err_info.length())
-                    {
-                        std::runtime_error(err_info.c_str());
-                    }
-
-                    err_info = m_table_all->add_column(info);
                     if (err_info.length())
                     {
                         std::runtime_error(err_info.c_str());
@@ -424,12 +439,12 @@ public:
                     {
                         std::runtime_error(err_info.c_str());
                     }
+                }
 
-                    err_info = m_table_all->add_column(info);
-                    if (err_info.length())
-                    {
-                        std::runtime_error(err_info.c_str());
-                    }
+                std::string err_info = m_table_all->add_column(info);
+                if (err_info.length())
+                {
+                    std::runtime_error(err_info.c_str());
                 }
 
             }
@@ -439,8 +454,15 @@ public:
                 throw std::runtime_error(u8"key 字段有重复");
             }
             m_table_server->add_key(info_k);
-            m_table_client->add_key(info_k);
+
+            if (info_kc.m_key_list.size() != info_kc.m_key_order.size())
+            {
+                throw std::runtime_error(u8"key 字段有重复");
+            }
+            m_table_client->add_key(info_kc);
+            
             m_table_all->add_key(info_k);
+            m_table_all->add_key(info_kc);
 
         }
         catch (std::runtime_error& e)

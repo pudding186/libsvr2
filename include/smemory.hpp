@@ -10,7 +10,11 @@
 #include "./memory_trace.hpp"
 #ifdef  __cplusplus
 
-#ifdef _DEBUG
+#ifndef TRACE_MEMORY
+#define TRACE_MEMORY
+#endif
+
+#ifdef TRACE_MEMORY
 #ifdef _MSC_VER
 #define S_NEW(type, size, ...) SMemory::TraceNew<type>(size, __FILE__, __LINE__, __VA_ARGS__)
 #elif __GNUC__
@@ -245,10 +249,14 @@ namespace SMemory
     template <typename T, typename... Args>
     T* TraceNew(size_t size, const char* file, int line, Args&&... args)
     {
-        T* obj = get_class_memory<T>().New(size, std::forward<Args>(args)...);
-        trace_alloc(typeid(T).name(), file, line, obj, size * sizeof(T));
+        static const char* name = typeid(T).name();
 
-        return obj;
+        TraceMemory<T>* mem = get_class_memory<TraceMemory<T>>().New(size, std::forward<Args>(args)...);
+        mem->m_sign.m_size = size * sizeof(T);
+
+        _trace_memory(name, file, line, &mem->m_sign);
+
+        return (&mem->m_obj);
     }
 
     extern void TraceDelete(void* ptr);

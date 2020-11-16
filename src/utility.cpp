@@ -564,15 +564,7 @@ size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split
     {
         if (seg_count < max_mem_seg)
         {
-            if (ptr_pos > ptr_begin)
-            {
-                segs[seg_count].mem = ptr_begin;
-            }
-            else if (ptr_pos == ptr_begin)
-            {
-                segs[seg_count].mem = 0;
-            }
-
+            segs[seg_count].mem = ptr_begin;
             segs[seg_count].mem_size = ptr_end - ptr_begin;
         }
 
@@ -586,18 +578,19 @@ size_t split_mem_to_segments(const void* mem, size_t mem_size, const void* split
 
 #define MAX_STACK_CAPACITY	320
 
-class CFuncPerformanceMgr
+class CFuncPerformance
 {
     friend class CFuncPerformanceCheck;
 public:
-    CFuncPerformanceMgr(void)
+    CFuncPerformance(void)
     {
         m_func_list = 0;
-        m_func_stack = 0;
+        //m_func_stack = 0;
         //m_shm_key = 0;
         m_cur_func_perf_info = 0;
+        m_top = 0;
     }
-    ~CFuncPerformanceMgr(void)
+    ~CFuncPerformance(void)
     {
 
     }
@@ -613,114 +606,207 @@ public:
         return m_func_list;
     }
 
-    int StackTop(void)
-    {
-        return m_func_stack->m_top;
-    }
-
     CFuncPerformanceInfo* StackFuncPerfInfo(int idx)
     {
-        if (idx >= 0 && idx < std::min(m_func_stack->m_top, MAX_STACK_CAPACITY-1))
+        if (idx >= 0 && idx < std::min(m_top, MAX_STACK_CAPACITY - 1))
         {
-            return m_func_stack->m_stack[idx];
+            return m_stack[idx];
         }
 
         return 0;
     }
 
-    struct func_stack
+    inline int StackTop(void)
     {
-        int						m_top;
-        CFuncPerformanceInfo*	m_stack[MAX_STACK_CAPACITY];
-
-        inline void Push(CFuncPerformanceInfo* func_perf_info)
-        {
-            if (m_top < MAX_STACK_CAPACITY-20)
-            {
-                m_stack[m_top] = func_perf_info;
-            }
-            else
-            {
-                m_top -= 20;
-                CRUSH_CODE();
-            }
-            ++m_top;
-        }
-
-        inline void Pop(void)
-        {
-            if (m_top > 0)
-            {
-                --m_top;
-            }
-            else
-            {
-                CRUSH_CODE();
-            }
-        }
-    };
-
-    bool Init(void)
-    {
-
-        //if (!shm_key)
-        //{
-        //    m_shm_key = (int)rand_integer(1, INT_MAX);
-        //}
-        //else
-        //    m_shm_key = shm_key;
-
-        //size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
-        //m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
-        m_func_stack = (struct func_stack*)malloc(sizeof(struct func_stack) + sizeof(size_t));
-        if (!m_func_stack)
-        {
-            return false;
-        }
-
-        m_func_stack->m_top = 0;
-        m_cur_func_perf_info = 0;
-
-        return true;
+        return m_top;
     }
 
-    void UnInit(void)
+    inline void Push(CFuncPerformanceInfo* func_perf_info)
     {
-        if (m_func_stack)
+        if (m_top < MAX_STACK_CAPACITY - 20)
         {
-            //shm_free(m_func_stack);
-            free(m_func_stack);
-            m_func_stack = 0;
+            m_stack[m_top] = func_perf_info;
         }
-
-        m_func_list = 0;
+        else
+        {
+            m_top -= 20;
+            CRUSH_CODE();
+        }
+        ++m_top;
     }
 
+    inline void Pop(void)
+    {
+        if (m_top > 0)
+        {
+            --m_top;
+        }
+        else
+        {
+            CRUSH_CODE();
+        }
+    }
 protected:
-    CFuncPerformanceInfo * m_func_list;
-    //void*                   m_shm;
-    //int						m_shm_key;
-    struct func_stack*		m_func_stack;
-    CFuncPerformanceInfo*	m_cur_func_perf_info;
 private:
+    CFuncPerformanceInfo*   m_func_list;
+    CFuncPerformanceInfo*   m_cur_func_perf_info;
+    CFuncPerformanceInfo*   m_stack[MAX_STACK_CAPACITY];
+    int			            m_top;
 };
 
-CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, HFUNCPERFMGR mgr)
+//class CFuncPerformanceMgr
+//{
+//    friend class CFuncPerformanceCheck;
+//public:
+//    CFuncPerformanceMgr(void)
+//    {
+//        m_func_list = 0;
+//        m_func_stack = 0;
+//        //m_shm_key = 0;
+//        m_cur_func_perf_info = 0;
+//    }
+//    ~CFuncPerformanceMgr(void)
+//    {
+//
+//    }
+//
+//    inline void RecordFunc(CFuncPerformanceInfo* func_perf_info)
+//    {
+//        func_perf_info->next = m_func_list;
+//        m_func_list = func_perf_info;
+//    }
+//
+//    CFuncPerformanceInfo* FuncPerfFirst(void)
+//    {
+//        return m_func_list;
+//    }
+//
+//    int StackTop(void)
+//    {
+//        return m_func_stack->m_top;
+//    }
+//
+//    CFuncPerformanceInfo* StackFuncPerfInfo(int idx)
+//    {
+//        if (idx >= 0 && idx < std::min(m_func_stack->m_top, MAX_STACK_CAPACITY-1))
+//        {
+//            return m_func_stack->m_stack[idx];
+//        }
+//
+//        return 0;
+//    }
+//
+//    struct func_stack
+//    {
+//        int						m_top;
+//        CFuncPerformanceInfo*	m_stack[MAX_STACK_CAPACITY];
+//
+//        inline void Push(CFuncPerformanceInfo* func_perf_info)
+//        {
+//            if (m_top < MAX_STACK_CAPACITY-20)
+//            {
+//                m_stack[m_top] = func_perf_info;
+//            }
+//            else
+//            {
+//                m_top -= 20;
+//                CRUSH_CODE();
+//            }
+//            ++m_top;
+//        }
+//
+//        inline void Pop(void)
+//        {
+//            if (m_top > 0)
+//            {
+//                --m_top;
+//            }
+//            else
+//            {
+//                CRUSH_CODE();
+//            }
+//        }
+//    };
+//
+//    bool Init(void)
+//    {
+//
+//        //if (!shm_key)
+//        //{
+//        //    m_shm_key = (int)rand_integer(1, INT_MAX);
+//        //}
+//        //else
+//        //    m_shm_key = shm_key;
+//
+//        //size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
+//        //m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
+//        m_func_stack = (struct func_stack*)malloc(sizeof(struct func_stack) + sizeof(size_t));
+//        if (!m_func_stack)
+//        {
+//            return false;
+//        }
+//
+//        m_func_stack->m_top = 0;
+//        m_cur_func_perf_info = 0;
+//
+//        return true;
+//    }
+//
+//    void UnInit(void)
+//    {
+//        if (m_func_stack)
+//        {
+//            //shm_free(m_func_stack);
+//            free(m_func_stack);
+//            m_func_stack = 0;
+//        }
+//
+//        m_func_list = 0;
+//    }
+//
+//protected:
+//    CFuncPerformanceInfo * m_func_list;
+//    //void*                   m_shm;
+//    //int						m_shm_key;
+//    struct func_stack*		m_func_stack;
+//    CFuncPerformanceInfo*	m_cur_func_perf_info;
+//private:
+//};
+
+//CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, HFUNCPERFMGR mgr)
+//    :func_name(func_name)
+//    , elapse_cycles(0)
+//    , hit_count(0)
+//{
+//    mgr->RecordFunc(this);
+//}
+
+CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, CFuncPerformance& fpf)
     :func_name(func_name)
     , elapse_cycles(0)
     , hit_count(0)
 {
-    mgr->RecordFunc(this);
+    fpf.RecordFunc(this);
 }
 
-CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr)
+//CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr)
+//{
+//    m_mgr = mgr;
+//    m_func_perf_info = info;
+//    m_parent_func_perf_info = mgr->m_cur_func_perf_info;
+//    mgr->m_cur_func_perf_info = info;
+//    mgr->m_func_stack->Push(info);
+//    //m_cycles = __rdtsc();
+//    info->once_cycles = __rdtsc();
+//}
+
+CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, CFuncPerformance& fpf)
 {
-    m_mgr = mgr;
+    m_fpf = &fpf;
     m_func_perf_info = info;
-    m_parent_func_perf_info = mgr->m_cur_func_perf_info;
-    mgr->m_cur_func_perf_info = info;
-    mgr->m_func_stack->Push(info);
-    //m_cycles = __rdtsc();
+    m_parent_func_perf_info = fpf.m_cur_func_perf_info;
+    fpf.m_cur_func_perf_info = info;
+    fpf.Push(info);
     info->once_cycles = __rdtsc();
 }
 
@@ -728,78 +814,80 @@ CFuncPerformanceCheck::~CFuncPerformanceCheck(void)
 {
     //m_cycles = __rdtsc() - m_cycles;
     m_func_perf_info->once_cycles = __rdtsc() - m_func_perf_info->once_cycles;
-    m_mgr->m_func_stack->Pop();
+    //m_mgr->m_func_stack->Pop();
+    m_fpf->Pop();
     m_func_perf_info->elapse_cycles += m_func_perf_info->once_cycles;//m_cycles;
     if (m_parent_func_perf_info)
     {
         m_parent_func_perf_info->elapse_cycles -= m_func_perf_info->once_cycles;//m_cycles;
     }
-    m_mgr->m_cur_func_perf_info = m_parent_func_perf_info;
+    m_fpf->m_cur_func_perf_info = m_parent_func_perf_info;
 }
 
-HFUNCPERFMGR CreateFuncPerfMgr(void)
-{
-    HFUNCPERFMGR mgr = new CFuncPerformanceMgr;
-
-//    if (!shm_key)
-//    {
-//#ifdef _MSC_VER
-//        shm_key = ::GetCurrentThreadId();
-//#elif __GNUC__
-//        shm_key = (int)syscall(__NR_getpid);
-//#else
-//#error "unknown compiler"
-//#endif
+//HFUNCPERFMGR CreateFuncPerfMgr(void)
+//{
+//    HFUNCPERFMGR mgr = new CFuncPerformanceMgr;
 //
+////    if (!shm_key)
+////    {
+////#ifdef _MSC_VER
+////        shm_key = ::GetCurrentThreadId();
+////#elif __GNUC__
+////        shm_key = (int)syscall(__NR_getpid);
+////#else
+////#error "unknown compiler"
+////#endif
+////
+////    }
+//
+//    if (mgr->Init())
+//    {
+//        return mgr;
 //    }
+//    else
+//    {
+//        mgr->UnInit();
+//        delete mgr;
+//
+//        return 0;
+//    }
+//}
+//
+//TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr = 0;
+//
+//void DestroyFuncPerfMgr(HFUNCPERFMGR mgr)
+//{
+//    mgr->UnInit();
+//    delete mgr;
+//}
 
-    if (mgr->Init())
-    {
-        return mgr;
-    }
-    else
-    {
-        mgr->UnInit();
-        delete mgr;
-
-        return 0;
-    }
+CFuncPerformanceInfo* FuncPerfFirst(CFuncPerformance& fpf)
+{
+    return fpf.FuncPerfFirst();
 }
 
-TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr = 0;
-
-void DestroyFuncPerfMgr(HFUNCPERFMGR mgr)
+int GetFuncStackTop(CFuncPerformance& fpf)
 {
-    mgr->UnInit();
-    delete mgr;
+    return fpf.StackTop();
 }
 
-CFuncPerformanceInfo* FuncPerfFirst(HFUNCPERFMGR mgr)
+CFuncPerformanceInfo* GetStackFuncPerfInfo(CFuncPerformance& fpf, int idx)
 {
-    return mgr->FuncPerfFirst();
+    return fpf.StackFuncPerfInfo(idx);
 }
 
-HFUNCPERFMGR DefFuncPerfMgr(void)
+CFuncPerformance& DefFuncPerf(void)
 {
+    static thread_local CFuncPerformance def_func_perf_mgr;
     return def_func_perf_mgr;
 }
 
-int GetFuncStackTop(HFUNCPERFMGR mgr)
-{
-    return mgr->StackTop();
-}
-
-CFuncPerformanceInfo* GetStackFuncPerfInfo(HFUNCPERFMGR mgr, int idx)
-{
-    return mgr->StackFuncPerfInfo(idx);
-}
-
-size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
+size_t FuncStackToCache(CFuncPerformance& fpf, char* cache, size_t cache_size)
 {
     size_t total_len = 0;
     cache_size -= 1;
     int format_len = snprintf(cache, cache_size, "****** call stack ******\r\n");
-    int stack_idx = mgr->StackTop();
+    int stack_idx = fpf.StackTop();
 
     if (format_len < 0)
     {
@@ -812,7 +900,7 @@ size_t FuncStackToCache(HFUNCPERFMGR mgr, char* cache, size_t cache_size)
 
     while (stack_idx > 0)
     {
-        CFuncPerformanceInfo* info = mgr->StackFuncPerfInfo(stack_idx - 1);
+        CFuncPerformanceInfo* info = fpf.StackFuncPerfInfo(stack_idx - 1);
         if (info)
         {
             format_len = snprintf(cache + total_len, cache_size - total_len,

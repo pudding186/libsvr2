@@ -279,16 +279,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
         client_mysql_ptr->db, 
         client_mysql_ptr->port, 0, CLIENT_MULTI_STATEMENTS))
     {
-        //if (err_info)
-        //{
-        //    const char* err = mysql_error(client_mysql_ptr->real_mysql);
-
-        //    size_t err_len = strnlen(err, err_info_size - 1);
-        //    memcpy(err_info, err, err_len + 1);
-        //    err_info[err_info_size - 1] = '\0';
-        //}
-        //destroy_client_mysql(client_mysql_ptr);
-        //return 0;
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
@@ -298,16 +288,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     if (!client_mysql_result_success(&mysql_result))
     {
-        //if (err_info)
-        //{
-        //    const char* err = mysql_error(client_mysql_ptr->real_mysql);
-
-        //    size_t err_len = strnlen(err, err_info_size - 1);
-        //    memcpy(err_info, err, err_len + 1);
-        //    err_info[err_info_size - 1] = '\0';
-        //}
-        //destroy_client_mysql(client_mysql_ptr);
-        //return 0;
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
@@ -331,14 +311,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     if (!character_support)
     {
-        //if (err_info)
-        //{
-        //    sprintf_s(err_info, err_info_size, "character %s not support", charact_set);
-        //    err_info[err_info_size - 1] = '\0';
-        //}
-        //destroy_client_mysql(client_mysql_ptr);
-        //return 0;
-
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
@@ -346,16 +318,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     if (mysql_set_character_set(client_mysql_ptr->real_mysql, client_mysql_ptr->charact_set))
     {
-        //if (err_info)
-        //{
-        //    const char* err = mysql_error(client_mysql_ptr->real_mysql);
-
-        //    size_t err_len = strnlen(err, err_info_size - 1);
-        //    memcpy(err_info, err, err_len + 1);
-        //    err_info[err_info_size - 1] = '\0';
-        //}
-        //destroy_client_mysql(client_mysql_ptr);
-        //return 0;
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
@@ -367,16 +329,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     if (!client_mysql_result_success(&mysql_result))
     {
-        //if (err_info)
-        //{
-        //    const char* err = mysql_error(client_mysql_ptr->real_mysql);
-
-        //    size_t err_len = strnlen(err, err_info_size - 1);
-        //    memcpy(err_info, err, err_len + 1);
-        //    err_info[err_info_size - 1] = '\0';
-        //}
-        //destroy_client_mysql(client_mysql_ptr);
-        //return 0;
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
@@ -402,16 +354,6 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     client_mysql_free_result(&mysql_result);
 
-    //if (err_info)
-    //{
-    //    sprintf_s(err_info, err_info_size, "character_client: %s character_connection: %s character_result: %s",
-    //        character_client, character_connection, character_result);
-    //}
-
-    //destroy_client_mysql(client_mysql_ptr);
-
-    //return 0;
-
     mysql_close(client_mysql_ptr->real_mysql);
     client_mysql_ptr->real_mysql = 0;
     return false;
@@ -432,7 +374,6 @@ CLIENTMYSQLRES client_mysql_query(HCLIENTMYSQL client_mysql_ptr, const char* sql
     CLIENTMYSQLRES result;
 
     int query_ret;
-    int try_query_count = 0;
 
     result.cur_mysql = 0;
     result.record_set = 0;
@@ -461,12 +402,9 @@ QUERY:
         case CR_SERVER_LOST_EXTENDED:
         case CR_CONN_HOST_ERROR:
         {
-            if (try_query_count < 3)
+            if (_re_connect(client_mysql_ptr))
             {
-                try_query_count++;
                 result.error_code = 0;
-                //mysql_ping(client_mysql_ptr->real_mysql);
-                _re_connect(client_mysql_ptr);
                 goto QUERY;
             }
             else
@@ -654,7 +592,7 @@ CLIENTMYSQLVALUE client_mysql_row_field_value(HCLIENTMYSQLRES result, unsigned l
     return data;
 }
 
-unsigned long client_mysql_escape_string(HCLIENTMYSQL connection, char* src, unsigned long src_size, char* dst, unsigned long dst_size)
+unsigned long client_mysql_escape_string(HCLIENTMYSQL connection, const char* src, unsigned long src_size, char* dst, unsigned long dst_size)
 {
     if (dst_size < src_size * 2 + 1)
     {

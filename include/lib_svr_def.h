@@ -195,7 +195,9 @@ typedef bool (*pfn_wdir)(const wchar_t* dir, void* user_data);
 }
 
 //////////////////////////////////////////////////////////////////////////
-typedef class CFuncPerformanceMgr* HFUNCPERFMGR;
+typedef struct st_mysql_connection* HMYSQLCONNECTION;
+//////////////////////////////////////////////////////////////////////////
+//typedef class CFuncPerformanceMgr* HFUNCPERFMGR;
 
 #endif // __cplusplus
 

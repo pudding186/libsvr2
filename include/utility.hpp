@@ -102,10 +102,12 @@ protected:\
 public:
 
 //////////////////////////////////////////////////////////////////////////
+class CFuncPerformance;
 
 class CFuncPerformanceInfo
 {
-    friend class CFuncPerformanceMgr;
+    //friend class CFuncPerformanceMgr;
+    friend class CFuncPerformance;
 protected:
     CFuncPerformanceInfo * next;
 public:
@@ -113,7 +115,7 @@ public:
     unsigned long long elapse_cycles;
     unsigned long long hit_count;
     unsigned long long once_cycles;
-    CFuncPerformanceInfo(const char* func_name, HFUNCPERFMGR mgr);
+    CFuncPerformanceInfo(const char* func_name, CFuncPerformance& fpf);
     inline CFuncPerformanceInfo* NextInfo(void)
     {
         return next;
@@ -123,28 +125,29 @@ public:
 class CFuncPerformanceCheck
 {
 public:
-    CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr);
+    CFuncPerformanceCheck(CFuncPerformanceInfo* info, CFuncPerformance& fpf);
     ~CFuncPerformanceCheck(void);
 protected:
     CFuncPerformanceInfo*   m_parent_func_perf_info;
     CFuncPerformanceInfo*   m_func_perf_info;
-    HFUNCPERFMGR	        m_mgr;
+    CFuncPerformance*       m_fpf;
+    //HFUNCPERFMGR	        m_mgr;
 private:
 };
 
-extern HFUNCPERFMGR(CreateFuncPerfMgr)(void);
-extern void (DestroyFuncPerfMgr)(HFUNCPERFMGR mgr);
-extern CFuncPerformanceInfo* (FuncPerfFirst)(HFUNCPERFMGR mgr);
-extern int (GetFuncStackTop)(HFUNCPERFMGR mgr);
-extern CFuncPerformanceInfo* (GetStackFuncPerfInfo)(HFUNCPERFMGR mgr, int idx);
+//extern HFUNCPERFMGR(CreateFuncPerfMgr)(void);
+//extern void (DestroyFuncPerfMgr)(HFUNCPERFMGR mgr);
+extern CFuncPerformanceInfo* (FuncPerfFirst)(CFuncPerformance& fpf);
+extern int (GetFuncStackTop)(CFuncPerformance& fpf);
+extern CFuncPerformanceInfo* (GetStackFuncPerfInfo)(CFuncPerformance& fpf, int idx);
 
-extern HFUNCPERFMGR(DefFuncPerfMgr)(void);
-extern size_t (FuncStackToCache)(HFUNCPERFMGR mgr, char* cache, size_t cache_size);
+extern CFuncPerformance& (DefFuncPerf)(void);
+extern size_t (FuncStackToCache)(CFuncPerformance& fpf, char* cache, size_t cache_size);
 
 #define FUNC_PERFORMANCE_CHECK() \
-	static thread_local CFuncPerformanceInfo s_func_perf_info(__FUNCTION__, DefFuncPerfMgr());\
+	static thread_local CFuncPerformanceInfo s_func_perf_info(__FUNCTION__, DefFuncPerf());\
 	++ s_func_perf_info.hit_count;\
-	CFuncPerformanceCheck func_perf_check(&s_func_perf_info, DefFuncPerfMgr());
+	CFuncPerformanceCheck func_perf_check(&s_func_perf_info, DefFuncPerf());
 
 //////////////////////////////////////////////////////////////////////////
 
