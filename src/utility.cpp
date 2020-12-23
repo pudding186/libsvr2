@@ -24,6 +24,7 @@
 #include "../include/utility.hpp"
 #include "../include/memory_pool.h"
 #include "../include/smemory.hpp"
+#include "../include/timer.h"
 
 class RandomNumGenarator
 {
@@ -111,7 +112,7 @@ void init_lib_svr(void)
 
 long long rand_integer(long long min, long long max)
 {
-    static RandomNumGenarator rnd_gen64;
+    static RandomNumGenarator rnd_gen64(get_time(), get_tick());
 
     long long range = max - min;
     if (range <= 0)

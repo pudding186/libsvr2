@@ -6,9 +6,9 @@
 extern "C" {
 #endif
 
-typedef struct st_mem_unit*     HMEMORYUNIT;
-typedef struct st_mem_pool*		HMEMORYPOOL;
-typedef struct st_mem_mgr*      HMEMORYMANAGER;
+typedef struct st_mem_unit*    HMEMORYUNIT;
+typedef struct st_mem_pool*    HMEMORYPOOL;
+typedef struct st_mem_mgr*     HMEMORYMANAGER;
 
 typedef void* (*lib_svr_alloc)(void* user_data, void* mem, size_t old_size, size_t new_size);
 

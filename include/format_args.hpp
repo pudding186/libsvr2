@@ -191,6 +191,23 @@ struct SFormatArgs<const char*, Rest...>
 };
 
 template <size_t N, typename... Rest>
+struct SFormatArgs<char(&)[N], Rest...>
+    :public SFormatArgs<Rest...>
+{
+    SFormatArgs() :value(0) {}
+    SFormatArgs(char(&fmt)[N], Rest&&... rest)
+        :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
+        value(SFormatArgs<>::copy_str(fmt, strnlen(fmt, N))) {}
+
+    ~SFormatArgs()
+    {
+        SFormatArgs<>::free_str(value);
+    }
+
+    const char* value;
+};
+
+template <size_t N, typename... Rest>
 struct SFormatArgs<const char(&)[N], Rest...>
     :public SFormatArgs<Rest...>
 {

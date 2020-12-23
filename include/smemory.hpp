@@ -26,6 +26,8 @@
 #define S_DELETE(ptr) SMemory::TraceDelete(ptr)
 #define S_MALLOC(size) SMemory::IClassMemory::TraceAlloc(size, __FILE__, __LINE__)
 #define S_REALLOC(mem, size) SMemory::IClassMemory::TraceRealloc(mem, size, __FILE__, __LINE__)
+#define S_MALLOC_EX(size, type) SMemory::IClassMemory::TraceAllocEx(size, type, __FILE__, __LINE__)
+#define S_REALLOC_EX(mem, size, type) SMemory::IClassMemory::TraceReallocEx(mem, size, type, __FILE__, __LINE__)
 #define S_FREE(mem) SMemory::IClassMemory::TraceFree(mem)
 #else
 #ifdef _MSC_VER
@@ -55,7 +57,11 @@ namespace SMemory
 
         virtual void Delete(void* ptr) = 0;
 
+        virtual void TraceDelete(void* ptr) = 0;
+
         bool IsValidPtr(void* ptr);
+
+        inline HMEMORYUNIT GetUnit(void) { return unit; }
 
         //////////////////////////////////////////////////////////////////////////
 
@@ -70,6 +76,10 @@ namespace SMemory
         static void* TraceAlloc(size_t mem_size, const char* file, int line);
 
         static void* TraceRealloc(void* old_mem, size_t new_size, const char* file, int line);
+
+        static void* TraceAllocEx(size_t mem_size, const char* type, const char* file, int line);
+
+        static void* TraceReallocEx(void* old_mem, size_t new_size, const char* type, const char* file, int line);
 
         static void TraceFree(void* mem);
 
@@ -93,15 +103,59 @@ namespace SMemory
         :public IClassMemory
     {
     public:
-
         CClassMemory<T, false>(void)
         {
+#ifdef TRACE_MEMORY
+            unit = create_memory_unit(sizeof(trace_sign) + sizeof(IClassMemory**) + sizeof(T));
+            _trace_unit(unit);
+#else
             unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
+#endif
         }
 
         ~CClassMemory<T, false>(void)
         {
+#ifdef TRACE_MEMORY
+            _untrace_unit(unit);
+#endif
             destroy_memory_unit(unit);
+        }
+
+        template <typename... Args>
+        T* TraceNew(size_t size, const char* name, const char* file, int line, Args&&... args)
+        {
+            if (size == 1)
+            {
+                void* ptr = memory_unit_alloc(unit);
+                trace_sign* sign = (trace_sign*)ptr;
+                sign->m_size = sizeof(T);
+                _trace_memory(name, file, line, sign);
+                * (IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign)) = this;
+
+                return new((unsigned char*)ptr + sizeof(IClassMemory**) + sizeof(trace_sign))T(std::forward<Args>(args)...);
+            }
+            else if (size > 1)
+            {
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                trace_sign* sign = (trace_sign*)ptr;
+                sign->m_size = sizeof(T) * size;
+                _trace_memory(name, file, line, sign);
+                *(size_t*)((unsigned char*)ptr + sizeof(trace_sign)) = size;
+                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = DefMemMgr();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
+                T* obj = (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+
+                while (size)
+                {
+                    new(obj)T(std::forward<Args>(args)...);
+                    ++obj;
+                    size--;
+                }
+
+                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+            }
+
+            return 0;
         }
 
         template <typename... Args>
@@ -110,13 +164,13 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(IClassMemory**)ptr = this;
+                * (IClassMemory**)ptr = this;
 
                 return new((unsigned char*)ptr + sizeof(IClassMemory**))T(std::forward<Args>(args)...);
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
                 *(size_t*)ptr = size;
                 *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
@@ -133,6 +187,41 @@ namespace SMemory
             }
 
             return 0;
+        }
+
+        virtual void TraceDelete(void* ptr)
+        {
+            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(trace_sign);
+
+            void** check_data = memory_unit_get_sign(pTmp);
+
+            if (memory_unit_sign_to_unit(check_data) == unit)
+            {
+                T* obj = (T*)ptr;
+                obj->~T();
+                *(IClassMemory**)(pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
+                _check_memory((trace_sign*)pTmp);
+                memory_unit_quick_free(unit, check_data);
+            }
+            else
+            {
+                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+
+                T* obj = (T*)ptr;
+
+                while (size)
+                {
+                    obj->~T();
+                    ++obj;
+                    size--;
+                }
+
+                *(IClassMemory**)((unsigned char*)pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
+                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign)));
+                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign));
+            }
         }
 
         virtual void Delete(void* ptr)
@@ -177,12 +266,46 @@ namespace SMemory
 
         CClassMemory<T, true>(void)
         {
+#ifdef TRACE_MEMORY
+            unit = create_memory_unit(sizeof(trace_sign) + sizeof(IClassMemory**) + sizeof(T));
+            _trace_unit(unit);
+#else
             unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
+#endif
         }
 
         ~CClassMemory<T, true>(void)
         {
+#ifdef TRACE_MEMORY
+            _untrace_unit(unit);
+#endif
             destroy_memory_unit(unit);
+        }
+
+        T* TraceNew(size_t size, const char* name, const char* file, int line)
+        {
+            if (size == 1)
+            {
+                void* ptr = memory_unit_alloc(unit);
+                trace_sign* sign = (trace_sign*)ptr;
+                sign->m_size = sizeof(T);
+                _trace_memory(name, file, line, sign);
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign)) = this;
+                return (T*)((unsigned char*)ptr + sizeof(IClassMemory**) + sizeof(trace_sign));
+            }
+            else if (size > 1)
+            {
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                trace_sign* sign = (trace_sign*)ptr;
+                sign->m_size = sizeof(T) * size;
+                _trace_memory(name, file, line, sign);
+                *(size_t*)((unsigned char*)ptr + sizeof(trace_sign)) = size;
+                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = DefMemMgr();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
+                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+            }
+
+            return 0;
         }
 
         T* New(size_t size)
@@ -190,12 +313,12 @@ namespace SMemory
             if (size == 1)
             {
                 void* ptr = memory_unit_alloc(unit);
-                *(IClassMemory**)ptr = this;
+                * (IClassMemory**)ptr = this;
                 return (T*)((unsigned char*)ptr + sizeof(IClassMemory**));
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T)*size);
+                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
                 *(size_t*)ptr = size;
                 *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
                 *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
@@ -203,6 +326,27 @@ namespace SMemory
             }
 
             return 0;
+        }
+
+        virtual void TraceDelete(void* ptr)
+        {
+            unsigned char* pTmp = (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(trace_sign);
+
+            void** check_data = memory_unit_get_sign(pTmp);
+
+            if (memory_unit_sign_to_unit(check_data) == unit)
+            {
+                *(IClassMemory**)((unsigned char*)pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
+                _check_memory((trace_sign*)pTmp);
+                memory_unit_quick_free(unit, check_data);
+            }
+            else
+            {
+                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                *(IClassMemory**)((unsigned char*)pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
+                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign)));
+                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign));
+            }
         }
 
         virtual void Delete(void* ptr)
@@ -251,12 +395,7 @@ namespace SMemory
     {
         static const char* name = typeid(T).name();
 
-        TraceMemory<T>* mem = get_class_memory<TraceMemory<T>>().New(size, std::forward<Args>(args)...);
-        mem->m_sign.m_size = size * sizeof(T);
-
-        _trace_memory(name, file, line, &mem->m_sign);
-
-        return (&mem->m_obj);
+        return get_class_memory<T>().TraceNew(size, name, file, line, std::forward<Args>(args)...);
     }
 
     extern void TraceDelete(void* ptr);

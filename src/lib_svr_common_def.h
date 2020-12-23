@@ -62,7 +62,10 @@ typedef struct st_mem_unit
     size_t                  grow_count;     //内存池每次增长个数
 
     size_t                  alloc_count;
-    size_t                  total_count;
+    //size_t                  total_count;
+
+    size_t                  blocks_size;
+    size_t                  mt_blocks_size;
 }mem_unit;
 
 typedef struct st_mem_pool
@@ -74,6 +77,10 @@ typedef struct st_mem_pool
     size_t                  grow;           //每次扩展内存大小
     size_t                  min_mem_size;   //内存池管理的最小内存大小，小于此大小按最小分配
     size_t                  max_mem_size;   //内存池管理的最大内存大小，大于此大小的内存由系统托管
+    size_t                  system_alloc_size;
+    size_t                  system_free_size;
+    size_t                  mt_system_alloc_size;
+    size_t                  mt_system_free_size;
     void*                   pool_create_thread;
 }mem_pool;
 

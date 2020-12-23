@@ -35,41 +35,65 @@ namespace SMemory
             if (!def_mem_mgr)
             {
                 def_mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
+#ifdef TRACE_MEMORY
+                _trace_manager(def_mem_mgr);
+#endif
             }
 
             if (!lib_svr_mem_mgr)
             {
                 lib_svr_mem_mgr = create_memory_manager(8, 128, 65536, 4 * 1024, 2);
+#ifdef TRACE_MEMORY
+                _trace_manager(lib_svr_mem_mgr);
+#endif
             }
 
             if (!def_rb_tree_unit)
             {
                 def_rb_tree_unit = create_memory_unit(sizeof(rb_tree));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_rb_tree_unit);
+#endif
             }
 
             if (!def_rb_node_unit)
             {
                 def_rb_node_unit = create_memory_unit(sizeof(rb_node));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_rb_node_unit);
+#endif
             }
 
             if (!def_avl_tree_unit)
             {
                 def_avl_tree_unit = create_memory_unit(sizeof(avl_tree));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_avl_tree_unit);
+#endif
             }
 
             if (!def_avl_node_unit)
             {
                 def_avl_node_unit = create_memory_unit(sizeof(avl_node));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_avl_node_unit);
+#endif
             }
 
             if (!def_json_struct_unit)
             {
                 def_json_struct_unit = create_memory_unit(sizeof(json_struct));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_json_struct_unit);
+#endif
             }
 
             if (!def_json_node_unit)
             {
                 def_json_node_unit = create_memory_unit(sizeof(json_node));
+#ifdef TRACE_MEMORY
+                _trace_unit(def_json_node_unit);
+#endif
             }
         }
         ~DefMemInit()
@@ -78,48 +102,72 @@ namespace SMemory
 
             if (def_json_node_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_json_node_unit);
+#endif
                 destroy_memory_unit(def_json_node_unit);
                 def_json_node_unit = 0;
             }
 
             if (def_json_struct_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_json_struct_unit);
+#endif
                 destroy_memory_unit(def_json_struct_unit);
                 def_json_struct_unit = 0;
             }
 
             if (def_avl_node_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_avl_node_unit);
+#endif
                 destroy_memory_unit(def_avl_node_unit);
                 def_avl_node_unit = 0;
             }
 
             if (def_avl_tree_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_avl_tree_unit);
+#endif
                 destroy_memory_unit(def_avl_tree_unit);
                 def_avl_tree_unit = 0;
             }
 
             if (def_rb_node_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_rb_node_unit);
+#endif
                 destroy_memory_unit(def_rb_node_unit);
                 def_rb_node_unit = 0;
             }
 
             if (def_rb_tree_unit)
             {
+#ifdef TRACE_MEMORY
+                _untrace_unit(def_rb_tree_unit);
+#endif
                 destroy_memory_unit(def_rb_tree_unit);
                 def_rb_tree_unit = 0;
             }
 
             if (lib_svr_mem_mgr)
             {
+#ifdef TRACE_MEMORY
+                _untrace_manager(lib_svr_mem_mgr);
+#endif
                 destroy_memory_manager(lib_svr_mem_mgr);
                 lib_svr_mem_mgr = 0;
             }
 
             if (def_mem_mgr)
             {
+#ifdef TRACE_MEMORY
+                _untrace_manager(def_mem_mgr);
+#endif
                 destroy_memory_manager(def_mem_mgr);
                 def_mem_mgr = 0;
             }
@@ -150,19 +198,30 @@ namespace SMemory
         {
             return;
         }
-        IClassMemory** pool = (IClassMemory**)((unsigned char*)ptr - sizeof(trace_sign) - sizeof(IClassMemory**));
-
-        trace_sign* sign = (trace_sign*)((unsigned char*)ptr - sizeof(trace_sign));
-
-        if (!(*pool)->IsValidPtr(sign))
-        {
-            CRUSH_CODE();
-        }
-
-        _check_memory(sign);
-
-        Delete(sign);
+        IClassMemory** pool = (IClassMemory**)((unsigned char*)ptr - sizeof(IClassMemory**));
+        (*pool)->TraceDelete(ptr);
     }
+
+    //void TraceDelete(void* ptr)
+    //{
+    //    if (!ptr)
+    //    {
+    //        return;
+    //    }
+    //    IClassMemory** pool = (IClassMemory**)((unsigned char*)ptr - sizeof(IClassMemory**));
+
+    //    trace_sign* sign = (trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(trace_sign));
+
+    //    if (!(*pool)->IsValidPtr(sign))
+    //    {
+    //        CRUSH_CODE();
+    //    }
+
+    //    _check_memory(sign);
+
+    //    (*pool)->Delete(ptr);
+    //    //Delete(sign);
+    //}
 
     IClassMemory::IClassMemory(void)
     {
@@ -228,6 +287,21 @@ namespace SMemory
         return ((unsigned char*)mem + sizeof(trace_sign));
     }
 
+    void* IClassMemory::TraceAllocEx(size_t mem_size, const char* type, const char* file, int line)
+    {
+        //void* mem = memory_manager_alloc(def_mem_mgr, mem_size);
+        //trace_alloc("alloc", file, line, mem, mem_size);
+
+        void* mem = memory_manager_alloc(def_mem_mgr, mem_size + sizeof(trace_sign));
+
+        trace_sign* sign = (trace_sign*)mem;
+        sign->m_size = mem_size;
+
+        _trace_memory(type, file, line, sign);
+
+        return ((unsigned char*)mem + sizeof(trace_sign));
+    }
+
     void* IClassMemory::TraceRealloc(void* old_mem, size_t new_size, const char* file, int line)
     {
         if (old_mem)
@@ -248,6 +322,31 @@ namespace SMemory
         sign->m_size = new_size;
         
         _trace_memory("alloc", file, line, sign);
+
+        //trace_alloc("realloc", file, line, new_mem, new_size);
+        return ((unsigned char*)new_mem + sizeof(trace_sign));
+    }
+
+    void* IClassMemory::TraceReallocEx(void* old_mem, size_t new_size, const char* type, const char* file, int line)
+    {
+        if (old_mem)
+        {
+            trace_sign* sign = (trace_sign*)((unsigned char*)old_mem - sizeof(trace_sign));
+            old_mem = sign;
+
+            if (!IsValidMem(sign))
+            {
+                CRUSH_CODE();
+            }
+
+            _check_memory(sign);
+        }
+        void* new_mem = memory_manager_realloc(def_mem_mgr, old_mem, new_size + sizeof(trace_sign));
+
+        trace_sign* sign = (trace_sign*)new_mem;
+        sign->m_size = new_size;
+
+        _trace_memory(type, file, line, sign);
 
         //trace_alloc("realloc", file, line, new_mem, new_size);
         return ((unsigned char*)new_mem + sizeof(trace_sign));

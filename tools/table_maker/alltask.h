@@ -847,7 +847,6 @@ public:
                         if (it_col->second.m_col_name == "KeyName")
                         {
                             all_key_name.append(value);
-                            all_key.append(u8" ");
                         }
                         else
                         {
@@ -998,15 +997,18 @@ public:
                     }
                 }
 
-                if (m_key_check.find(all_key) != m_key_check.end())
+                if (all_key.length())
                 {
-                    char err[512];
-                    snprintf(err, sizeof(err), u8"content 中主键 [ %s ] 重复 行数%d", all_key.c_str(), row);
-                    throw std::runtime_error(err);
-                }
-                else
-                {
-                    m_key_check[all_key] = all_key;
+                    if (m_key_check.find(all_key) != m_key_check.end())
+                    {
+                        char err[512];
+                        snprintf(err, sizeof(err), u8"content 中主键 [ %s ] 重复 行数%d", all_key.c_str(), row);
+                        throw std::runtime_error(err);
+                    }
+                    else
+                    {
+                        m_key_check[all_key] = all_key;
+                    }
                 }
 
                 if (check_key_name)

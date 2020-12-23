@@ -112,6 +112,8 @@ class mem_trace
 public:
     CThreadLock m_lock;
     HRBTREE     m_trace_info_map;
+    HRBTREE     m_trace_unit_map;
+    HRBTREE     m_trace_mgr_map;
     //HRBTREE     m_trace_ptr_map;
     HMEMORYUNIT m_trace_info_unit;
     //HMEMORYUNIT m_trace_ptr_unit;
@@ -119,6 +121,12 @@ public:
     mem_trace()
     {
         m_trace_info_map = create_rb_tree_ex(trace_info_cmp,
+            create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
+
+        m_trace_unit_map = create_rb_tree_ex(0, 
+            create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
+
+        m_trace_mgr_map = create_rb_tree_ex(0,
             create_memory_unit(sizeof_rb_tree()), create_memory_unit(sizeof_rb_node()));
 
         //m_trace_ptr_map = create_rb_tree_ex(trace_ptr_cmp,
@@ -132,6 +140,18 @@ public:
 
     ~mem_trace()
     {
+        if (m_trace_mgr_map)
+        {
+            destroy_memory_unit(rb_node_unit(m_trace_mgr_map));
+            destroy_memory_unit(rb_tree_unit(m_trace_mgr_map));
+        }
+
+        if (m_trace_unit_map)
+        {
+            destroy_memory_unit(rb_node_unit(m_trace_unit_map));
+            destroy_memory_unit(rb_tree_unit(m_trace_unit_map));
+        }
+
         if (m_trace_info_map)
         {
             destroy_memory_unit(rb_node_unit(m_trace_info_map));
@@ -161,7 +181,6 @@ mem_trace g_mem_trace;
 void _trace_memory(const char* name, const char* file, int line, trace_sign* sign)
 {
     HRBNODE node;
-    //mem_trace_info* exist_info;
 
     mem_trace_info find_info;
 
@@ -223,6 +242,54 @@ extern void _check_memory(trace_sign* sign)
 #else
 #error "unknown compiler"
 #endif
+}
+
+extern void _trace_unit(HMEMORYUNIT unit)
+{
+    g_mem_trace.m_lock.Lock();
+    HRBNODE node;
+    rb_tree_try_insert_user(g_mem_trace.m_trace_unit_map, unit, unit, &node);
+
+    g_mem_trace.m_lock.UnLock();
+
+
+}
+
+extern void _untrace_unit(HMEMORYUNIT unit)
+{
+    g_mem_trace.m_lock.Lock();
+
+    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_unit_map, unit);
+
+    if (node)
+    {
+        rb_tree_erase(g_mem_trace.m_trace_unit_map, node);
+    }
+
+    g_mem_trace.m_lock.UnLock();
+}
+
+extern void _trace_manager(HMEMORYMANAGER mgr)
+{
+    g_mem_trace.m_lock.Lock();
+    HRBNODE node;
+    rb_tree_try_insert_user(g_mem_trace.m_trace_mgr_map, mgr, mgr, &node);
+
+    g_mem_trace.m_lock.UnLock();
+}
+
+extern void _untrace_manager(HMEMORYMANAGER mgr)
+{
+    g_mem_trace.m_lock.Lock();
+
+    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_mgr_map, mgr);
+
+    if (node)
+    {
+        rb_tree_erase(g_mem_trace.m_trace_mgr_map, node);
+    }
+
+    g_mem_trace.m_lock.UnLock();
 }
 
 //void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t size)
@@ -317,4 +384,47 @@ extern void _check_memory(trace_sign* sign)
 HRBNODE mem_trace_info_head(void)
 {
     return rb_first(g_mem_trace.m_trace_info_map);
+}
+
+size_t memory_alloc_size(void)
+{
+    size_t alloc_size = 0;
+    HRBNODE node = rb_first(g_mem_trace.m_trace_unit_map);
+
+    while (node)
+    {
+        alloc_size += memory_unit_alloc_size((HMEMORYUNIT)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+
+    node = rb_first(g_mem_trace.m_trace_mgr_map);
+    while (node)
+    {
+        alloc_size += memory_manager_alloc_size((HMEMORYMANAGER)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+
+    return alloc_size;
+}
+
+size_t memory_total_size(void)
+{
+    size_t total_size = 0;
+
+    HRBNODE node = rb_first(g_mem_trace.m_trace_unit_map);
+
+    while (node)
+    {
+        total_size += memory_unit_total_size((HMEMORYUNIT)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+
+    node = rb_first(g_mem_trace.m_trace_mgr_map);
+    while (node)
+    {
+        total_size += memory_manager_total_size((HMEMORYMANAGER)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+
+    return total_size;
 }

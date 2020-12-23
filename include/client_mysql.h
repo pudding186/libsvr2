@@ -35,6 +35,9 @@ extern "C" {
         const char *passwd, const char* db, const char* charact_set,
         char* err_info, size_t err_info_size);
 
+    extern HCLIENTMYSQL (duplicate_client_mysql)(HCLIENTMYSQL client_mysql,
+        char* err_info, size_t err_info_size);
+
     extern void (destroy_client_mysql)(HCLIENTMYSQL connection);
 
     extern CLIENTMYSQLRES (client_mysql_query)(HCLIENTMYSQL connection, const char* sql, unsigned long length);

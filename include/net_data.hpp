@@ -37,7 +37,7 @@ public:
         m_capacity = src.m_capacity;
 
         m_size = src.m_size;
-        m_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+        m_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
         memcpy(m_array, src.m_array, sizeof(T)*m_size);
     }
 
@@ -51,7 +51,7 @@ public:
             {
                 S_FREE(m_array);
             }
-            m_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+            m_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
         }
 
         m_size = src.m_size;
@@ -95,7 +95,7 @@ public:
         {
             m_capacity = new_size;
 
-            m_array = (T*)S_REALLOC(m_array, sizeof(T)*m_capacity);
+            m_array = (T*)S_REALLOC_EX(m_array, sizeof(T)*m_capacity, m_name);
         }
         m_size = new_size;
     }
@@ -106,7 +106,7 @@ public:
         {
             m_capacity = new_size;
 
-            m_array = (T*)S_REALLOC(m_array, sizeof(T)*m_capacity);
+            m_array = (T*)S_REALLOC_EX(m_array, sizeof(T)*m_capacity, m_name);
         }
     }
 
@@ -137,7 +137,7 @@ public:
             }
 
 
-            m_array = (T*)S_REALLOC(m_array, sizeof(T)*m_capacity);
+            m_array = (T*)S_REALLOC_EX(m_array, sizeof(T)*m_capacity, m_name);
             memcpy(m_array + m_size, &val, sizeof(T));
             m_size++;
         }
@@ -214,7 +214,11 @@ private:
     U   m_size;
     U   m_capacity;
     T*  m_array;
+    static const char* m_name;
 };
+
+template <typename T, typename U>
+const char* DataArray<T, U, true, true>::m_name = typeid(T).name();
 
 template <typename T, typename U>
 class DataArray<T, U, false, true>
@@ -250,7 +254,7 @@ public:
         m_capacity = src.m_capacity;
         m_size = src.m_size;
 
-        m_array = (T *)S_MALLOC(sizeof(T)*m_capacity);
+        m_array = (T *)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
         for (U i = 0; i < m_size; i++)
         {
             new(m_array + i)T(src.m_array[i]);
@@ -274,7 +278,7 @@ public:
                 S_FREE(m_array);
             }
 
-            m_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+            m_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
         }
 
         m_size = src.m_size;
@@ -346,7 +350,7 @@ public:
         {
             m_capacity = new_size;
 
-            T* new_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+            T* new_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
             for (U i = 0; i < m_size; i++)
             {
                 new(new_array + i)T(m_array[i]);
@@ -370,7 +374,7 @@ public:
         {
             m_capacity = new_size;
 
-            T* new_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+            T* new_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
             for (U i = 0; i < m_size; i++)
             {
                 new(new_array + i)T(m_array[i]);
@@ -408,7 +412,7 @@ public:
                 m_capacity += m_capacity / 2;
             }
 
-            T* new_array = (T*)S_MALLOC(sizeof(T)*m_capacity);
+            T* new_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
             for (U i = 0; i < m_size; i++)
             {
                 new(new_array + i)T(m_array[i]);
@@ -485,7 +489,11 @@ private:
     U   m_size;
     U   m_capacity;
     T*  m_array;
+    static const char* m_name;
 };
+
+template <typename T, typename U>
+const char* DataArray<T, U, false, true>::m_name = typeid(T).name();
 
 
 class NetEnCode

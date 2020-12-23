@@ -243,6 +243,19 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
     return 0;
 }
 
+HCLIENTMYSQL duplicate_client_mysql(HCLIENTMYSQL client_mysql,
+    char* err_info, size_t err_info_size)
+{
+    return create_client_mysql(
+        client_mysql->host, 
+        client_mysql->port, 
+        client_mysql->user,
+        client_mysql->passwd,
+        client_mysql->db,
+        client_mysql->charact_set,
+        err_info, err_info_size);
+}
+
 bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 {
     unsigned long long character_set_num = 0;
