@@ -289,21 +289,9 @@ size_t db_thread::_proc_db_cmd()
 
             if (proc->queue[m_idx].ret_cache_queue->empty())
             {
-                size_t try_count = 0;
-
-                while (!loop_cache_push_data(proc->queue[m_idx].ret_queue, &cmd, sizeof(db_cmd*)))
+                if (!loop_cache_push_data(proc->queue[m_idx].ret_queue, &cmd, sizeof(db_cmd*)))
                 {
-                    ++try_count;
-
-                    if (try_count > 100)
-                    {
-                        proc->queue[m_idx].ret_cache_queue->push(cmd);
-                        break;
-                    }
-                    else
-                    {
-                        std::this_thread::yield();
-                    }
+                    proc->queue[m_idx].ret_cache_queue->push(cmd);
                 }
             }
             else
@@ -442,7 +430,7 @@ void db_thread::_db_proc_func()
 
         if (!last_do_proc_count)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::yield();
         }
     }
 
