@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <limits>
 #include <cstdio>
+#include <atomic>
 #include "./lib_svr_def.h"
 #include "./memory_pool.h"
 #include "./memory_trace.hpp"
@@ -24,11 +25,11 @@
 #endif
 
 #define S_DELETE(ptr) SMemory::TraceDelete(ptr)
-#define S_MALLOC(size) SMemory::IClassMemory::TraceAlloc(size, __FILE__, __LINE__)
-#define S_REALLOC(mem, size) SMemory::IClassMemory::TraceRealloc(mem, size, __FILE__, __LINE__)
-#define S_MALLOC_EX(size, type) SMemory::IClassMemory::TraceAllocEx(size, type, __FILE__, __LINE__)
-#define S_REALLOC_EX(mem, size, type) SMemory::IClassMemory::TraceReallocEx(mem, size, type, __FILE__, __LINE__)
-#define S_FREE(mem) SMemory::IClassMemory::TraceFree(mem)
+#define S_MALLOC(size) SMemory::TraceAlloc(size, u8"memory", __FILE__, __LINE__)
+#define S_MALLOC_EX(size, type) SMemory::TraceAlloc(size, type, __FILE__, __LINE__)
+#define S_REALLOC(mem, size) SMemory::TraceRealloc(mem, size, u8"memory", __FILE__, __LINE__)
+#define S_REALLOC_EX(mem, size, type) SMemory::TraceRealloc(mem, size, type, __FILE__, __LINE__)
+#define S_FREE(mem) SMemory::TraceFree(mem)
 #else
 #ifdef _MSC_VER
 #define S_NEW(type, size, ...) SMemory::New<type>(size, __VA_ARGS__)
@@ -39,15 +40,83 @@
 #endif
 
 #define S_DELETE(ptr) SMemory::Delete(ptr)
-#define S_MALLOC(size) SMemory::IClassMemory::Alloc(size)
-#define S_REALLOC(mem, size) SMemory::IClassMemory::Realloc(mem, size)
-#define S_FREE(mem) SMemory::IClassMemory::Free(mem)
+#define S_MALLOC(size) SMemory::Alloc(size)
+#define S_MALLOC_EX(size, type) SMemory::Alloc(size)
+#define S_REALLOC(mem, size) SMemory::Realloc(mem, size)
+#define S_REALLOC_EX(mem, size, type) SMemory::Realloc(mem, size)
+#define S_FREE(mem) SMemory::Free(mem)
 #endif
 
 #define REP_DEL_SIG 0x19830116
 
 namespace SMemory
 {
+    class CMemory
+    {
+    public:
+        CMemory(void);
+        ~CMemory(void);
+
+        bool IsValidMem(void* mem);
+
+        void* Alloc(size_t mem_size);
+
+        void* Realloc(void* old_mem, size_t new_size);
+
+        void Free(void* mem);
+
+        void* TraceAlloc(size_t mem_size, const char* type, const char* file, int line);
+
+        void* TraceRealloc(void* old_mem, size_t new_size, const char* type, const char* file, int line);
+
+        void TraceFree(void* mem);
+
+        void Release(void);
+
+        size_t InUse(void);
+
+        inline void SetDestroy(void) { m_can_destroy = true; }
+    protected:
+        HMEMORYMANAGER  m_memory_mgr;
+        bool m_can_destroy;
+        std::atomic<bool> m_be_destroy;
+    private:
+    };
+
+    class CThreadMemory
+    {
+    public:
+        CThreadMemory(void)
+        {
+            m_memory = new CMemory;
+        }
+
+        ~CThreadMemory(void)
+        {
+            m_memory->SetDestroy();
+
+            if (!m_memory->InUse())
+            {
+                m_memory->Release();
+            }
+        }
+
+        inline CMemory& GetMemory(void)
+        {
+            return *m_memory;
+        }
+    protected:
+        CMemory* m_memory;
+    private:
+    };
+
+    inline CMemory& get_memory(void)
+    {
+        static thread_local CThreadMemory thread_memory;
+
+        return thread_memory.GetMemory();
+    }
+
     class IClassMemory
     {
     public:
@@ -59,34 +128,20 @@ namespace SMemory
 
         virtual void TraceDelete(void* ptr) = 0;
 
-        bool IsValidPtr(void* ptr);
-
         inline HMEMORYUNIT GetUnit(void) { return unit; }
 
-        //////////////////////////////////////////////////////////////////////////
+        inline size_t InUse(void) { return memory_unit_alloc_size(unit) + in_use + in_use_mt; }
 
-        static void* Alloc(size_t mem_size);
+        inline void SetDestroy(void) { can_destroy = true; }
 
-        static void* Realloc(void* old_mem, size_t new_size);
-
-        static void Free(void* mem);
-
-        static bool IsValidMem(void* mem);
-
-        static void* TraceAlloc(size_t mem_size, const char* file, int line);
-
-        static void* TraceRealloc(void* old_mem, size_t new_size, const char* file, int line);
-
-        static void* TraceAllocEx(size_t mem_size, const char* type, const char* file, int line);
-
-        static void* TraceReallocEx(void* old_mem, size_t new_size, const char* type, const char* file, int line);
-
-        static void TraceFree(void* mem);
-
-        static HMEMORYMANAGER DefMemMgr(void);
+        void Release(void);
 
     protected:
         HMEMORYUNIT                     unit;
+        size_t                          in_use;
+        std::atomic<size_t>             in_use_mt;
+        std::atomic<bool>               be_destroy;
+        bool                            can_destroy;
     };
 
     template <typename T, bool is_pod = std::is_pod<T>::value>
@@ -111,6 +166,10 @@ namespace SMemory
 #else
             unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
 #endif
+            in_use = 0;
+            in_use_mt = 0;
+            be_destroy = false;
+            can_destroy = false;
         }
 
         ~CClassMemory<T, false>(void)
@@ -136,14 +195,14 @@ namespace SMemory
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                void* ptr = get_memory().Alloc(sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**) + sizeof(T) * size);
                 trace_sign* sign = (trace_sign*)ptr;
                 sign->m_size = sizeof(T) * size;
                 _trace_memory(name, file, line, sign);
                 *(size_t*)((unsigned char*)ptr + sizeof(trace_sign)) = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
-                T* obj = (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                *(CMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = &get_memory();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**)) = this;
+                T* obj = (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
 
                 while (size)
                 {
@@ -152,7 +211,16 @@ namespace SMemory
                     size--;
                 }
 
-                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use += sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_add(sizeof(T) * size);
+                }
+
+                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
             }
 
             return 0;
@@ -170,11 +238,11 @@ namespace SMemory
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                void* ptr = get_memory().Alloc(sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**) + sizeof(T) * size);
                 *(size_t*)ptr = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
-                T* obj = (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                *(CMemory**)((unsigned char*)ptr + sizeof(size_t)) = &get_memory();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(CMemory**)) = this;
+                T* obj = (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
 
                 while (size)
                 {
@@ -183,7 +251,16 @@ namespace SMemory
                     size--;
                 }
 
-                return (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use += sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_add(sizeof(T) * size);
+                }
+
+                return (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
             }
 
             return 0;
@@ -205,9 +282,9 @@ namespace SMemory
             }
             else
             {
-                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                CMemory* mem = *(CMemory**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**));
 
-                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
 
                 T* obj = (T*)ptr;
 
@@ -219,8 +296,25 @@ namespace SMemory
                 }
 
                 *(IClassMemory**)((unsigned char*)pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
-                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign)));
-                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign));
+                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t) - sizeof(trace_sign)));
+                mem->Free((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t) - sizeof(trace_sign));
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use -= sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_sub(sizeof(T) * size);
+                }
+            }
+
+            if (can_destroy)
+            {
+                if (!InUse())
+                {
+                    Release();
+                }
             }
         }
 
@@ -239,9 +333,9 @@ namespace SMemory
             }
             else
             {
-                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                CMemory* mem = *(CMemory**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**));
 
-                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
 
                 T* obj = (T*)ptr;
 
@@ -253,7 +347,25 @@ namespace SMemory
                 }
 
                 *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
-                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+                mem->Free((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use -= sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_sub(sizeof(T) * size);
+                }
+
+            }
+
+            if (can_destroy)
+            {
+                if (!InUse())
+                {
+                    Release();
+                }
             }
         }
     };
@@ -272,6 +384,10 @@ namespace SMemory
 #else
             unit = create_memory_unit(sizeof(IClassMemory**) + sizeof(T));
 #endif
+            in_use = 0;
+            in_use_mt = 0;
+            be_destroy = false;
+            can_destroy = false;
         }
 
         ~CClassMemory<T, true>(void)
@@ -295,14 +411,23 @@ namespace SMemory
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                void* ptr = get_memory().Alloc(sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**) + sizeof(T) * size);
                 trace_sign* sign = (trace_sign*)ptr;
                 sign->m_size = sizeof(T) * size;
                 _trace_memory(name, file, line, sign);
                 *(size_t*)((unsigned char*)ptr + sizeof(trace_sign)) = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
-                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use += sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_add(sizeof(T) * size);
+                }
+                *(CMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t)) = &get_memory();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**)) = this;
+                return (T*)((unsigned char*)ptr + sizeof(trace_sign) + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
             }
 
             return 0;
@@ -318,11 +443,21 @@ namespace SMemory
             }
             else if (size > 1)
             {
-                void* ptr = memory_manager_alloc(DefMemMgr(), sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**) + sizeof(T) * size);
+                void* ptr = get_memory().Alloc(sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**) + sizeof(T) * size);
                 *(size_t*)ptr = size;
-                *(HMEMORYMANAGER*)((unsigned char*)ptr + sizeof(size_t)) = DefMemMgr();
-                *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*)) = this;
-                return (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(HMEMORYMANAGER*) + sizeof(IClassMemory**));
+                *(CMemory**)((unsigned char*)ptr + sizeof(size_t)) = &get_memory();
+                *(IClassMemory**)((unsigned char*)ptr + sizeof(size_t) + sizeof(CMemory**)) = this;
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use += sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_add(sizeof(T) * size);
+                }
+
+                return (T*)((unsigned char*)ptr + sizeof(size_t) + sizeof(CMemory**) + sizeof(IClassMemory**));
             }
 
             return 0;
@@ -342,10 +477,29 @@ namespace SMemory
             }
             else
             {
-                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                CMemory* mem = *(CMemory**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**));
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
+
                 *(IClassMemory**)((unsigned char*)pTmp + sizeof(trace_sign)) = (IClassMemory*)REP_DEL_SIG;
-                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign)));
-                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t) - sizeof(trace_sign));
+                _check_memory((trace_sign*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t) - sizeof(trace_sign)));
+                mem->Free((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t) - sizeof(trace_sign));
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use -= sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_sub(sizeof(T)* size);
+                }
+            }
+
+            if (can_destroy)
+            {
+                if (!InUse())
+                {
+                    Release();
+                }
             }
         }
 
@@ -362,18 +516,69 @@ namespace SMemory
             }
             else
             {
-                HMEMORYMANAGER check_mem_mgr = *(HMEMORYMANAGER*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*));
+                CMemory* mem = *(CMemory**)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**));
+
+                size_t size = *(size_t*)((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
+
                 *(IClassMemory**)(pTmp) = (IClassMemory*)REP_DEL_SIG;
-                memory_manager_free(check_mem_mgr, (unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(HMEMORYMANAGER*) - sizeof(size_t));
+                mem->Free((unsigned char*)ptr - sizeof(IClassMemory**) - sizeof(CMemory**) - sizeof(size_t));
+
+
+                if (memory_unit_in_create_thread(unit))
+                {
+                    in_use -= sizeof(T) * size;
+                }
+                else
+                {
+                    in_use_mt.fetch_sub(sizeof(T) * size);
+                }
+            }
+
+            if (can_destroy)
+            {
+                if (!InUse())
+                {
+                    Release();
+                }
             }
         }
+    };
+
+    template<typename T>
+    class CThreadClassMemory
+    {
+    public:
+        CThreadClassMemory(void)
+        {
+            m_class_memory = new CClassMemory<T>();
+        }
+
+        ~CThreadClassMemory(void)
+        {
+            m_class_memory->SetDestroy();
+
+
+            if (!m_class_memory->InUse())
+            {
+                m_class_memory->Release();
+            }
+        }
+
+        inline CClassMemory<T>& GetClassMemory(void)
+        {
+            return *m_class_memory;
+        }
+    protected:
+        CClassMemory<T>* m_class_memory;
+    private:
     };
 
     template <typename T>
     inline CClassMemory<T>& get_class_memory(void)
     {
-        static thread_local CClassMemory<T> class_memory;
-        return class_memory;
+        static thread_local CThreadClassMemory<T> thread_class_memory;
+
+        return thread_class_memory.GetClassMemory();
     }
 
     template <typename T, typename... Args>
@@ -401,6 +606,23 @@ namespace SMemory
     extern void TraceDelete(void* ptr);
 
     //////////////////////////////////////////////////////////////////////////
+
+    extern bool IsValidMem(void* mem);
+
+    extern void* Alloc(size_t mem_size);
+
+    extern void* Realloc(void* old_mem, size_t new_size);
+
+    extern void Free(void* mem);
+
+    extern void* TraceAlloc(size_t mem_size, const char* type, const char* file, int line);
+
+    extern void* TraceRealloc(void* old_mem, size_t new_size, const char* type, const char* file, int line);
+
+    extern void TraceFree(void* mem);
+
+    //////////////////////////////////////////////////////////////////////////
+
 
     template<typename T>
     struct Allocator_base
@@ -454,7 +676,9 @@ namespace SMemory
 
         pointer allocate(size_type num, const void* hint = 0)
         {
-            return (pointer)S_MALLOC(sizeof(value_type)*num);
+            static const char* name = typeid(T).name();
+
+            return (pointer)S_MALLOC_EX(sizeof(value_type)*num, name);
         }
 
         void construct(pointer p, const_reference value)

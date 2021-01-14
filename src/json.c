@@ -8,8 +8,14 @@
 
 #define TRIM_SPACE(char_ptr) while (isspace(*char_ptr)) ++char_ptr;
 
-TLS_VAR HMEMORYUNIT def_json_struct_unit = 0;
-TLS_VAR HMEMORYUNIT def_json_node_unit = 0;
+//TLS_VAR HMEMORYUNIT def_json_struct_unit = 0;
+//TLS_VAR HMEMORYUNIT def_json_node_unit = 0;
+
+extern void* default_alloc_json_struct(void);
+extern void default_free_json_struct(void* js);
+
+extern void* default_alloc_json_node(void);
+extern void default_free_json_node(void* jn);
 
 void _escape_to_json_append(const char* src, size_t n, json_string_append f, void* ud)
 {
@@ -213,7 +219,7 @@ size_t _escape_from(const char* src, size_t n, char* dst)
 
 struct st_json_struct* _json_create_object(void)
 {
-    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit);
+    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)default_alloc_json_struct();//memory_unit_alloc(def_json_struct_unit);
     json_struct_ptr->head = 0;
     json_struct_ptr->tail = 0;
     json_struct_ptr->stack = 0;
@@ -225,7 +231,7 @@ struct st_json_struct* _json_create_object(void)
 
 struct st_json_struct* _json_create_array(void)
 {
-    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)memory_unit_alloc(def_json_struct_unit);
+    struct st_json_struct* json_struct_ptr = (struct st_json_struct*)default_alloc_json_struct();//memory_unit_alloc(def_json_struct_unit);
     json_struct_ptr->head = 0;
     json_struct_ptr->tail = 0;
     json_struct_ptr->stack = 0;
@@ -874,7 +880,7 @@ void destroy_json(json_struct* json_struct_ptr)
     {
         if (node_ptr->key)
         {
-            libsvr_memory_manager_free(node_ptr->key);
+            default_free(node_ptr->key);
         }
 
         switch (node_ptr->type)
@@ -885,18 +891,20 @@ void destroy_json(json_struct* json_struct_ptr)
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_string:
         {
-            libsvr_memory_manager_free(node_ptr->value.str);
+            default_free(node_ptr->value.str);
 
             free_node = node_ptr;
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_integer:
@@ -905,7 +913,8 @@ void destroy_json(json_struct* json_struct_ptr)
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_float:
@@ -914,7 +923,8 @@ void destroy_json(json_struct* json_struct_ptr)
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_true:
@@ -923,7 +933,8 @@ void destroy_json(json_struct* json_struct_ptr)
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_false:
@@ -932,7 +943,8 @@ void destroy_json(json_struct* json_struct_ptr)
 
             node_ptr = node_ptr->next;
 
-            memory_unit_free(def_json_node_unit, free_node);
+            //memory_unit_free(def_json_node_unit, free_node);
+            default_free_json_node(free_node);
         }
         break;
         case json_object:
@@ -979,14 +991,19 @@ void destroy_json(json_struct* json_struct_ptr)
                     if (node_ptr->next)
                     {
                         node_ptr = node_ptr->next;
-                        memory_unit_free(def_json_struct_unit, free_node->value.struct_ptr);
-                        memory_unit_free(def_json_node_unit, free_node);
+                        //memory_unit_free(def_json_struct_unit, free_node->value.struct_ptr);
+                        //memory_unit_free(def_json_node_unit, free_node);
+                        default_free_json_struct(free_node->value.struct_ptr);
+                        default_free_json_node(free_node);
                         break;
                     }
                     else
                     {
-                        memory_unit_free(def_json_struct_unit, free_node->value.struct_ptr);
-                        memory_unit_free(def_json_node_unit, free_node);
+                        //memory_unit_free(def_json_struct_unit, free_node->value.struct_ptr);
+                        //memory_unit_free(def_json_node_unit, free_node);
+
+                        default_free_json_struct(free_node->value.struct_ptr);
+                        default_free_json_node(free_node);
                     }
                 }
                 else
@@ -995,12 +1012,14 @@ void destroy_json(json_struct* json_struct_ptr)
         }
     }
 
-    memory_unit_free(def_json_struct_unit, json_struct_ptr);
+    //memory_unit_free(def_json_struct_unit, json_struct_ptr);
+    default_free_json_struct(json_struct_ptr);
 }
 
 json_node* json_add_float(json_struct* json_struct_ptr, double number, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    //struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();
 
     node->next = 0;
     node->stack = 0;
@@ -1013,11 +1032,12 @@ json_node* json_add_float(json_struct* json_struct_ptr, double number, const cha
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
         node->key_length = key_length;
-        node->key = (char*)libsvr_memory_manager_alloc(node->key_length + 1);
+        node->key = (char*)default_alloc(node->key_length + 1);
         memcpy(node->key, key, node->key_length);
         node->key[node->key_length] = '\0';
 
@@ -1030,7 +1050,8 @@ json_node* json_add_float(json_struct* json_struct_ptr, double number, const cha
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1042,7 +1063,8 @@ json_node* json_add_float(json_struct* json_struct_ptr, double number, const cha
 
 json_node* json_add_integer(json_struct* json_struct_ptr, long long number, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    //struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();
 
     node->next = 0;
     node->stack = 0;
@@ -1055,10 +1077,11 @@ json_node* json_add_integer(json_struct* json_struct_ptr, long long number, cons
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
-        node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        node->key = (char*)default_alloc(key_length + 1);
         node->key_length = _escape_from(key, key_length, node->key);
         node->key[node->key_length] = '\0';
 
@@ -1071,7 +1094,8 @@ json_node* json_add_integer(json_struct* json_struct_ptr, long long number, cons
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1083,13 +1107,14 @@ json_node* json_add_integer(json_struct* json_struct_ptr, long long number, cons
 
 json_node* json_add_string(json_struct* json_struct_ptr, const char* string, size_t string_length, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    //struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();
 
     node->next = 0;
     node->stack = 0;
     node->type = json_string;
 
-    node->value.str = (char*)libsvr_memory_manager_alloc(string_length + 1);
+    node->value.str = (char*)default_alloc(string_length + 1);
     node->str_length = _escape_from(string, string_length, node->value.str);
     node->value.str[node->str_length] = '\0';
 
@@ -1099,10 +1124,11 @@ json_node* json_add_string(json_struct* json_struct_ptr, const char* string, siz
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
-        node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        node->key = (char*)default_alloc(key_length + 1);
         node->key_length = _escape_from(key, key_length, node->key);
         node->key[node->key_length] = '\0';
     }
@@ -1114,7 +1140,8 @@ json_node* json_add_string(json_struct* json_struct_ptr, const char* string, siz
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1126,7 +1153,7 @@ json_node* json_add_string(json_struct* json_struct_ptr, const char* string, siz
 
 json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();//memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1138,10 +1165,11 @@ json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t k
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
-        node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        node->key = (char*)default_alloc(key_length + 1);
         node->key_length = _escape_from(key, key_length, node->key);
         node->key[node->key_length] = '\0';
     }
@@ -1153,7 +1181,8 @@ json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t k
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1165,7 +1194,7 @@ json_node* json_add_true(json_struct* json_struct_ptr, const char* key, size_t k
 
 json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();//memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1177,11 +1206,12 @@ json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t 
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
 
-        node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        node->key = (char*)default_alloc(key_length + 1);
         node->key_length = _escape_from(key, key_length, node->key);
         node->key[node->key_length] = '\0';
     }
@@ -1193,7 +1223,8 @@ json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t 
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1205,7 +1236,7 @@ json_node* json_add_false(json_struct* json_struct_ptr, const char* key, size_t 
 
 json_node* json_add_null(json_struct* json_struct_ptr, const char* key, size_t key_length)
 {
-    struct st_json_node* node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    struct st_json_node* node = (struct st_json_node*)default_alloc_json_node();//memory_unit_alloc(def_json_node_unit);
 
     node->next = 0;
     node->stack = 0;
@@ -1217,10 +1248,11 @@ json_node* json_add_null(json_struct* json_struct_ptr, const char* key, size_t k
     {
         if (!key)
         {
-            memory_unit_free(def_json_node_unit, node);
+            //memory_unit_free(def_json_node_unit, node);
+            default_free_json_node(node);
             return 0;
         }
-        node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        node->key = (char*)default_alloc(key_length + 1);
         node->key_length = _escape_from(key, key_length, node->key);
         node->key[node->key_length] = '\0';
     }
@@ -1232,7 +1264,8 @@ json_node* json_add_null(json_struct* json_struct_ptr, const char* key, size_t k
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, node);
+        //memory_unit_free(def_json_node_unit, node);
+        default_free_json_node(node);
         return 0;
     }
     }
@@ -1247,7 +1280,7 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
 {
     struct st_json_node* new_json_node = 0;
 
-    new_json_node = (struct st_json_node*)memory_unit_alloc(def_json_node_unit);
+    new_json_node = (struct st_json_node*)default_alloc_json_node();//memory_unit_alloc(def_json_node_unit);
 
     new_json_node->next = 0;
     new_json_node->stack = 0;
@@ -1267,7 +1300,8 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
     break;
     default:
     {
-        memory_unit_free(def_json_node_unit, new_json_node);
+        //memory_unit_free(def_json_node_unit, new_json_node);
+        default_free_json_node(new_json_node);
         return 0;
     }
     break;
@@ -1280,11 +1314,13 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
     {
         if (!key)
         {
-            memory_unit_free(def_json_struct_unit, new_json_node->value.struct_ptr);
-            memory_unit_free(def_json_node_unit, new_json_node);
+            //memory_unit_free(def_json_struct_unit, new_json_node->value.struct_ptr);
+            //memory_unit_free(def_json_node_unit, new_json_node);
+            default_free_json_struct(new_json_node->value.struct_ptr);
+            default_free_json_node(new_json_node);
             return 0;
         }
-        new_json_node->key = (char*)libsvr_memory_manager_alloc(key_length + 1);
+        new_json_node->key = (char*)default_alloc(key_length + 1);
         new_json_node->key_length = _escape_from(key, key_length, new_json_node->key);
         new_json_node->key[new_json_node->key_length] = '\0';
     }
@@ -1296,8 +1332,10 @@ json_struct* json_add_struct(json_struct* json_struct_ptr,
     break;
     default:
     {
-        memory_unit_free(def_json_struct_unit, new_json_node->value.struct_ptr);
-        memory_unit_free(def_json_node_unit, new_json_node);
+        //memory_unit_free(def_json_struct_unit, new_json_node->value.struct_ptr);
+        //memory_unit_free(def_json_node_unit, new_json_node);
+        default_free_json_struct(new_json_node->value.struct_ptr);
+        default_free_json_node(new_json_node);
         return 0;
     }
     break;

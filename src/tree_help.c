@@ -111,7 +111,7 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
     integer_key_segment* key_segment = 0;
 
     size_t value_segment_count = 128;
-    void** value_segment = (void**)libsvr_memory_manager_alloc(value_segment_count * sizeof(void*));
+    void** value_segment = (void**)default_alloc(value_segment_count * sizeof(void*));
     size_t segment_count = 0;
 
     rb_node* node = rb_first(tree);
@@ -131,9 +131,9 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
                         void** tmp;
                         value_segment_count += 1024;
 
-                        tmp = (void**)libsvr_memory_manager_alloc(value_segment_count * sizeof(void*));
+                        tmp = (void**)default_alloc(value_segment_count * sizeof(void*));
                         memcpy(tmp, value_segment, segment_count * sizeof(void*));
-                        libsvr_memory_manager_free(value_segment);
+                        default_free(value_segment);
                         value_segment = tmp;
                     }
                     value_segment[segment_count] = 0;
@@ -146,9 +146,9 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
                     void** tmp;
                     value_segment_count += 1024;
 
-                    tmp = (void**)libsvr_memory_manager_alloc(value_segment_count * sizeof(void*));
+                    tmp = (void**)default_alloc(value_segment_count * sizeof(void*));
                     memcpy(tmp, value_segment, segment_count * sizeof(void*));
-                    libsvr_memory_manager_free(value_segment);
+                    default_free(value_segment);
                     value_segment = tmp;
                 }
                 value_segment[segment_count] = rb_node_value_user(node);
@@ -156,11 +156,11 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
             }
             else
             {
-                void** real_value_segment = (void**)libsvr_memory_manager_alloc(segment_count * sizeof(void*));
+                void** real_value_segment = (void**)default_alloc(segment_count * sizeof(void*));
                 memcpy(real_value_segment, value_segment, segment_count * sizeof(void*));
                 rb_tree_insert_user(new_tree, key_segment, real_value_segment);
 
-                key_segment = (integer_key_segment*)libsvr_memory_manager_alloc(sizeof(integer_key_segment));
+                key_segment = (integer_key_segment*)default_alloc(sizeof(integer_key_segment));
                 key_segment->key_begin = key;
                 key_segment->key_end = key_segment->key_begin;
                 value_segment[0] = rb_node_value_user(node);
@@ -169,7 +169,7 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
         }
         else
         {
-            key_segment = (integer_key_segment*)libsvr_memory_manager_alloc(sizeof(integer_key_segment));
+            key_segment = (integer_key_segment*)default_alloc(sizeof(integer_key_segment));
             key_segment->key_begin = rb_node_key_integer(node);
             key_segment->key_end = key_segment->key_begin;
             value_segment[0] = rb_node_value_user(node);
@@ -181,12 +181,12 @@ rb_tree* create_int_seg_tree(rb_tree* tree, size_t interval)
 
     if (key_segment)
     {
-        void** real_value_segment = (void**)libsvr_memory_manager_alloc(segment_count * sizeof(void*));
+        void** real_value_segment = (void**)default_alloc(segment_count * sizeof(void*));
         memcpy(real_value_segment, value_segment, segment_count * sizeof(void*));
         rb_tree_insert_user(new_tree, key_segment, real_value_segment);
     }
 
-    libsvr_memory_manager_free(value_segment);
+    default_free(value_segment);
 
     destroy_rb_tree(tree);
     
@@ -229,8 +229,8 @@ void destroy_int_seg_tree(rb_tree* tree)
 
     while (node)
     {
-        libsvr_memory_manager_free((void*)rb_node_key_user(node));
-        libsvr_memory_manager_free(rb_node_value_user(node));
+        default_free((void*)rb_node_key_user(node));
+        default_free(rb_node_value_user(node));
 
         node = rb_next(node);
     }

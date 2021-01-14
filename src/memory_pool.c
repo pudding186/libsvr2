@@ -13,6 +13,10 @@ typedef union u_sign_data
     HMEMORYUNIT         unit;
 }sign_data;
 
+//TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr = 0;
+
+TLS_VAR int create_thread_sign = 0;
+
 void** memory_unit_get_sign(void* mem)
 {
     return (void**)((unsigned char*)mem - sizeof(void*));
@@ -51,6 +55,11 @@ size_t memory_unit_total_size(mem_unit* unit)
     return unit->blocks_size + unit->mt_blocks_size;
 }
 
+bool memory_unit_in_create_thread(mem_unit* unit)
+{
+    return (unit->unit_create_thread == &create_thread_sign);
+}
+
 int memory_unit_check_sign(mem_unit* unit, void** info)
 {
     if (*info == unit)
@@ -73,8 +82,6 @@ int memory_unit_check_sign(mem_unit* unit, void** info)
 
     return 0;
 }
-
-TLS_VAR HMEMORYMANAGER lib_svr_mem_mgr = 0;
 
 mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 {
@@ -229,7 +236,7 @@ mem_unit* create_memory_unit(size_t unit_size)
 #else
 #error "unknown compiler"
 #endif
-    unit->unit_create_thread = &lib_svr_mem_mgr;
+    unit->unit_create_thread = &create_thread_sign;
     unit->mem_block_head = 0;
     unit->unit_free_head = 0;
     unit->unit_size = unit_size;
@@ -382,7 +389,7 @@ void* _multi_thread_alloc(mem_unit* unit)
 
 void* memory_unit_alloc(HMEMORYUNIT unit)
 {
-    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    if (unit->unit_create_thread == &create_thread_sign)
     {
         return _main_thread_alloc(unit);
     }
@@ -466,7 +473,7 @@ void _multi_thread_free_cache(mem_unit* unit, void** ptr_mem_unit)
 void memory_unit_quick_free(mem_unit* unit, void** ptr_mem_unit)
 {
     int alloc_thread = memory_unit_check_sign(unit, ptr_mem_unit);
-    if (unit->unit_create_thread == &lib_svr_mem_mgr)
+    if (unit->unit_create_thread == &create_thread_sign)
     {
         if (alloc_thread == MAIN_THREAD_ALLOC)
         {
@@ -580,7 +587,7 @@ mem_pool* create_memory_pool(size_t align, size_t min_mem_size, size_t max_mem_s
     pool->system_free_size = 0;
     pool->mt_system_alloc_size = 0;
     pool->mt_system_free_size = 0;
-    pool->pool_create_thread = &lib_svr_mem_mgr;
+    pool->pool_create_thread = &create_thread_sign;
 
     return pool;
 }
@@ -617,7 +624,7 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
         *(size_t*)mem = mem_size + sizeof(size_t) + sizeof(void*);
         *(void**)(mem + sizeof(size_t)) = pool;
 
-        if (pool->pool_create_thread == &lib_svr_mem_mgr)
+        if (pool->pool_create_thread == &create_thread_sign)
         {
             pool->system_alloc_size += sizeof(size_t) + sizeof(void*) + mem_size;
         }
@@ -713,7 +720,7 @@ void* memory_pool_realloc(mem_pool* pool, void* old_mem, size_t mem_size)
 
         if (new_mem_ptr)
         {
-            if (pool->pool_create_thread == &lib_svr_mem_mgr)
+            if (pool->pool_create_thread == &create_thread_sign)
             {
                 pool->system_free_size += old_mem_size;
                 pool->system_alloc_size += mem_size + sizeof(void*) + sizeof(size_t);
@@ -749,7 +756,7 @@ void memory_pool_free(mem_pool* pool, void* mem)
     {
         size_t mem_size = *(size_t*)((unsigned char*)mem - sizeof(void*) - sizeof(size_t));
 
-        if (pool->pool_create_thread == &lib_svr_mem_mgr)
+        if (pool->pool_create_thread == &create_thread_sign)
         {
             pool->system_free_size += mem_size;
         }
@@ -931,11 +938,14 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
         return memory_manager_alloc(mgr, mem_size);
     }
 
-    unit = memory_unit_sign_to_unit(memory_unit_get_sign(old_mem));
+    void** check_data = memory_unit_get_sign(old_mem);
 
-    if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    unit = memory_unit_sign_to_unit(check_data);
+
+    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {
-        return memory_pool_realloc((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), old_mem, mem_size);
+        //return memory_pool_realloc((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), old_mem, mem_size);
+        return memory_pool_realloc((HMEMORYPOOL)(*check_data), old_mem, mem_size);
     }
 
     if (mem_size <= unit->unit_size)
@@ -984,9 +994,10 @@ void memory_manager_free(mem_mgr* mgr, void* mem)
     void** check_data = memory_unit_get_sign(mem);
     unit = memory_unit_sign_to_unit(check_data);
 
-    if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {
-        memory_pool_free((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), mem);
+        //memory_pool_free((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), mem);
+        memory_pool_free((HMEMORYPOOL)(*check_data), mem);
         return;
     }
 
@@ -1022,9 +1033,10 @@ bool memory_manager_check(mem_mgr* mgr, void* mem)
     HAVLNODE pool_node = 0;
     HMEMORYPOOL pool = 0;
 
-    unit = memory_unit_sign_to_unit(memory_unit_get_sign(mem));
+    void** check_data = memory_unit_get_sign(mem);
+    unit = memory_unit_sign_to_unit(check_data);
 
-    if (unit == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
     {
         return true;
     }
@@ -1069,7 +1081,8 @@ size_t memory_manager_alloc_size(mem_mgr* mgr)
 
 size_t(memory_manager_total_size)(mem_mgr* mgr)
 {
-    size_t total_size = sizeof(mem_mgr) + memory_unit_total_size(mgr->mem_pool_map.node_unit);
+    //size_t total_size = sizeof(mem_mgr) + memory_unit_total_size(mgr->mem_pool_map.node_unit);
+    size_t total_size = sizeof(mem_mgr) + avl_tree_size(&mgr->mem_pool_map) * sizeof_avl_node();
 
     HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
     while (pool_node)
@@ -1082,22 +1095,22 @@ size_t(memory_manager_total_size)(mem_mgr* mgr)
 }
 
 
-void* libsvr_memory_manager_realloc(void* old_mem, size_t mem_size)
-{
-    return memory_manager_realloc(lib_svr_mem_mgr, old_mem, mem_size);
-}
-
-void* libsvr_memory_manager_alloc(size_t mem_size)
-{
-    return memory_manager_alloc(lib_svr_mem_mgr, mem_size);
-}
-
-void libsvr_memory_manager_free(void* mem)
-{
-    memory_manager_free(lib_svr_mem_mgr, mem);
-}
-
-bool libsvr_memory_manager_check(void* mem)
-{
-    return memory_manager_check(lib_svr_mem_mgr, mem);
-}
+//void* default_realloc(void* old_mem, size_t mem_size)
+//{
+//    return memory_manager_realloc(lib_svr_mem_mgr, old_mem, mem_size);
+//}
+//
+//void* default_alloc(size_t mem_size)
+//{
+//    return memory_manager_alloc(lib_svr_mem_mgr, mem_size);
+//}
+//
+//void default_free(void* mem)
+//{
+//    memory_manager_free(lib_svr_mem_mgr, mem);
+//}
+//
+//bool libsvr_memory_manager_check(void* mem)
+//{
+//    return memory_manager_check(lib_svr_mem_mgr, mem);
+//}

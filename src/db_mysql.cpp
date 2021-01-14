@@ -39,24 +39,24 @@ using db_queue = struct st_db_queue
     std::queue<db_cmd*>* ret_cache_queue;
 };
 
-using db_obj_pool = struct st_db_obj_pool
-{
-    struct st_db_obj_pool* next_pool;
-    SMemory::IClassMemory* obj_pool;
-};
-
-using db_mem_pool = struct st_db_mem_pool
-{
-    struct st_db_mem_pool* next_pool;
-    HMEMORYMANAGER          mem_pool;
-};
+//using db_obj_pool = struct st_db_obj_pool
+//{
+//    struct st_db_obj_pool* next_pool;
+//    SMemory::IClassMemory* obj_pool;
+//};
+//
+//using db_mem_pool = struct st_db_mem_pool
+//{
+//    struct st_db_mem_pool* next_pool;
+//    HMEMORYMANAGER          mem_pool;
+//};
 
 using db_proc = struct st_db_proc
 {
     struct st_db_proc*  next_proc;
     db_queue*           queue;
-    db_obj_pool*        db_obj_pool_head;
-    db_mem_pool*        db_mem_pool_head;
+    //db_obj_pool*        db_obj_pool_head;
+    //db_mem_pool*        db_mem_pool_head;
     HCLIENTMYSQL        client_mysql;
     unsigned int        t_id;
     unsigned int        cur_proc_idx;
@@ -85,6 +85,8 @@ public:
     void _proc_db_cmd_end();
     void _db_proc_func();
 
+    void start();
+
     inline void set_idx(size_t idx) { m_idx = idx; }
     inline std::thread& db_thrad_ref(void) { return m_db_thread; }
     inline bool is_run(void) { return m_is_run; }
@@ -107,7 +109,66 @@ using db_manager = struct st_db_manager
 };
 
 static db_manager* g_db_manager = nullptr;
-static TLS_VAR db_proc* s_db_proc = nullptr;
+
+class CThreadDBProc
+{
+public:
+    CThreadDBProc(void)
+    {
+        m_db_proc = (db_proc*)malloc(sizeof(db_proc));
+        m_db_proc->queue = (db_queue*)malloc(sizeof(db_queue) * g_db_manager->db_thread_num);
+        m_db_proc->client_mysql = nullptr;
+
+        for (size_t i = 0; i < g_db_manager->db_thread_num; i++)
+        {
+            m_db_proc->queue[i].cmd_queue = create_loop_cache(0, sizeof(db_cmd*) * g_db_manager->db_queue_size);
+            m_db_proc->queue[i].ret_queue = create_loop_cache(0, sizeof(db_cmd*) * g_db_manager->db_queue_size);
+            m_db_proc->queue[i].ret_cache_queue = new std::queue<db_cmd*>;
+        }
+
+        m_db_proc->is_run = true;
+        m_db_proc->cur_proc_idx = 0;
+
+#ifdef _MSC_VER
+        m_db_proc->t_id = ::GetCurrentThreadId();
+        do
+        {
+            m_db_proc->next_proc = g_db_manager->db_proc_head;
+        } while (InterlockedCompareExchangePointer(
+            &reinterpret_cast<PVOID>(g_db_manager->db_proc_head),
+            m_db_proc,
+            m_db_proc->next_proc) != m_db_proc->next_proc);
+#elif __GNUC__
+        m_db_proc->t_id = syscall(__NR_gettid);
+        m_db_proc->next_proc = g_db_manager->db_proc_head;
+        while (!__atomic_compare_exchange(
+            &g_db_manager->db_proc_head,
+            &m_db_proc->next_proc,
+            &m_db_proc, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+        {
+        }
+#else
+#error "unknown compiler"
+#endif
+    }
+
+    ~CThreadDBProc(void)
+    {
+        if (g_db_manager)
+        {
+            if (m_db_proc)
+            {
+                m_db_proc->is_run = false;
+            }
+        }
+    }
+
+    inline db_proc* GetDBProc(void) { return m_db_proc; }
+    inline db_proc** GetDBProcAddr(void) { return &m_db_proc; }
+protected:
+    db_proc* m_db_proc;
+private:
+};
 
 class db_cmd_default
     :public db_cmd
@@ -243,10 +304,10 @@ public:
 
     void OnRelease() override
     {
-        SMemory::Delete(m_result);
-        SMemory::Delete(m_fields);
-        SMemory::Delete(m_conditions);
-        SMemory::Delete(this);
+        S_DELETE(m_result);
+        S_DELETE(m_fields);
+        S_DELETE(m_conditions);
+        S_DELETE(this);
     }
 
     //inline void SetClientMysql(HCLIENTMYSQL client_mysql) { m_client_mysql = client_mysql; }
@@ -264,12 +325,17 @@ private:
 //////////////////////////////////////////////////////////////////////////
 db_thread::db_thread()
 {
-    m_db_thread = std::thread(&db_thread::_db_proc_func, this);
+
 }
 
 db_thread::~db_thread()
 {
     m_db_thread.join();
+}
+
+void db_thread::start()
+{
+    m_db_thread = std::thread(&db_thread::_db_proc_func, this);
 }
 
 size_t db_thread::_proc_db_cmd()
@@ -349,21 +415,9 @@ void db_thread::_proc_db_cmd_end()
 
             if (proc->queue[m_idx].ret_cache_queue->empty())
             {
-                size_t try_count = 0;
-
-                while (!loop_cache_push_data(proc->queue[m_idx].ret_queue, &cmd, sizeof(db_cmd*)))
+                if (!loop_cache_push_data(proc->queue[m_idx].ret_queue, &cmd, sizeof(db_cmd*)))
                 {
-                    ++try_count;
-
-                    if (try_count > 100)
-                    {
-                        proc->queue[m_idx].ret_cache_queue->push(cmd);
-                        break;
-                    }
-                    else
-                    {
-                        std::this_thread::yield();
-                    }
+                    proc->queue[m_idx].ret_cache_queue->push(cmd);
                 }
             }
             else
@@ -430,7 +484,7 @@ void db_thread::_db_proc_func()
 
         if (!last_do_proc_count)
         {
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
@@ -439,62 +493,33 @@ void db_thread::_db_proc_func()
     m_is_run = false;
 }
 
+CThreadDBProc& GetThreadDBProc(void)
+{
+    static thread_local CThreadDBProc thread_db_proc;
+
+    return thread_db_proc;
+}
+
 db_proc* _get_db_proc(void)
 {
-    if (!s_db_proc)
-    {
-        s_db_proc = (db_proc*)malloc(sizeof(db_proc));
-        s_db_proc->queue = (db_queue*)malloc(sizeof(db_queue) * g_db_manager->db_thread_num);
-        s_db_proc->db_mem_pool_head = nullptr;
-        s_db_proc->db_obj_pool_head = nullptr;
-        s_db_proc->client_mysql = nullptr;
-
-        for (size_t i = 0; i < g_db_manager->db_thread_num; i++)
-        {
-            s_db_proc->queue[i].cmd_queue = create_loop_cache(0, sizeof(db_cmd*) * g_db_manager->db_queue_size);
-            s_db_proc->queue[i].ret_queue = create_loop_cache(0, sizeof(db_cmd*) * g_db_manager->db_queue_size);
-            s_db_proc->queue[i].ret_cache_queue = new std::queue<db_cmd*>;
-        }
-
-        s_db_proc->is_run = true;
-        s_db_proc->cur_proc_idx = 0;
-
-#ifdef _MSC_VER
-        s_db_proc->t_id = ::GetCurrentThreadId();
-        do
-        {
-            s_db_proc->next_proc = g_db_manager->db_proc_head;
-        } while (InterlockedCompareExchangePointer(
-            &reinterpret_cast<PVOID>(g_db_manager->db_proc_head),
-            s_db_proc,
-            s_db_proc->next_proc) != s_db_proc->next_proc);
-#elif __GNUC__
-        s_db_proc->t_id = syscall(__NR_gettid);
-        s_db_proc->next_proc = g_db_manager->db_proc_head;
-        while (!__atomic_compare_exchange(
-            &g_db_manager->db_proc_head,
-            &s_db_proc->next_proc,
-            &s_db_proc, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-        {
-        }
-#else
-#error "unknown compiler"
-#endif
-    }
-
-    return s_db_proc;
+    return GetThreadDBProc().GetDBProc();
 }
 
-void update_db_object_pool(SMemory::IClassMemory* new_obj_pool)
+db_proc** _get_db_proc_addr(void)
 {
-    db_obj_pool* new_pool = (db_obj_pool*)malloc(sizeof(db_obj_pool));
-    new_pool->obj_pool = new_obj_pool;
-
-    db_proc* proc = _get_db_proc();
-
-    new_pool->next_pool = proc->db_obj_pool_head;
-    proc->db_obj_pool_head = new_pool;
+    return GetThreadDBProc().GetDBProcAddr();
 }
+
+//void update_db_object_pool(SMemory::IClassMemory* new_obj_pool)
+//{
+//    db_obj_pool* new_pool = (db_obj_pool*)malloc(sizeof(db_obj_pool));
+//    new_pool->obj_pool = new_obj_pool;
+//
+//    db_proc* proc = _get_db_proc();
+//
+//    new_pool->next_pool = proc->db_obj_pool_head;
+//    proc->db_obj_pool_head = new_pool;
+//}
 
 mysql_connection* create_mysql_connection(
     size_t db_thread_idx,
@@ -570,11 +595,12 @@ bool init_db_manager(size_t db_thread_num, size_t max_db_event_num, OnError on_e
         g_db_manager->db_thread_num = db_thread_num;
         g_db_manager->db_queue_size = max_db_event_num;
         g_db_manager->db_thread_array = new db_thread[db_thread_num];
-        g_db_manager->db_proc_main = &s_db_proc;
+        g_db_manager->db_proc_main = _get_db_proc_addr();
         g_db_manager->db_error = on_error;
         for (size_t i = 0; i < db_thread_num; i++)
         {
             g_db_manager->db_thread_array[i].set_idx(i);
+            g_db_manager->db_thread_array[i].start();
         }
     }
 
@@ -610,25 +636,25 @@ void uninit_db_manager(void)
                 delete cur_proc->queue[i].ret_cache_queue;
             }
 
-            db_obj_pool* obj_pool = cur_proc->db_obj_pool_head;
-            while (obj_pool)
-            {
-                db_obj_pool* cur_pool = obj_pool;
-                obj_pool = obj_pool->next_pool;
+            //db_obj_pool* obj_pool = cur_proc->db_obj_pool_head;
+            //while (obj_pool)
+            //{
+            //    db_obj_pool* cur_pool = obj_pool;
+            //    obj_pool = obj_pool->next_pool;
 
-                delete cur_pool->obj_pool;
-                free(cur_pool);
-            }
+            //    delete cur_pool->obj_pool;
+            //    free(cur_pool);
+            //}
 
-            db_mem_pool* mem_pool = cur_proc->db_mem_pool_head;
-            while (mem_pool)
-            {
-                db_mem_pool* cur_pool = mem_pool;
-                mem_pool = mem_pool->next_pool;
+            //db_mem_pool* mem_pool = cur_proc->db_mem_pool_head;
+            //while (mem_pool)
+            //{
+            //    db_mem_pool* cur_pool = mem_pool;
+            //    mem_pool = mem_pool->next_pool;
 
-                destroy_memory_manager(cur_pool->mem_pool);
-                free(cur_pool);
-            }
+            //    destroy_memory_manager(cur_pool->mem_pool);
+            //    free(cur_pool);
+            //}
 
             free(cur_proc->queue);
             free(cur_proc);
@@ -735,7 +761,8 @@ void db_manager_post_default_cmd(ITable* table, int op_type, SFieldList<>* field
 
     mysql_connection* connection = table->Connection();
 
-    db_cmd* cmd = db_object_pool<db_cmd_default>()->New(1, table, op_type, fields, conditions, result);
+    //db_cmd* cmd = db_object_pool<db_cmd_default>()->New(1, table, op_type, fields, conditions, result);
+    db_cmd* cmd = S_NEW(db_cmd_default, 1, table, op_type, fields, conditions, result);
 
     while (!loop_cache_push_data(proc->queue[connection->db_thread_idx].cmd_queue, &cmd, sizeof(db_cmd*)))
     {
@@ -762,7 +789,8 @@ bool db_manager_do_default_cmd(ITable* table, int op_type, SFieldList<>* fields,
 {
     db_proc* proc = _get_db_proc();
 
-    db_cmd_default* cmd = db_object_pool<db_cmd_default>()->New(1, table->GetTableName(), op_type, fields, conditions, result);
+    //db_cmd_default* cmd = db_object_pool<db_cmd_default>()->New(1, table->GetTableName(), op_type, fields, conditions, result);
+    db_cmd_default* cmd = S_NEW(db_cmd_default, 1, table->GetTableName(), op_type, fields, conditions, result);
 
     if (proc->client_mysql == nullptr)
     {
@@ -783,7 +811,8 @@ bool db_manager_do_default_cmd(ITable* table, int op_type, SFieldList<>* fields,
         cmd->Execute(proc->client_mysql);
     }
 
-    SMemory::Delete(cmd);
+    //SMemory::Delete(cmd);
+    S_DELETE(cmd);
 
     if (g_db_manager->db_error)
     {

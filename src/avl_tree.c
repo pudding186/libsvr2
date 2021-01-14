@@ -4,11 +4,16 @@
 #include "../include/memory_pool.h"
 #include "../include/utility.hpp"
 
-TLS_VAR HMEMORYUNIT def_avl_tree_unit = 0;
-TLS_VAR HMEMORYUNIT def_avl_node_unit = 0;
+extern void* default_alloc_avl_node(void);
+
+extern void default_free_avl_node(void* node);
+
+extern void* default_alloc_avl_tree(void);
+
+extern void default_free_avl_tree(void* tree);
 
 
-static inline int _avl_node_height(avl_node* node)
+static inline long long _avl_node_height(avl_node* node)
 {
     return node ? node->avl_height : 0;
 }
@@ -75,8 +80,8 @@ static inline void _avl_link_node(avl_tree* tree, avl_node* node, avl_node* pare
 
 void _avl_roate(avl_tree* tree, avl_node* node)
 {
-    int h0;
-    int h1;
+    long long h0;
+    long long h1;
 
     const size_t side = (node != node->avl_parent->avl_child[0]);
     const size_t other_side = !side;
@@ -128,8 +133,8 @@ void _avl_roate(avl_tree* tree, avl_node* node)
 
 void _avl_balance(avl_tree* tree, avl_node* node)
 {
-    int h0;
-    int h1;
+    long long h0;
+    long long h1;
 
     while (node)
     {
@@ -201,9 +206,9 @@ void _avl_splice_out(avl_tree* tree, avl_node* node)
 
 avl_tree* create_avl_tree(compare_func key_cmp_func)
 {
-    avl_tree* tree = (avl_tree*)memory_unit_alloc(def_avl_tree_unit);
-    tree->tree_unit = def_avl_tree_unit;
-    tree->node_unit = def_avl_node_unit;
+    avl_tree* tree = (avl_tree*)default_alloc_avl_tree();
+    tree->tree_unit = 0;
+    tree->node_unit = 0;
 
     tree->root = 0;
     tree->size = 0;
@@ -218,17 +223,15 @@ avl_tree* create_avl_tree_ex(compare_func key_cmp_func, HMEMORYUNIT tree_unit, H
 {
     avl_tree* tree = 0;
 
-    if (!tree_unit)
+    if (tree_unit)
     {
-        tree_unit = def_avl_tree_unit;
+        tree = (avl_tree*)memory_unit_alloc(tree_unit);
+    }
+    else
+    {
+        tree = (avl_tree*)default_alloc_avl_tree();
     }
 
-    if (!node_unit)
-    {
-        node_unit = def_avl_node_unit;
-    }
-
-    tree = (avl_tree*)memory_unit_alloc(tree_unit);
     tree->tree_unit = tree_unit;
     tree->node_unit = node_unit;
 
@@ -247,11 +250,27 @@ void destroy_avl_tree(avl_tree* tree)
 
     while (node)
     {
-        memory_unit_free(tree->node_unit, node);
+        if (tree->node_unit)
+        {
+            memory_unit_free(tree->node_unit, node);
+        }
+        else
+        {
+            default_free_avl_node(node);
+        }
+        
         node = node->next;
     }
 
-    memory_unit_free(tree->tree_unit, tree);
+
+    if (tree->tree_unit)
+    {
+        memory_unit_free(tree->tree_unit, tree);
+    }
+    else
+    {
+        default_free_avl_tree(tree);
+    }
 }
 
 void avl_tree_clear(avl_tree* tree)
@@ -260,7 +279,14 @@ void avl_tree_clear(avl_tree* tree)
 
     while (node)
     {
-        memory_unit_free(tree->node_unit, node);
+        if (tree->node_unit)
+        {
+            memory_unit_free(tree->node_unit, node);
+        }
+        else
+        {
+            default_free_avl_node(node);
+        }
         node = node->next;
     }
 
@@ -410,7 +436,15 @@ void avl_tree_erase(avl_tree* tree, avl_node* node)
             tree->head = node->next;
         }
 
-        memory_unit_free(tree->node_unit, node);
+        if (tree->node_unit)
+        {
+            memory_unit_free(tree->node_unit, node);
+        }
+        else
+        {
+            default_free_avl_node(node);
+        }
+        
         --tree->size;
     }
 }
@@ -440,7 +474,14 @@ avl_node* avl_tree_insert_integer(avl_tree* tree, size_t key, void* user_data)
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    if (tree->node_unit)
+    {
+        node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    }
+    else
+    {
+        node = (avl_node*)default_alloc_avl_node();
+    }
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -476,7 +517,14 @@ bool avl_tree_try_insert_integer(avl_tree* tree, size_t key, void* user_data, av
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    if (tree->node_unit)
+    {
+        node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    }
+    else
+    {
+        node = (avl_node*)default_alloc_avl_node();
+    }
 
     node->key.v_integer = key;
     node->value.v_pointer = user_data;
@@ -563,7 +611,14 @@ avl_node* avl_tree_insert_user(avl_tree* tree, const void* key, void* user_data)
     }
 
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    if (tree->node_unit)
+    {
+        node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    }
+    else
+    {
+        node = (avl_node*)default_alloc_avl_node();
+    }
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;
@@ -625,7 +680,14 @@ bool avl_tree_try_insert_user(avl_tree* tree, const void* key, void* user_data, 
         }
     }
 
-    node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    if (tree->node_unit)
+    {
+        node = (avl_node*)memory_unit_alloc(tree->node_unit);
+    }
+    else
+    {
+        node = (avl_node*)default_alloc_avl_node();
+    }
 
     node->key.v_pointer = key;
     node->value.v_pointer = user_data;

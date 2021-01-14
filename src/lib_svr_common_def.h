@@ -95,7 +95,7 @@ typedef struct st_avl_node
 {
     struct st_avl_node* avl_child[2];
     struct st_avl_node* avl_parent;
-    int                 avl_height;
+    long long           avl_height;
 
     struct st_avl_node* prev;
     struct st_avl_node* next;
@@ -123,7 +123,7 @@ typedef struct st_rb_node
     struct st_rb_node*  rb_right;
     struct st_rb_node*  rb_left;
     struct st_rb_node*  rb_parent;
-    int                 rb_color;
+    long long           rb_color;
 
     struct st_rb_node*  prev;
     struct st_rb_node*  next;
@@ -151,13 +151,19 @@ typedef struct st_mem_mgr
     avl_tree    mem_pool_map;
 }mem_mgr;
 
-extern void* (libsvr_memory_manager_realloc)(void* old_mem, size_t mem_size);
+//extern void* (libsvr_memory_manager_realloc)(void* old_mem, size_t mem_size);
+//
+//extern void* (libsvr_memory_manager_alloc)(size_t mem_size);
+//
+//extern void (libsvr_memory_manager_free)(void* mem);
+//
+//extern bool (libsvr_memory_manager_check)(void* mem);
 
-extern void* (libsvr_memory_manager_alloc)(size_t mem_size);
+extern void* default_alloc(size_t mem_size);
 
-extern void (libsvr_memory_manager_free)(void* mem);
+extern void* default_realloc(void* old_mem, size_t mem_size);
 
-extern bool (libsvr_memory_manager_check)(void* mem);
+extern void default_free(void* mem);
 
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_bkdr_str

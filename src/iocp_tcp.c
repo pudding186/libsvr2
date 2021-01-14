@@ -273,11 +273,11 @@ void* _iocp_tcp_manager_alloc_memory(iocp_tcp_manager* mgr, unsigned int buffer_
     if (!mem_node)
     {
         EnterCriticalSection(&mgr->mem_lock);
-        mem_node = rb_tree_find_integer(mgr->memory_mgr, buffer_size);
-        if (!mem_node)
+        unit = create_memory_unit(buffer_size);
+
+        if (!rb_tree_try_insert_integer(mgr->memory_mgr, buffer_size, unit, &mem_node))
         {
-            unit = create_memory_unit(buffer_size);
-            mem_node = rb_tree_insert_integer(mgr->memory_mgr, buffer_size, unit);
+            destroy_memory_unit(unit);
         }
         LeaveCriticalSection(&mgr->mem_lock);
     }

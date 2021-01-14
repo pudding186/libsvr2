@@ -810,6 +810,12 @@ struct SFieldList<First, Rest...>
         SFieldList<Rest...>::LoadData(row, idx + 1);
     }
 
+    template<typename F>
+    F& GetField(void)
+    {
+        return GetFieldByType<F>(*this);
+    }
+
     typename std::enable_if<
         std::is_base_of<FieldUINT8, First>::value
         || std::is_base_of<FieldINT8, First>::value

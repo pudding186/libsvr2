@@ -899,7 +899,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -920,7 +920,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
                 ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
             }
 
-            libsvr_memory_manager_free(ws_session->fragment_data);
+            default_free(ws_session->fragment_data);
             //free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
@@ -1031,7 +1031,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -1060,7 +1060,7 @@ void _on_server_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -1150,7 +1150,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -1171,7 +1171,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
                 ws_session->mgr->func_on_message(ws_session, ws_session->fragment_op_code, ws_session->fragment_data, ws_session->fragment_size);
             }
 
-            libsvr_memory_manager_free(ws_session->fragment_data);
+            default_free(ws_session->fragment_data);
             //free(ws_session->fragment_data);
             ws_session->fragment_data = 0;
             ws_session->fragment_size = 0;
@@ -1282,7 +1282,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -1311,7 +1311,7 @@ void _on_client_web_socket_data(ws_socket* ws_session, const char* data, const u
                 pay_load_data = ws_session->mgr->inflate_cache;
             }
 
-            ws_session->fragment_data = libsvr_memory_manager_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
+            ws_session->fragment_data = default_realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             //ws_session->fragment_data = realloc(ws_session->fragment_data, ws_session->fragment_size + pay_load_length);
             memcpy(ws_session->fragment_data + ws_session->fragment_size, pay_load_data, pay_load_length);
             ws_session->fragment_size += pay_load_length;
@@ -1332,7 +1332,7 @@ void _ws_free_socket(ws_manager* mgr, ws_socket* sock)
 {
     if (sock->fragment_data)
     {
-        libsvr_memory_manager_free(sock->fragment_data);
+        default_free(sock->fragment_data);
         //free(sock->fragment_data);
         sock->fragment_data = 0;
     }
@@ -1365,7 +1365,7 @@ void _ws_on_establish(HLISTENER net_handle, HSESSION session)
         ws_session = (ws_socket*)net_tcp_get_session_data(session);
         ws_session->state = ws_client_http;
         net_tcp_send(ws_session->session, ws_session->fragment_data, ws_session->fragment_size);
-        libsvr_memory_manager_free(ws_session->fragment_data);
+        default_free(ws_session->fragment_data);
         //free(ws_session->fragment_data);
         ws_session->fragment_data = 0;
         ws_session->fragment_size = 0;
@@ -1802,7 +1802,7 @@ ws_socket* net_ws_connect(ws_manager* ws_mgr, const char* uri, const char* extra
     ws_session->error_code = 0;
     ws_session->extension_options = 0;
     ws_session->extension_options |= ws_ext_server_no_context_takeover | ws_ext_client_no_context_takeover;
-    ws_session->fragment_data = libsvr_memory_manager_alloc(MAX_HTTP_REQUEST_SIZE);
+    ws_session->fragment_data = default_alloc(MAX_HTTP_REQUEST_SIZE);
     ws_session->fragment_size = MAX_HTTP_REQUEST_SIZE;
     {
         size_t copy_length = 0;

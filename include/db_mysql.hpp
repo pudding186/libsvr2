@@ -33,43 +33,30 @@ extern void (destroy_mysql_connection)(HMYSQLCONNECTION connection);
 
 extern HCLIENTMYSQL (db_connection_to_client_mysql)(HMYSQLCONNECTION connection);
 
-extern void (update_db_object_pool)(SMemory::IClassMemory* new_obj_pool);
-
-template<typename T>
-SMemory::CClassMemory<T>* db_object_pool(void)
-{
-    static thread_local SMemory::CClassMemory<T>* obj_pool = 0;
-
-    if (!obj_pool)
-    {
-        obj_pool = new SMemory::CClassMemory<T>();
-
-        update_db_object_pool(obj_pool);
-    }
-
-    return obj_pool;
-}
-
 extern void db_manager_post_default_cmd(ITable* table, int op_type, SFieldList<>* fields, SFieldList<>* conditions, IResult* result);
 extern bool db_manager_do_default_cmd(ITable* table, int op_type, SFieldList<>* fields, SFieldList<>* conditions, IResult* result);
 
 template<typename... Fields, typename... Conditions, typename... Args>
 void db_async_select(ITable* table, const SFieldList<Conditions...>& condition, void (*on_record)(bool, const std::vector<SFieldList<Fields...>>&, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+    using DBResult = RecordResult<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    IResult* result = db_object_pool<RecordResult<Fields...>>()->New(1, std::bind(on_record, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(DBResult, 1, std::bind(on_record, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_select, fields, conditions, result);
 }
@@ -77,20 +64,24 @@ void db_async_select(ITable* table, const SFieldList<Conditions...>& condition, 
 template<typename... Fields, typename... Conditions, typename C, typename... Args>
 void db_async_select(ITable* table, const SFieldList<Conditions...>& condition, C* clss, void (C::*on_record)(bool, const std::vector<SFieldList<Fields...>>&, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+    using DBResult = RecordResult<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    IResult* result = db_object_pool<RecordResult<Fields...>>()->New(1, std::bind(on_record, clss, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(DBResult, 1, std::bind(on_record, clss, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_select, fields, conditions, result);
 }
@@ -98,20 +89,24 @@ void db_async_select(ITable* table, const SFieldList<Conditions...>& condition, 
 template<typename... Fields, typename... Conditions>
 bool db_sync_select(ITable* table, std::vector<SFieldList<Fields...>>& result, const SFieldList<Conditions...>& condition = SFieldList<>())
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+    using DBResult = RecordResult<Fields...>;
+
     if (!db_manager_is_init())
     {
         return false;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    RecordResult<Fields...>* record_result = db_object_pool<RecordResult<Fields...>>()->New(1, nullptr);
+    DBResult* record_result = S_NEW(DBResult, 1, nullptr);
 
     bool ret = db_manager_do_default_cmd(table, mysql_select, fields, conditions, record_result);
     if (ret)
@@ -123,12 +118,12 @@ bool db_sync_select(ITable* table, std::vector<SFieldList<Fields...>>& result, c
         result.clear();
     }
 
-    SMemory::Delete(record_result);
+    S_DELETE(record_result);
     if (conditions)
     {
-        SMemory::Delete(conditions);
+        S_DELETE(conditions);
     }
-    SMemory::Delete(fields);
+    S_DELETE(fields);
 
     return ret;
 }
@@ -136,20 +131,24 @@ bool db_sync_select(ITable* table, std::vector<SFieldList<Fields...>>& result, c
 template<typename... Conditions>
 void db_async_update(ITable* table, const SDynaFieldList& field, const SFieldList<Conditions...>& condition)
 {
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SDynaFieldList* fields = db_object_pool<SDynaFieldList>()->New(1, field);
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SDynaFieldList* fields = db_object_pool<SDynaFieldList>()->New(1, field);
+    SDynaFieldList* fields = S_NEW(SDynaFieldList, 1, field);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);//db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    //IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    IResult* result = S_NEW(AffectResult, 1, nullptr);
 
     db_manager_post_default_cmd(table, mysql_update, fields, conditions, result);
 }
@@ -157,20 +156,25 @@ void db_async_update(ITable* table, const SDynaFieldList& field, const SFieldLis
 template<typename... Fields, typename... Conditions>
 void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SFieldList<Conditions...>& condition)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    //SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);//db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    IResult* result = S_NEW(AffectResult, 1, nullptr);//db_object_pool<AffectResult>()->New(1, nullptr);
 
     db_manager_post_default_cmd(table, mysql_update, fields, conditions, result);
 }
@@ -178,20 +182,23 @@ void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SF
 template<typename... Fields, typename... Conditions, typename... Args>
 void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SFieldList<Conditions...>& condition, void (*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);//db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_update, fields, conditions, result);
 }
@@ -199,20 +206,23 @@ void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SF
 template<typename... Fields, typename... Conditions, typename C, typename... Args>
 void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SFieldList<Conditions...>& condition, C* clss, void (C::*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);//db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_update, fields, conditions, result);
 }
@@ -220,20 +230,23 @@ void db_async_update(ITable* table, const SFieldList<Fields...>& field, const SF
 template<typename... Fields, typename... Conditions>
 bool db_sync_update(ITable* table, const SFieldList<Fields...>& field, const SFieldList<Conditions...>& condition, unsigned long long& affect_row)
 {
+    using DBFields = SFieldList<Fields...>;
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return false;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    SFieldList<Conditions...>* conditions = nullptr;
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);//db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
     }
 
-    AffectResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    AffectResult* result = S_NEW(AffectResult, 1, nullptr);
 
     bool ret = db_manager_do_default_cmd(table, mysql_update, fields, conditions, result);
     
@@ -246,12 +259,12 @@ bool db_sync_update(ITable* table, const SFieldList<Fields...>& field, const SFi
         affect_row = 0;
     }
 
-    SMemory::Delete(result);
+    S_DELETE(result);
     if (conditions)
     {
-        SMemory::Delete(conditions);
+        S_DELETE(conditions);
     }
-    SMemory::Delete(fields);
+    S_DELETE(fields);
 
     return ret;
 }
@@ -259,13 +272,17 @@ bool db_sync_update(ITable* table, const SFieldList<Fields...>& field, const SFi
 template<typename... Fields>
 void db_async_insert(ITable* table, const SFieldList<Fields...>& field)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    //IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, nullptr);
 
     db_manager_post_default_cmd(table, mysql_insert, fields, nullptr, result);
 }
@@ -273,13 +290,16 @@ void db_async_insert(ITable* table, const SFieldList<Fields...>& field)
 template<typename... Fields, typename... Args>
 void db_async_insert(ITable* table, const SFieldList<Fields...>& field, void (*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_insert, fields, nullptr, result);
 }
@@ -287,13 +307,16 @@ void db_async_insert(ITable* table, const SFieldList<Fields...>& field, void (*o
 template<typename... Fields, typename C, typename... Args>
 void db_async_insert(ITable* table, const SFieldList<Fields...>& field, C* clss, void (C::* on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_insert, fields, nullptr, result);
 }
@@ -301,13 +324,16 @@ void db_async_insert(ITable* table, const SFieldList<Fields...>& field, C* clss,
 template<typename... Fields>
 bool db_sync_insert(ITable* table, const SFieldList<Fields...>& field, unsigned long long& affect_row)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return false;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    AffectResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    AffectResult* result = S_NEW(AffectResult, 1, nullptr);
 
     bool ret = db_manager_do_default_cmd(table, mysql_insert, fields, nullptr, result);
 
@@ -320,8 +346,8 @@ bool db_sync_insert(ITable* table, const SFieldList<Fields...>& field, unsigned 
         affect_row = 0;
     }
 
-    SMemory::Delete(result);
-    SMemory::Delete(fields);
+    S_DELETE(result);
+    S_DELETE(fields);
 
     return ret;
 }
@@ -329,13 +355,16 @@ bool db_sync_insert(ITable* table, const SFieldList<Fields...>& field, unsigned 
 template<typename... Fields>
 void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, nullptr);
 
     db_manager_post_default_cmd(table, mysql_duplicate, fields, nullptr, result);
 }
@@ -343,13 +372,16 @@ void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field)
 template<typename... Fields, typename... Args>
 void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field, void (*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_duplicate, fields, nullptr, result);
 }
@@ -357,13 +389,16 @@ void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field, void 
 template<typename... Fields, typename C, typename... Args>
 void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field, C* clss, void (C::*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_duplicate, fields, nullptr, result);
 }
@@ -371,12 +406,15 @@ void db_async_duplicate(ITable* table, const SFieldList<Fields...>& field, C* cl
 template<typename... Fields>
 bool db_sync_duplicate(ITable* table, const SFieldList<Fields...>& field, unsigned long long& affect_row)
 {
+    using DBFields = SFieldList<Fields...>;
+
     if (!db_manager_is_init())
     {
         return false;
     }
-    SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
-    AffectResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    //SFieldList<Fields...>* fields = db_object_pool<SFieldList<Fields...>>()->New(1, field);
+    DBFields* fields = S_NEW(DBFields, 1, field);
+    AffectResult* result = S_NEW(AffectResult, 1, nullptr);
 
     bool ret = db_manager_do_default_cmd(table, mysql_duplicate, fields, nullptr, result);
 
@@ -389,8 +427,8 @@ bool db_sync_duplicate(ITable* table, const SFieldList<Fields...>& field, unsign
         affect_row = 0;
     }
 
-    SMemory::Delete(result);
-    SMemory::Delete(fields);
+    S_DELETE(result);
+    S_DELETE(fields);
 
     return ret;
 }
@@ -398,19 +436,22 @@ bool db_sync_duplicate(ITable* table, const SFieldList<Fields...>& field, unsign
 template<typename... Conditions>
 void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition)
 {
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SFieldList<Conditions...>* conditions = nullptr;
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    IResult* result = S_NEW(AffectResult, 1, nullptr);
 
     db_manager_post_default_cmd(table, mysql_delete, nullptr, conditions, result);
 }
@@ -418,19 +459,27 @@ void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition)
 template<typename... Conditions, typename... Args>
 void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition, void (*on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SFieldList<Conditions...>* conditions = nullptr;
+
+    //if (condition.size())
+    //{
+    //    conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+    //}
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_delete, nullptr, conditions, result);
 }
@@ -438,19 +487,26 @@ void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition, 
 template<typename... Conditions, typename C, typename... Args>
 void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition, C* clss, void (C::* on_affect)(bool, unsigned long long, Args...), Args... args)
 {
+    using DBConditions = SFieldList<Conditions...>;
     if (!db_manager_is_init())
     {
         return;
     }
 
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SFieldList<Conditions...>* conditions = nullptr;
+
+    //if (condition.size())
+    //{
+    //    conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+    //}
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    IResult* result = db_object_pool<AffectResult>()->New(1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
+    IResult* result = S_NEW(AffectResult, 1, std::bind(on_affect, clss, std::placeholders::_1, std::placeholders::_2, args...));
 
     db_manager_post_default_cmd(table, mysql_delete, nullptr, conditions, result);
 }
@@ -458,19 +514,27 @@ void db_async_delete(ITable* table, const SFieldList<Conditions...>& condition, 
 template<typename... Conditions>
 bool db_sync_delete(ITable* table, const SFieldList<Conditions...>& condition, unsigned long long& affect_row)
 {
+    using DBConditions = SFieldList<Conditions...>;
+
     if (!db_manager_is_init())
     {
         return false;
     }
 
-    SFieldList<Conditions...>* conditions = nullptr;
+    //SFieldList<Conditions...>* conditions = nullptr;
+
+    //if (condition.size())
+    //{
+    //    conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+    //}
+    DBConditions* conditions = nullptr;
 
     if (condition.size())
     {
-        conditions = db_object_pool<SFieldList<Conditions...>>()->New(1, condition);
+        conditions = S_NEW(DBConditions, 1, condition);
     }
 
-    AffectResult* result = db_object_pool<AffectResult>()->New(1, nullptr);
+    AffectResult* result = S_NEW(AffectResult, 1, nullptr);
 
     bool ret = db_manager_do_default_cmd(table, mysql_delete, nullptr, conditions, result);
 
@@ -483,10 +547,10 @@ bool db_sync_delete(ITable* table, const SFieldList<Conditions...>& condition, u
         affect_row = 0;
     }
 
-    SMemory::Delete(result);
+    S_DELETE(result);
     if (conditions)
     {
-        SMemory::Delete(conditions);
+        S_DELETE(conditions);
     }
 
     return ret;

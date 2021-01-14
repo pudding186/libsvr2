@@ -105,10 +105,10 @@ private:
     static const long long c2 = 3791;
 };
 
-void init_lib_svr(void)
-{
-    SMemory::Delete(SMemory::New<char>(1));
-}
+//void init_lib_svr(void)
+//{
+//    SMemory::Delete(SMemory::New<char>(1));
+//}
 
 long long rand_integer(long long min, long long max)
 {

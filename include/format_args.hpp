@@ -59,7 +59,7 @@ template <class T>
 using special_decay_type = typename unwrap_refwrapper_type<typename std::decay<T>::type>::type;
 
 //////////////////////////////////////////////////////////////////////////
-extern HMEMORYMANAGER logger_mem_pool(void);
+//extern HMEMORYMANAGER logger_mem_pool(void);
 
 template <typename... Args>
 struct SFormatArgs{};
@@ -85,7 +85,8 @@ struct SFormatArgs<>
 
         if (cache_use_size + str_len + 1 > sizeof(str_cache))
         {
-            ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
+            //ptr = (char*)memory_manager_alloc(logger_mem_pool(), str_len + 1);
+            ptr = (char*)S_MALLOC_EX(str_len + 1, u8"log str");
         }
         else
         {
@@ -103,7 +104,8 @@ struct SFormatArgs<>
         if (str > str_cache + sizeof(str_cache) ||
             str < str_cache)
         {
-            memory_manager_free(logger_mem_pool(), (void*)str);
+            //memory_manager_free(logger_mem_pool(), (void*)str);
+            S_FREE((void*)str);
         }
     }
 
