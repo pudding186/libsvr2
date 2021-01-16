@@ -382,6 +382,16 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday);
 
+        if (wcslen(cmd->logger->name) <= 0)
+        {
+            file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                L"%ls/%04d-%02d-%02d.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+        }
+
         cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
         if (!cmd->logger->file)
         {
@@ -443,6 +453,16 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
                 cmd->logger->file_time.tm_mon + 1,
                 cmd->logger->file_time.tm_mday);
 
+            if (wcslen(cmd->logger->name) <= 0)
+            {
+                file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                    L"%ls/%04d-%02d-%02d.txt",
+                    cmd->logger->path,
+                    cmd->logger->file_time.tm_year + 1900,
+                    cmd->logger->file_time.tm_mon + 1,
+                    cmd->logger->file_time.tm_mday);
+            }
+
             cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
             if (!cmd->logger->file)
             {
@@ -474,6 +494,17 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday,
             cmd->logger->file_idx);
+
+        if (wcslen(cmd->logger->name) <= 0)
+        {
+            file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                L"%ls/%04d-%02d-%02d_%zu.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday,
+                cmd->logger->file_idx);
+        }
 
         cmd->logger->file = _wfsopen(file_full_path, L"a", _SH_DENYWR);
         if (!cmd->logger->file)
@@ -552,6 +583,16 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday);
 
+        if (strlen(cmd->logger->name) <= 0)
+        {
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%04d-%02d-%02d.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+        }
+
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)
         {
@@ -609,6 +650,16 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
                 cmd->logger->file_time.tm_mon + 1,
                 cmd->logger->file_time.tm_mday);
 
+            if (strlen(cmd->logger->name) <= 0)
+            {
+                snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                    "%s/%04d-%02d-%02d.txt",
+                    cmd->logger->path,
+                    cmd->logger->file_time.tm_year + 1900,
+                    cmd->logger->file_time.tm_mon + 1,
+                    cmd->logger->file_time.tm_mday);
+            }
+
             cmd->logger->file = fopen(file_full_path, "a");
             if (!cmd->logger->file)
             {
@@ -637,6 +688,17 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
             cmd->logger->file_time.tm_mon + 1,
             cmd->logger->file_time.tm_mday,
             cmd->logger->file_idx);
+
+        if (strlen(cmd->logger->name) <= 0)
+        {
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%04d-%02d-%02d_%zu.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday,
+                cmd->logger->file_idx);
+        }
 
         cmd->logger->file = fopen(file_full_path, "a");
         if (!cmd->logger->file)

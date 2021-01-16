@@ -174,7 +174,7 @@ inline void StrSafeCopy(char(&Destination)[N], const std::string& Source) throw(
         return;
     }
 
-    size_t nSrcLen = std::min(N - 1, Source.length());
+    size_t nSrcLen = (std::min)(N - 1, Source.length());
     memcpy(Destination, Source.c_str(), nSrcLen + 1);
     Destination[N - 1] = '\0';
 }

@@ -142,6 +142,11 @@ public:
         return *this;
     }
 
+    operator T ()
+    {
+        return m_data;
+    }
+
     std::string ToSQL(HCLIENTMYSQL client_mysql) override
     {
         client_mysql = client_mysql;
@@ -249,6 +254,17 @@ public:
         }
 
         return *this;
+    }
+
+    operator std::string ()
+    {
+        return m_data;
+    }
+
+    template<size_t N>
+    void ToCharArray(char(&data)[N])
+    {
+        StrSafeCopy(data, m_data);
     }
 
     std::string ToSQL(HCLIENTMYSQL client_mysql) override
@@ -811,10 +827,7 @@ struct SFieldList<First, Rest...>
     }
 
     template<typename F>
-    F& GetField(void)
-    {
-        return GetFieldByType<F>(*this);
-    }
+    F& Field(void) const;
 
     typename std::enable_if<
         std::is_base_of<FieldUINT8, First>::value
@@ -1203,6 +1216,13 @@ template <typename T, typename... Args>
 T& GetFieldByType(const SFieldList<Args...>& t)
 {
     return GetFieldByIndex<indexOf<T, 0, Args...>::value>(t);
+}
+
+template <typename First, typename... Rest>
+template <typename F>
+F& SFieldList<First, Rest...>::Field() const
+{
+    return GetFieldByType<F>(*this);
 }
 
 template <typename T>

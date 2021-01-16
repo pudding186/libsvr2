@@ -540,8 +540,8 @@ mysql_connection* create_mysql_connection(
         if (g_db_manager->db_error)
         {
             g_db_manager->db_error(fmt::format(
-                u8"Connect Mysql fail! info:{} {} {} {} {} {}",
-                host, port, user, passwd, db, charact_set));
+                u8"Connect Mysql fail! info:{} {} {} {} {} {} Error:{}",
+                host, port, user, passwd, db, charact_set, err_info));
         }
 
         return nullptr;
