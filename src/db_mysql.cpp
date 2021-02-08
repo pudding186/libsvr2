@@ -57,7 +57,7 @@ using db_proc = struct st_db_proc
     db_queue*           queue;
     //db_obj_pool*        db_obj_pool_head;
     //db_mem_pool*        db_mem_pool_head;
-    HCLIENTMYSQL        client_mysql;
+    //HCLIENTMYSQL        client_mysql;
     unsigned int        t_id;
     unsigned int        cur_proc_idx;
     bool                is_run;
@@ -105,6 +105,7 @@ using db_manager = struct st_db_manager
     db_proc*    db_proc_head;
     db_proc**   db_proc_main;
     OnError     db_error;
+    OnWarn      db_warn;
     bool        is_run;
 };
 
@@ -117,7 +118,7 @@ public:
     {
         m_db_proc = (db_proc*)malloc(sizeof(db_proc));
         m_db_proc->queue = (db_queue*)malloc(sizeof(db_queue) * g_db_manager->db_thread_num);
-        m_db_proc->client_mysql = nullptr;
+        //m_db_proc->client_mysql = nullptr;
 
         for (size_t i = 0; i < g_db_manager->db_thread_num; i++)
         {
@@ -168,6 +169,69 @@ public:
 protected:
     db_proc* m_db_proc;
 private:
+};
+
+class db_cmd_custom
+    :public db_cmd
+{
+public:
+    db_cmd_custom(ITable* table, SDBTask* task)
+        :m_table_name(table->GetTableName()), 
+        m_mysql_connection(table->Connection()), 
+        m_task(task),
+        m_warn(""),
+        m_error(""){}
+
+    void OnExecute() override
+    {
+        if (m_mysql_connection->create_proc)
+        {
+            m_task->OnExecute(m_mysql_connection->client_mysql);
+        }
+        else
+        {
+            m_error = fmt::format(u8"Query Fail! ERROR=table {} can't async operator", m_table_name);
+        }
+
+        m_mysql_connection->db_ack++;
+    }
+
+
+
+    void OnResult() override
+    {
+        if (g_db_manager->db_warn)
+        {
+            if (m_warn.length())
+            {
+                g_db_manager->db_warn(m_warn);
+            }
+        }
+
+        if (g_db_manager->db_error)
+        {
+            if (m_error.length())
+            {
+                g_db_manager->db_error(m_error);
+            }
+        }
+
+        m_task->OnResult();
+    }
+
+    void OnRelease() override
+    {
+        S_DELETE(m_task);
+        S_DELETE(this);
+    }
+
+protected:
+private:
+    const std::string&  m_table_name;
+    HMYSQLCONNECTION    m_mysql_connection;
+    SDBTask*            m_task;
+    std::string         m_warn;
+    std::string         m_error;
 };
 
 class db_cmd_default
@@ -250,7 +314,17 @@ public:
 
         if (m_conditions)
         {
-            sql += " WHERE " + m_conditions->AndSQL(client_mysql);
+            if (m_conditions->CustomSQL().length())
+            {
+                sql += " WHERE " + m_conditions->CustomSQL();
+            }
+            else
+            {
+                if (m_conditions->size())
+                {
+                    sql += " WHERE " + m_conditions->AndSQL(client_mysql);
+                }
+            }
         }
 
         sql += ";";
@@ -261,7 +335,7 @@ public:
 
         if (query_tick > 100)
         {
-            m_result->SetWarn(fmt::format(u8"Query use {}ms! SQL={}", query_tick, sql));
+            m_result->SetWarn(fmt::format(u8"Query Timeout use {}ms! SQL={}", query_tick, sql));
         }
 
         if (client_mysql_result_success(&res))
@@ -278,7 +352,14 @@ public:
 
     void OnExecute() override
     {
-        Execute(m_mysql_connection->client_mysql);
+        if (m_mysql_connection->create_proc)
+        {
+            Execute(m_mysql_connection->client_mysql);
+        }
+        else
+        {
+            m_result->SetError(fmt::format(u8"Query Fail! ERROR=table {} can't async operator", m_table_name));
+        }
 
         m_mysql_connection->db_ack++;
     }
@@ -287,13 +368,16 @@ public:
 
     void OnResult() override
     {
-        if (g_db_manager->db_error)
+        if (g_db_manager->db_warn)
         {
             if (m_result->GetWarn().length())
             {
-                g_db_manager->db_error(m_result->GetWarn());
+                g_db_manager->db_warn(m_result->GetWarn());
             }
+        }
 
+        if (g_db_manager->db_error)
+        {
             if (m_result->GetError().length())
             {
                 g_db_manager->db_error(m_result->GetError());
@@ -552,7 +636,16 @@ mysql_connection* create_mysql_connection(
     connection->db_req = 0;
     connection->db_ack = 0;
     connection->client_mysql = client_mysql;
-    connection->create_proc = _get_db_proc();
+
+    if (db_thread_idx)
+    {
+        connection->create_proc = _get_db_proc();
+    }
+    else
+    {
+        connection->create_proc = nullptr;
+    }
+
     connection->db_thread_idx = db_thread_idx % g_db_manager->db_thread_num;
 
     return connection;
@@ -579,13 +672,16 @@ HCLIENTMYSQL db_connection_to_client_mysql(mysql_connection* connection)
 {
     if (connection)
     {
-        return connection->client_mysql;
+        if (!connection->create_proc)
+        {
+            return connection->client_mysql;
+        }
     }
 
     return nullptr;
 }
 
-bool init_db_manager(size_t db_thread_num, size_t max_db_event_num, OnError on_error)
+bool init_db_manager(size_t db_thread_num, size_t max_db_event_num, OnError on_error, OnWarn on_warn)
 {
     if (!g_db_manager)
     {
@@ -597,6 +693,8 @@ bool init_db_manager(size_t db_thread_num, size_t max_db_event_num, OnError on_e
         g_db_manager->db_thread_array = new db_thread[db_thread_num];
         g_db_manager->db_proc_main = _get_db_proc_addr();
         g_db_manager->db_error = on_error;
+        g_db_manager->db_warn = on_warn;
+
         for (size_t i = 0; i < db_thread_num; i++)
         {
             g_db_manager->db_thread_array[i].set_idx(i);
@@ -624,10 +722,10 @@ void uninit_db_manager(void)
             db_proc* cur_proc = proc;
             proc = proc->next_proc;
 
-            if (cur_proc->client_mysql)
-            {
-                destroy_client_mysql(cur_proc->client_mysql);
-            }
+            //if (cur_proc->client_mysql)
+            //{
+            //    destroy_client_mysql(cur_proc->client_mysql);
+            //}
 
             for (size_t i = 0; i < g_db_manager->db_thread_num; i++)
             {
@@ -755,6 +853,35 @@ bool db_manager_run(unsigned int run_time)
     }
 }
 
+void db_manager_post_custom_cmd(ITable* table, SDBTask* task)
+{
+    db_proc* proc = _get_db_proc();
+
+    mysql_connection* connection = table->Connection();
+
+    db_cmd* cmd = S_NEW(db_cmd_custom, 1, table, task);
+
+    while (!loop_cache_push_data(proc->queue[connection->db_thread_idx].cmd_queue, &cmd, sizeof(db_cmd*)))
+    {
+        std::this_thread::yield();
+    }
+
+    if (connection->create_proc == proc)
+    {
+        connection->db_req++;
+    }
+    else
+    {
+#ifdef _MSC_VER
+        InterlockedIncrement64((LONG64*)(&connection->db_req_mt));
+#elif __GNUC__
+        __atomic_add_fetch(&connection->db_req_mt, 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
+    }
+}
+
 void db_manager_post_default_cmd(ITable* table, int op_type, SFieldList<>* fields, SFieldList<>* conditions, IResult* result)
 {
     db_proc* proc = _get_db_proc();
@@ -787,40 +914,50 @@ void db_manager_post_default_cmd(ITable* table, int op_type, SFieldList<>* field
 
 bool db_manager_do_default_cmd(ITable* table, int op_type, SFieldList<>* fields, SFieldList<>* conditions, IResult* result)
 {
-    db_proc* proc = _get_db_proc();
+    //db_proc* proc = _get_db_proc();
 
-    //db_cmd_default* cmd = db_object_pool<db_cmd_default>()->New(1, table->GetTableName(), op_type, fields, conditions, result);
     db_cmd_default* cmd = S_NEW(db_cmd_default, 1, table->GetTableName(), op_type, fields, conditions, result);
 
-    if (proc->client_mysql == nullptr)
-    {
-        char err_info[512];
-        proc->client_mysql = duplicate_client_mysql(table->Connection()->client_mysql, err_info, sizeof(err_info));
+    //if (proc->client_mysql == nullptr)
+    //{
+    //    char err_info[512];
+    //    proc->client_mysql = duplicate_client_mysql(table->Connection()->client_mysql, err_info, sizeof(err_info));
 
-        if (proc->client_mysql)
-        {
-            cmd->Execute(proc->client_mysql);
-        }
-        else
-        {
-            cmd->GetResult()->SetError(std::string(err_info));
-        }
+    //    if (proc->client_mysql)
+    //    {
+    //        cmd->Execute(proc->client_mysql);
+    //    }
+    //    else
+    //    {
+    //        cmd->GetResult()->SetError(std::string(err_info));
+    //    }
+    //}
+    //else
+    //{
+    //    cmd->Execute(proc->client_mysql);
+    //}
+    if (table->Connection()->create_proc)
+    {
+        cmd->GetResult()->SetError(fmt::format(u8"Query Fail! ERROR=table {} can't sync operator", table->GetTableName()));;
     }
     else
     {
-        cmd->Execute(proc->client_mysql);
+        cmd->Execute(table->Connection()->client_mysql);
     }
 
     //SMemory::Delete(cmd);
     S_DELETE(cmd);
 
-    if (g_db_manager->db_error)
+    if (g_db_manager->db_warn)
     {
         if (result->GetWarn().length())
         {
-            g_db_manager->db_error(result->GetWarn());
+            g_db_manager->db_warn(result->GetWarn());
         }
+    }
 
+    if (g_db_manager->db_error)
+    {
         if (result->GetError().length())
         {
             g_db_manager->db_error(result->GetError());
@@ -1312,4 +1449,18 @@ std::string db_check_table(ITable* table)
     client_mysql_free_result(&res);
 
     return "";
+}
+
+std::vector<SRecordFieldList> Record2FieldList(CLIENTMYSQLRES& res)
+{
+    std::vector<SRecordFieldList> datas;
+    datas.resize(client_mysql_rows_num(&res));
+
+    for (auto& field : datas)
+    {
+        field.Init(res);
+        field.LoadData(client_mysql_fetch_row(&res));
+    }
+
+    return datas;
 }

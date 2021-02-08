@@ -143,6 +143,25 @@ public:
         }
     }
 
+    inline void erase(U idx)
+    {
+        if (idx < m_size)
+        {
+            size_t copy_len = sizeof(T) * (m_size - idx - 1);
+
+            if (copy_len)
+            {
+                memcpy(m_array + idx, m_array + idx + 1, copy_len);
+            }
+
+            --m_size;
+        }
+        else
+        {
+            throw "operator erase overflow";
+        }
+    }
+
     inline void clear()
     {
         m_size = 0;
@@ -423,6 +442,25 @@ public:
 
             S_FREE(m_array);
             m_array = new_array;
+        }
+    }
+
+    inline void erase(U idx)
+    {
+        if (idx < m_size)
+        {
+            (m_array + idx)->~T();
+
+            for (U i = idx; i < m_size-1; i++)
+            {
+                new(m_array + i)T(m_array[i + 1]);
+                (m_array + i + 1)->~T();
+            }
+            --m_size;
+        }
+        else
+        {
+            throw "operator erase overflow";
         }
     }
 

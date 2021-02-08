@@ -423,7 +423,7 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            if (strcmp(attr.value(), \"0\"))\r\n");
+            fprintf(hpp_file, u8"            if (!attr.empty())\r\n");
             fprintf(hpp_file, u8"            {\r\n");
 
             if (info.m_data_type == col_int32 ||
@@ -436,27 +436,19 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
             fprintf(hpp_file, u8"                int value = attr.as_int();\r\n");
             }
             
-            fprintf(hpp_file, u8"                if (value)\r\n");
+            fprintf(hpp_file, u8"                if (value > (std::numeric_limits<%s>::max)())\r\n", info.m_col_type.c_str());
             fprintf(hpp_file, u8"                {\r\n");
-            fprintf(hpp_file, u8"                    if (value > (std::numeric_limits<%s>::max)())\r\n", info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                    {\r\n");
-            fprintf(hpp_file, u8"                        snprintf(err, err_len, u8\"attribute %s value > %s max\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                        return false;\r\n");
-            fprintf(hpp_file, u8"                    }\r\n");
-            fprintf(hpp_file, u8"                    else if (value < (std::numeric_limits<%s>::min)())\r\n", info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                    {\r\n");
-            fprintf(hpp_file, u8"                        snprintf(err, err_len, u8\"attribute %s value < %s min\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                        return false;\r\n");
-            fprintf(hpp_file, u8"                    }\r\n");
-            fprintf(hpp_file, u8"                    else\r\n");
-            fprintf(hpp_file, u8"                    {\r\n");
-            fprintf(hpp_file, u8"                        row->%s = (%s)value;\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s value > %s max\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    return false;\r\n");
+            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"                else if (value < (std::numeric_limits<%s>::min)())\r\n", info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s value < %s min\");\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
+            fprintf(hpp_file, u8"                    return false;\r\n");
             fprintf(hpp_file, u8"                }\r\n");
             fprintf(hpp_file, u8"                else\r\n");
             fprintf(hpp_file, u8"                {\r\n");
-            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s= %%s to %s fail\", attr.value());\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                    return false;\r\n");
+            fprintf(hpp_file, u8"                    row->%s = (%s)value;\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
             fprintf(hpp_file, u8"                }\r\n");
             fprintf(hpp_file, u8"            }\r\n");
             fprintf(hpp_file, u8"            else\r\n");
@@ -476,7 +468,7 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            if (strcmp(attr.value(), \"0\"))\r\n");
+            fprintf(hpp_file, u8"            if (!attr.empty())\r\n");
             fprintf(hpp_file, u8"            {\r\n");
 
             if (info.m_data_type == col_int64)
@@ -488,15 +480,7 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
                 fprintf(hpp_file, u8"                unsigned long long value = attr.as_ullong();\r\n");
             }
 
-            fprintf(hpp_file, u8"                if (value)\r\n");
-            fprintf(hpp_file, u8"                {\r\n");
-            fprintf(hpp_file, u8"                    row->%s = value;\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"                }\r\n");
-            fprintf(hpp_file, u8"                else\r\n");
-            fprintf(hpp_file, u8"                {\r\n");
-            fprintf(hpp_file, u8"                    snprintf(err, err_len, u8\"attribute %s= %%s to %s fail\", attr.value());\r\n", info.m_col_name.c_str(), info.m_col_type.c_str());
-            fprintf(hpp_file, u8"                    return false;\r\n");
-            fprintf(hpp_file, u8"                }\r\n");
+            fprintf(hpp_file, u8"                row->%s = value;\r\n", info.m_col_name.c_str());
             fprintf(hpp_file, u8"            }\r\n");
             fprintf(hpp_file, u8"            else\r\n");
             fprintf(hpp_file, u8"            {\r\n");

@@ -579,7 +579,8 @@ struct SFieldList {};
 template<>
 struct SFieldList<>
 {
-    SFieldList(){}
+    SFieldList():m_custom_sql(u8""){}
+    SFieldList(const std::string& custom_sql):m_custom_sql(custom_sql){}
     ~SFieldList(){}
 
 #ifdef _MSC_VER
@@ -590,6 +591,11 @@ struct SFieldList<>
 #else
 #error "unknown compiler"
 #endif
+
+    inline std::string& CustomSQL(void)
+    {
+        return m_custom_sql;
+    }
 
     ptrdiff_t Compare(const SFieldList<>& other) const
     {
@@ -645,6 +651,9 @@ struct SFieldList<>
     {
 
     }
+
+private:
+    std::string m_custom_sql;
 
 #ifdef _MSC_VER
 #pragma warning( pop )
@@ -1169,6 +1178,66 @@ struct SDynaFieldList
 
 };
 
+struct SRecordFieldList
+{
+    SRecordFieldList()
+    {
+        m_name_idx.clear();
+        m_data.clear();
+    }
+
+    ~SRecordFieldList()
+    {
+    }
+
+    void Init(CLIENTMYSQLRES& res)
+    {
+        unsigned int field_num = mysql_num_fields(res.record_set);
+        MYSQL_FIELD* field = mysql_fetch_fields(res.record_set);
+
+        for (unsigned int i = 0; i < field_num; i++)
+        {
+            m_name_idx[field[i].name] = i;
+        }
+        m_data.resize(field_num);
+    }
+
+    std::string Field(unsigned int idx)
+    {
+        if (idx >= m_data.size())
+        {
+            assert(false);
+            return "";
+        }
+
+        return m_data[idx];
+    }
+
+    std::string Field(const std::string& name)
+    {
+        auto it = m_name_idx.find(name);
+        if (it == m_name_idx.end())
+        {
+            assert(false);
+            return "";
+        }
+
+        return Field(it->second);
+    }
+
+    void LoadData(const CLIENTMYSQLROW& row)
+    {
+        for (size_t i = 0; i < m_data.size(); i++)
+        {
+            CLIENTMYSQLVALUE data = client_mysql_value(row, (unsigned long)i);
+            m_data[i] = std::string(data.value, data.size);
+        }
+    }
+
+    std::map<std::string, unsigned int> m_name_idx;
+    std::vector<std::string> m_data;
+};
+
 
 //////////////////////////////////////////////////////////////////////////
 template <size_t N, typename FARGS> struct SFieldListElement;
@@ -1291,6 +1360,22 @@ private:
     std::vector<SFieldList<Fields...>> m_datas;
     std::function<void(bool, std::vector<SFieldList<Fields...>>&)> m_func;
 };
+
+template<typename... Args>
+std::vector<SFieldList<Args...>> Record2FieldList(CLIENTMYSQLRES& res)
+{
+    std::vector<SFieldList<Args...>> datas;
+    datas.resize(client_mysql_rows_num(&res));
+
+    for (auto& field : datas)
+    {
+        field.LoadData(client_mysql_fetch_row(&res));
+    }
+
+    return std::move(datas);
+}
+
+extern std::vector<SRecordFieldList> Record2FieldList(CLIENTMYSQLRES& res);
 
 class AffectResult
     :public IResult

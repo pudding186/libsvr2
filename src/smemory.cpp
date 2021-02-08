@@ -125,10 +125,17 @@ namespace SMemory
         m_memory_mgr = create_memory_manager(8, 128, 1024, 4 * 1024, 2);
         m_can_destroy = false;
         m_be_destroy = false;
+
+#ifdef TRACE_MEMORY
+        _trace_manager(m_memory_mgr);
+#endif
     }
 
     CMemory::~CMemory()
     {
+#ifdef TRACE_MEMORY
+        _untrace_manager(m_memory_mgr);
+#endif
         destroy_memory_manager(m_memory_mgr);
     }
 
