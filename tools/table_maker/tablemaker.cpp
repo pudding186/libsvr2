@@ -306,9 +306,10 @@ void CTableMaker::_print_class( FILE* hpp_file )
         fprintf(hpp_file, u8"    %-*s m_data_map%zu;\r\n", (int)(max_member_length), "HRBTREE", key_count);
     }
 
-    fprintf(hpp_file, u8"    %-*s m_col_info_map;\r\n", (int)(max_member_length), "HRBTREE");
-    fprintf(hpp_file, u8"    %-*s m_data_arry;\r\n", (int)(max_member_length), tmp.c_str());
-    fprintf(hpp_file, u8"    %-*s m_data_arry_size;\r\n", (int)(max_member_length), "size_t");
+
+    //fprintf(hpp_file, u8"    %-*s m_col_info_map;\r\n", (int)(max_member_length), "HRBTREE");
+    //fprintf(hpp_file, u8"    %-*s m_data_arry;\r\n", (int)(max_member_length), tmp.c_str());
+    //fprintf(hpp_file, u8"    %-*s m_data_arry_size;\r\n", (int)(max_member_length), "size_t");
 
     //key_count = 1;
     //for (table_key_info::iterator it = m_table_key.begin();
@@ -318,6 +319,7 @@ void CTableMaker::_print_class( FILE* hpp_file )
     //    fprintf(hpp_file, u8"    %-*s m_lua_data_map%zu;\r\n", (int)(max_member_length), "Lua::Table", key_count);
     //}
     fprintf(hpp_file, u8"    %-*s m_lua_data_map;\r\n", (int)(max_member_length), "Lua::Table");
+    fprintf(hpp_file, u8"    std::vector<%s*> m_data_array;\r\n", m_struct_name.c_str());
 
     fprintf(hpp_file, u8"public:\r\n");
     _print_func_At(hpp_file);
@@ -352,7 +354,7 @@ void CTableMaker::_print_func_GetSize( FILE* hpp_file )
 {
     fprintf(hpp_file, u8"    size_t GetSize(void)\r\n");
     fprintf(hpp_file, u8"    {\r\n");
-    fprintf(hpp_file, u8"        return m_data_arry_size;\r\n");
+    fprintf(hpp_file, u8"        return m_data_array.size();\r\n");
     fprintf(hpp_file, u8"    }\r\n");
 }
 
@@ -368,7 +370,11 @@ void CTableMaker::_print_func_At( FILE* hpp_file )
 {
     fprintf(hpp_file, u8"    %s* At(size_t index)\r\n", m_struct_name.c_str());
     fprintf(hpp_file, u8"    {\r\n");
-    fprintf(hpp_file, u8"        return m_data_arry[index];\r\n");
+    fprintf(hpp_file, u8"        if(index >= m_data_array.size())\r\n");
+    fprintf(hpp_file, u8"        {\r\n");
+    fprintf(hpp_file, u8"            return nullptr;\r\n");
+    fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        return m_data_array[index];\r\n");
     fprintf(hpp_file, u8"    }\r\n");
 }
 
@@ -1322,16 +1328,21 @@ void CTableMaker::_print_func_Release( FILE* hpp_file )
         fprintf(hpp_file, u8"        ReleaseMapping%zu();\r\n", key_count);
     }
 
-    fprintf(hpp_file, u8"        for (size_t i = 0; i < m_data_arry_size; i++)\r\n");
+    fprintf(hpp_file, u8"        for (auto& data:m_data_array)\r\n");
     fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            FreeRow(m_data_arry[i]);\r\n");
+    fprintf(hpp_file, u8"            FreeRow(data);\r\n");
     fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        if (m_data_arry)\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            S_DELETE(m_data_arry);\r\n");  
-    fprintf(hpp_file, u8"            m_data_arry = 0;\r\n");
-    fprintf(hpp_file, u8"            m_data_arry_size = 0;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
+    fprintf(hpp_file, u8"        m_data_array.clear();\r\n");
+    //fprintf(hpp_file, u8"        for (size_t i = 0; i < m_data_arry_size; i++)\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            FreeRow(m_data_arry[i]);\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        if (m_data_arry)\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            S_DELETE(m_data_arry);\r\n");  
+    //fprintf(hpp_file, u8"            m_data_arry = 0;\r\n");
+    //fprintf(hpp_file, u8"            m_data_arry_size = 0;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
 
     fprintf(hpp_file, u8"    }\r\n");
 }
@@ -1354,19 +1365,20 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
     fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"root not found!\");\r\n");
     fprintf(hpp_file, u8"            return false;\r\n");
     fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        size_t data_count = 0;\r\n");
-    fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
-    fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            data_count++;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        if (!data_count)\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"table row count = 0!\");\r\n");
-    fprintf(hpp_file, u8"            return false;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        m_data_arry = S_NEW(%s*, data_count);\r\n", m_struct_name.c_str());
-    fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
+    //fprintf(hpp_file, u8"        size_t data_count = 0;\r\n");
+    //fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
+    //fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            data_count++;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        if (!data_count)\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"table row count = 0!\");\r\n");
+    //fprintf(hpp_file, u8"            return false;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        m_data_arry = S_NEW(%s*, data_count);\r\n", m_struct_name.c_str());
+    //fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
+    fprintf(hpp_file, u8"        m_data_array.clear();\r\n");
     size_t key_count = 1;
     for (table_key_info::iterator it = m_table_key.begin();
         it != m_table_key.end(); ++it, ++key_count)
@@ -1397,14 +1409,15 @@ void CTableMaker::_print_func_Load( FILE* hpp_file )
     fprintf(hpp_file, u8"            %s* row = AllocRow();\r\n", m_struct_name.c_str());
     fprintf(hpp_file, u8"            if (FillData(row, content, err, err_len))\r\n");
     fprintf(hpp_file, u8"            {\r\n");
-    fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
-    fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+    //fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
+    //fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+    fprintf(hpp_file, u8"                m_data_array.push_back(row);\r\n");
     fprintf(hpp_file, u8"            }\r\n");
     fprintf(hpp_file, u8"            else\r\n");
     fprintf(hpp_file, u8"            {\r\n");
     fprintf(hpp_file, u8"                std::string strError;\r\n");
     fprintf(hpp_file, u8"                strError.append(err);\r\n");
-    fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_arry_size+1, strError.c_str());\r\n");
+    fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_array.size(), strError.c_str());\r\n");
     fprintf(hpp_file, u8"                return false;\r\n");
     fprintf(hpp_file, u8"            }\r\n");
 
@@ -1451,24 +1464,24 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
     fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"root not found\");\r\n");
     fprintf(hpp_file, u8"            return false;\r\n");
     fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        size_t data_count = 0;\r\n");
-    fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
-    fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            data_count++;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        if (data_count < m_data_arry_size)\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"reload fail row count old = %%zu > new = %%zu\", m_data_arry_size, data_count);\r\n");
-    fprintf(hpp_file, u8"            return false;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        if (m_data_arry)\r\n");
-    fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            S_DELETE(m_data_arry);\r\n");
-    fprintf(hpp_file, u8"            m_data_arry = 0;\r\n");
-    fprintf(hpp_file, u8"        }\r\n");
-    fprintf(hpp_file, u8"        m_data_arry = S_NEW(%s*, data_count);\r\n", m_struct_name.c_str());
-    fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
+    //fprintf(hpp_file, u8"        size_t data_count = 0;\r\n");
+    //fprintf(hpp_file, u8"        for (pugi::xml_node content = root.child(u8\"content\");\r\n");
+    //fprintf(hpp_file, u8"            content; content = content.next_sibling())\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            data_count++;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        if (data_count < m_data_arry_size)\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"reload fail row count old = %%zu > new = %%zu\", m_data_arry_size, data_count);\r\n");
+    //fprintf(hpp_file, u8"            return false;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        if (m_data_arry)\r\n");
+    //fprintf(hpp_file, u8"        {\r\n");
+    //fprintf(hpp_file, u8"            S_DELETE(m_data_arry);\r\n");
+    //fprintf(hpp_file, u8"            m_data_arry = 0;\r\n");
+    //fprintf(hpp_file, u8"        }\r\n");
+    //fprintf(hpp_file, u8"        m_data_arry = S_NEW(%s*, data_count);\r\n", m_struct_name.c_str());
+    //fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
     size_t key_count = 1;
     for (table_key_info::iterator it = m_table_key.begin();
         it != m_table_key.end(); ++it, ++key_count)
@@ -1598,6 +1611,7 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
         }
 
         fprintf(hpp_file, u8"            %s* row = 0;\r\n", m_struct_name.c_str());
+        fprintf(hpp_file, u8"            bool is_new_row = false;\r\n");
         fprintf(hpp_file, u8"            if (m_data_map1)\r\n");
         fprintf(hpp_file, u8"            {\r\n");
         fprintf(hpp_file, u8"                row = GetBy");
@@ -1639,17 +1653,22 @@ void CTableMaker::_print_func_ReLoadEx(FILE* hpp_file)
         fprintf(hpp_file, u8"            if (!row)\r\n");
         fprintf(hpp_file, u8"            {\r\n");
         fprintf(hpp_file, u8"                row = AllocRow();\r\n");
+        fprintf(hpp_file, u8"                is_new_row = true;\r\n");
         fprintf(hpp_file, u8"            }\r\n");
         fprintf(hpp_file, u8"            if (FillData(row, content, err, err_len))\r\n");
         fprintf(hpp_file, u8"            {\r\n");
-        fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
-        fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+        //fprintf(hpp_file, u8"                m_data_arry[m_data_arry_size] = row;\r\n");
+        //fprintf(hpp_file, u8"                ++m_data_arry_size;\r\n");
+        fprintf(hpp_file, u8"                if (is_new_row)\r\n");
+        fprintf(hpp_file, u8"                {\r\n");
+        fprintf(hpp_file, u8"                    m_data_array.push_back(row);\r\n");
+        fprintf(hpp_file, u8"                }\r\n");
         fprintf(hpp_file, u8"            }\r\n");
         fprintf(hpp_file, u8"            else\r\n");
         fprintf(hpp_file, u8"            {\r\n");
         fprintf(hpp_file, u8"                std::string strError;\r\n");
         fprintf(hpp_file, u8"                strError.append(err);\r\n");
-        fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_arry_size+1, strError.c_str());\r\n");
+        fprintf(hpp_file, u8"                snprintf(err, err_len, u8\"load row: %%zu fail: %%s\", m_data_array.size(), strError.c_str());\r\n");
         fprintf(hpp_file, u8"                return false;\r\n");
         fprintf(hpp_file, u8"            }\r\n");
         
@@ -1749,23 +1768,24 @@ void CTableMaker::_print_func_Construct_Destruct( FILE* hpp_file )
         fprintf(hpp_file, u8"        m_data_map%zu = 0;\r\n", key_count);
     }
     
-    fprintf(hpp_file, u8"        m_data_arry = 0;\r\n");
-    fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
-    fprintf(hpp_file, u8"        InitColInfo();\r\n");
+    //fprintf(hpp_file, u8"        m_data_arry = 0;\r\n");
+    //fprintf(hpp_file, u8"        m_data_arry_size = 0;\r\n");
+    //fprintf(hpp_file, u8"        InitColInfo();\r\n");
+    fprintf(hpp_file, u8"        m_data_array.clear();\r\n");
     fprintf(hpp_file, u8"    }\r\n");
 
     fprintf(hpp_file, u8"    ~%s(void)\r\n", m_class_name.c_str());
     fprintf(hpp_file, u8"    {\r\n");
-    fprintf(hpp_file, u8"        UnInitColInfo();\r\n");
+    //fprintf(hpp_file, u8"        UnInitColInfo();\r\n");
     fprintf(hpp_file, u8"        Release();\r\n");
     fprintf(hpp_file, u8"    }\r\n");
 }
 
 void CTableMaker::_print_func_InitColInfo_UnInitColInfo_GetColVar( FILE* hpp_file )
 {
-    fprintf(hpp_file, u8"    void InitColInfo(void)\r\n");
-    fprintf(hpp_file, u8"    {\r\n");
-    fprintf(hpp_file, u8"        m_col_info_map = create_rb_tree(0);\r\n");
+    //fprintf(hpp_file, u8"    void InitColInfo(void)\r\n");
+    //fprintf(hpp_file, u8"    {\r\n");
+    //fprintf(hpp_file, u8"        m_col_info_map = create_rb_tree(0);\r\n");
 
     //for (table_column_info::iterator it = m_table_column.begin();
     //    it != m_table_column.end(); ++it)
@@ -1811,12 +1831,12 @@ void CTableMaker::_print_func_InitColInfo_UnInitColInfo_GetColVar( FILE* hpp_fil
 
 
 
-    fprintf(hpp_file, u8"    }\r\n");
+    //fprintf(hpp_file, u8"    }\r\n");
 
 
 
-    fprintf(hpp_file, u8"    void UnInitColInfo(void)\r\n");
-    fprintf(hpp_file, u8"    {\r\n");
+    //fprintf(hpp_file, u8"    void UnInitColInfo(void)\r\n");
+    //fprintf(hpp_file, u8"    {\r\n");
 
     //for (table_column_info::iterator it = m_table_column.begin();
     //    it != m_table_column.end(); ++it)
@@ -1827,8 +1847,8 @@ void CTableMaker::_print_func_InitColInfo_UnInitColInfo_GetColVar( FILE* hpp_fil
     //}
 
 
-    fprintf(hpp_file, u8"        destroy_rb_tree(m_col_info_map);\r\n");
-    fprintf(hpp_file, u8"    }\r\n");
+    //fprintf(hpp_file, u8"        destroy_rb_tree(m_col_info_map);\r\n");
+    //fprintf(hpp_file, u8"    }\r\n");
 
 
     //fprintf(hpp_file, "    col_var GetColVar(%s* row, const char* col_name)\r\n", m_struct_name.c_str());
@@ -1904,9 +1924,10 @@ void CTableMaker::_print_func_ReLoadLua(FILE* hpp_file)
     fprintf(hpp_file, u8"    {\r\n");
     fprintf(hpp_file, u8"        m_lua_data_map.Disable();\r\n");
     fprintf(hpp_file, u8"        m_lua_data_map = Lua::Table::NewTable(LuaState);\r\n");
-    fprintf(hpp_file, u8"        for (size_t i = 0; i < m_data_arry_size; i++)\r\n");
+    //fprintf(hpp_file, u8"        for (size_t i = 0; i < m_data_arry_size; i++)\r\n");
+    fprintf(hpp_file, u8"        for (auto& row : m_data_array)\r\n");
     fprintf(hpp_file, u8"        {\r\n");
-    fprintf(hpp_file, u8"            %s* row = m_data_arry[i];\r\n", m_struct_name.c_str());
+    //fprintf(hpp_file, u8"            %s* row = m_data_arry[i];\r\n", m_struct_name.c_str());
     fprintf(hpp_file, u8"            Lua::Table lua_row = Lua::Table::NewTable(LuaState);\r\n");
     fprintf(hpp_file, u8"            FillLuaData(lua_row, row);\r\n");
 
