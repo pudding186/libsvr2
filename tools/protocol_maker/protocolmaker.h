@@ -48,16 +48,19 @@ protected:
     bool __WritePackge(FILE* pHppFile, CMarkupSTL& rXml, const std::string& strPackgePath);
     bool __WriteMacro(FILE* pHppFile, CMarkupSTL& rXml);
     bool __WriteData(FILE* pHppFile, CMarkupSTL& rXml);
-    bool __WriteDataFunction(FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml);
+    //bool __WriteDynamicProtocol(FILE* pHppFile, CMarkupSTL& rXml);
+    //bool __WriteDataFunction(FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml);
     bool __WriteItem(FILE* pHppFile, CMarkupSTL& rXml, EDataType eDataType, CItem& mapItem);
-    bool __WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile, bool bProtocol);
-    bool __WriteStructProtocolDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile, bool bProtocol);
-    bool __WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
-    bool __WriteStructProtocolOperatorEqual(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
-    bool __WriteStructProtocolOperatorCopy(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
-    bool __WriteUnionEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
-    bool __WriteUnionDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
-    bool __WriteProtocolClass(const std::string& strProtocolName, FILE* pHppFile, FILE* pCppFile);
+    bool __WriteStructProtocolEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolEnCodeExFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolDeCodeExFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolOperatorEqual(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolOperatorCopy(CMarkupSTL& rXml, FILE* pHppFile);
+    //bool __WriteUnionEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
+    //bool __WriteUnionDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
+    bool __WriteProtocolClass(const std::string& strProtocolName, FILE* pHppFile);
 private:
     CDataSet        m_setKeyType;
     CDataSet        m_setMacro;

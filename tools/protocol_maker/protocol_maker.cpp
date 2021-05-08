@@ -8,7 +8,7 @@ CProtocolMaker gProtocolMaker;
 
 void debug_protocol()
 {
-    gProtocolMaker.MakeProtocol("D:\\mt_2020\\trunk\\common\\protocol\\StructDef.xml", "D:\\mt_2020\\trunk\\common\\protocol\\");
+    gProtocolMaker.MakeProtocol("D:\\mt_2020\\trunk\\common\\protocol\\ClientCS.xml", "D:\\mt_2020\\trunk\\common\\protocol\\");
 }
 
 int _tmain(int argc, _TCHAR* argv[])
