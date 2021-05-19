@@ -161,11 +161,14 @@ public:
     void _proc_print_end();
 
     bool _do_pt_cmd(HLOOPCACHE print_cache);
+
+    inline HLOOPCACHE print_cache(void) { return m_print_cache; }
     
 protected:
 private:
     std::thread         m_print_thread;
     file_logger_level   m_last_level;
+    HLOOPCACHE          m_print_cache;
 };
 
 typedef struct st_logger_manager
@@ -1029,6 +1032,8 @@ void log_thread::_log_func()
 
 print_thread::print_thread()
 {
+    m_print_cache = create_loop_cache(0, g_logger_manager->print_cache_size * g_logger_manager->log_thread_num);
+
     m_print_thread = std::thread(&print_thread::_print_func, this);
     m_last_level = log_nul;
     
@@ -1037,6 +1042,7 @@ print_thread::print_thread()
 print_thread::~print_thread()
 {
     m_print_thread.join();
+    destroy_loop_cache(m_print_cache);
 }
 
 #ifdef _MSC_VER
@@ -1193,6 +1199,8 @@ bool print_thread::_do_pt_cmd(HLOOPCACHE print_cache)
         {
             loop_cache_get_data(print_cache, (void**)&data, &print_len);
             fwrite(data, sizeof(char), print_len, stdout);
+
+            loop_cache_push_data(m_print_cache, data, print_len);
 #ifdef _DEBUG
             fflush(stdout);
 #endif
@@ -1519,6 +1527,16 @@ void uninit_logger_manager(void)
         delete g_logger_manager;
         g_logger_manager = 0;
     }
+}
+
+HLOOPCACHE logger_manager_print_cache(void)
+{
+    if (g_logger_manager)
+    {
+        return g_logger_manager->print_thread_pt->print_cache();
+    }
+
+    return nullptr;
 }
 
 #ifdef _MSC_VER

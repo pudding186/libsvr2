@@ -428,3 +428,21 @@ size_t memory_total_size(void)
 
     return total_size;
 }
+
+extern void memory_tidy(void)
+{
+    HRBNODE node = rb_first(g_mem_trace.m_trace_unit_map);
+
+    while (node)
+    {
+        memory_unit_tidy((HMEMORYUNIT)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+
+    node = rb_first(g_mem_trace.m_trace_mgr_map);
+    while (node)
+    {
+        memory_manager_tidy((HMEMORYMANAGER)rb_node_key_user(node));
+        node = rb_next(node);
+    }
+}

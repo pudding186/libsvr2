@@ -487,3 +487,5 @@ extern std::string (db_check_fields)(ITable* table);
 extern std::string (db_check_index)(ITable* table);
 
 extern std::string (db_check_table)(ITable* table);
+
+extern bool (db_has_field)(ITable* table, const std::string& field_name, std::string& err);

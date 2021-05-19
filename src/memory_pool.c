@@ -83,6 +83,81 @@ int memory_unit_check_sign(mem_unit* unit, void** info)
     return 0;
 }
 
+bool _tidy_memory_block(mem_unit* unit, mem_block* block, void** head, void** tail)
+{
+    unsigned char* ptr = (unsigned char*)block + sizeof(mem_block);
+
+    bool can_free = true;
+
+    while (ptr < (unsigned char*)block->end)
+    {
+        if ((*((void**)ptr)) == unit)
+        {
+            can_free = false;
+        }
+        else
+        {
+            if ((*tail))
+            {
+                *((void**)(*tail)) = ptr;
+                *tail = ptr;
+            }
+            else
+            {
+                *tail = ptr;
+                *head = ptr;
+            }
+        }
+
+        ptr += sizeof(void*) + unit->unit_size;
+    }
+
+    return can_free;
+}
+
+void _tidy_memory_unit(mem_unit* unit)
+{
+    unit->unit_free_head = 0;
+
+    for (mem_block** cur = &(unit->mem_block_head); *cur;)
+    {
+        mem_block* entry = *cur;
+        void* head = 0;
+        void* tail = 0;
+
+        if (_tidy_memory_block(unit, entry, &head, &tail))
+        {
+            *cur = entry->next;
+
+            size_t block_size = (unsigned char*)entry->end - (unsigned char*)entry;
+            free(entry);
+
+            unit->blocks_size -= block_size;
+        }
+        else
+        {
+            cur = &entry->next;
+            if (head)
+            {
+                *((void**)tail) = unit->unit_free_head;
+                unit->unit_free_head = head;
+            }
+        }
+    }
+}
+
+void memory_unit_tidy(mem_unit* unit)
+{
+    if (unit->unit_create_thread == &create_thread_sign)
+    {
+        _tidy_memory_unit(unit);
+    }
+    else
+    {
+
+    }
+}
+
 mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
 {
     unsigned char* ptr;
@@ -102,6 +177,8 @@ mem_block* _create_memory_block(mem_unit* unit, size_t unit_count)
         *((void**)ptr) = ptr + sizeof(void*) + unit->unit_size;
         ptr += sizeof(void*) + unit->unit_size;
     }
+
+    block->end = ptr + sizeof(void*) + unit->unit_size;
 
     *((void**)ptr) = unit->unit_free_head;
     unit->unit_free_head = (unsigned char*)block + sizeof(mem_block);
@@ -156,6 +233,8 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         *((void**)ptr) = ptr + sizeof(void*) + unit->unit_size;
         ptr += sizeof(void*) + unit->unit_size;
     }
+
+    block->end = ptr + sizeof(void*) + unit->unit_size;
 
     tp_next.u_data.tp.ptr = (unsigned char*)block + sizeof(mem_block);
 
@@ -271,6 +350,7 @@ void destroy_memory_unit(mem_unit* unit)
 
     free(unit);
 }
+
 
 void _check_mutli_free_cache(mem_unit* unit)
 {
@@ -843,6 +923,20 @@ size_t memory_pool_total_size(mem_pool* pool)
     return total_size;
 }
 
+void memory_pool_tidy(mem_pool* pool)
+{
+    size_t i;
+    for (i = 0; i < pool->unit_size; ++i)
+    {
+        mem_unit* unit = pool->units[i];
+
+        if (unit)
+        {
+            memory_unit_tidy(unit);
+        }
+    }
+}
+
 mem_mgr* create_memory_manager(size_t align, size_t start_size, size_t max_size, size_t grow_size, size_t grow_power)
 {
     size_t last_start_size = sizeof(size_t);
@@ -1094,23 +1188,12 @@ size_t(memory_manager_total_size)(mem_mgr* mgr)
     return total_size;
 }
 
-
-//void* default_realloc(void* old_mem, size_t mem_size)
-//{
-//    return memory_manager_realloc(lib_svr_mem_mgr, old_mem, mem_size);
-//}
-//
-//void* default_alloc(size_t mem_size)
-//{
-//    return memory_manager_alloc(lib_svr_mem_mgr, mem_size);
-//}
-//
-//void default_free(void* mem)
-//{
-//    memory_manager_free(lib_svr_mem_mgr, mem);
-//}
-//
-//bool libsvr_memory_manager_check(void* mem)
-//{
-//    return memory_manager_check(lib_svr_mem_mgr, mem);
-//}
+void memory_manager_tidy(mem_mgr* mgr)
+{
+    HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
+    while (pool_node)
+    {
+        memory_pool_tidy((HMEMORYPOOL)avl_node_value_user(pool_node));
+        pool_node = avl_next(pool_node);
+    }
+}

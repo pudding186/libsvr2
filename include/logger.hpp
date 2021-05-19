@@ -16,6 +16,8 @@ extern void (destroy_file_logger)(HFILELOGGER file_logger);
 
 extern void (file_logger_flush)(HFILELOGGER file_logger);
 
+HLOOPCACHE (logger_manager_print_cache)(void);
+
 #ifdef __cplusplus
 }
 
@@ -40,4 +42,5 @@ void file_logger_log(HFILELOGGER file_logger, file_logger_level lv, const char(&
 
     file_logger_async_log(file_logger, false, lv, fmt_args, true);
 }
+
 #endif

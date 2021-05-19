@@ -45,6 +45,7 @@ extern "C" {
 typedef struct st_mem_block
 {
     struct st_mem_block*    next; //指向下一个内存块的
+    void*                   end;
 }mem_block;
 
 typedef struct st_mem_unit

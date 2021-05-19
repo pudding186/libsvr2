@@ -61,9 +61,12 @@ namespace SMemory
 
     void Free(void* mem)
     {
-        CMemory* memory = *(CMemory**)((unsigned char*)mem - sizeof(CMemory**));
+        if (mem)
+        {
+            CMemory* memory = *(CMemory**)((unsigned char*)mem - sizeof(CMemory**));
 
-        memory->Free((unsigned char*)mem - sizeof(CMemory**));
+            memory->Free((unsigned char*)mem - sizeof(CMemory**));
+        }
     }
 
     void* TraceAlloc(size_t mem_size, const char* type, const char* file, int line)

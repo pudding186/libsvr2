@@ -23,4 +23,6 @@ extern HRBNODE mem_trace_info_head(void);
 extern size_t memory_alloc_size(void);
 extern size_t memory_total_size(void);
 
+extern void memory_tidy(void);
+
 #endif

@@ -1464,3 +1464,41 @@ std::vector<SRecordFieldList> Record2FieldList(CLIENTMYSQLRES& res)
 
     return datas;
 }
+
+bool db_has_field(ITable* table, const std::string& field_name, std::string& err)
+{
+    std::string sql = fmt::format(u8"SHOW FULL COLUMNS FROM {};", table->GetTableName());
+
+    HCLIENTMYSQL client_mysql = table->Connection()->client_mysql;
+
+    CLIENTMYSQLRES res = client_mysql_query(
+        client_mysql, sql.c_str(), static_cast<unsigned long>(sql.length()));
+
+    if (!client_mysql_result_success(&res))
+    {
+        err = fmt::format(
+            u8"check {} fields fail! query sql={} err={}",
+            table->GetTableName(),
+            sql, 
+            client_mysql_err(client_mysql));
+        client_mysql_free_result(&res);
+        return false;
+    }
+
+    bool has_field = false;
+    CLIENTMYSQLROW row = client_mysql_fetch_row(&res);
+    while (row.row_values)
+    {
+        CLIENTMYSQLVALUE value_name = client_mysql_value(row, 0);
+        if (!strcmp(std::string(value_name.value, value_name.size).c_str(), field_name.c_str()))
+        {
+            has_field = true;
+            break;
+        }
+
+        row = client_mysql_fetch_row(&res);
+    }
+    client_mysql_free_result(&res);
+
+    return has_field;
+}

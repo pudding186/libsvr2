@@ -4,11 +4,6 @@
 #include "../include/client_mysql.h"
 #include "../include/memory_pool.h"
 
-#ifdef __GNUC__
-#define _strtoui64 strtoull
-#define _strtoi64 strtoll
-#endif
-
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -395,13 +390,29 @@ CLIENTMYSQLRES client_mysql_query(HCLIENTMYSQL client_mysql_ptr, const char* sql
 
 QUERY:
 
-    if (length)
+
+    if (client_mysql_ptr->real_mysql)
     {
-        query_ret = mysql_real_query(client_mysql_ptr->real_mysql, sql, length);
+        if (length)
+        {
+            query_ret = mysql_real_query(client_mysql_ptr->real_mysql, sql, length);
+        }
+        else
+        {
+            query_ret = mysql_query(client_mysql_ptr->real_mysql, sql);
+        }
     }
     else
     {
-        query_ret = mysql_query(client_mysql_ptr->real_mysql, sql);
+        if (_re_connect(client_mysql_ptr))
+        {
+            result.error_code = 0;
+            goto QUERY;
+        }
+        else
+        {
+            return result;
+        }
     }
 
     if (query_ret)
@@ -611,7 +622,13 @@ unsigned long client_mysql_escape_string(HCLIENTMYSQL connection, const char* sr
     {
         return (unsigned long)-1;
     }
-    return mysql_real_escape_string(connection->real_mysql, dst, src, src_size);
+
+    if (connection->real_mysql)
+    {
+        return mysql_real_escape_string(connection->real_mysql, dst, src, src_size);
+    }
+    
+    return (unsigned long)-1;
 }
 
 unsigned char client_mysql_value_uint8(CLIENTMYSQLVALUE data)
@@ -636,7 +653,7 @@ short client_mysql_value_int16(CLIENTMYSQLVALUE data)
 
 unsigned int client_mysql_value_uint32(CLIENTMYSQLVALUE data)
 {
-    return (unsigned int)_strtoui64(data.value, 0, 10);
+    return (unsigned int)strtoull(data.value, 0, 10);
 }
 
 int client_mysql_value_int32(CLIENTMYSQLVALUE data)
@@ -646,17 +663,22 @@ int client_mysql_value_int32(CLIENTMYSQLVALUE data)
 
 unsigned long long client_mysql_value_uint64(CLIENTMYSQLVALUE data)
 {
-    return _strtoui64(data.value, 0, 10);
+    return strtoull(data.value, 0, 10);
 }
 
 long long client_mysql_value_int64(CLIENTMYSQLVALUE data)
 {
-    return _strtoi64(data.value, 0, 10);
+    return strtoll(data.value, 0, 10);
 }
 
 const char* client_mysql_err(HCLIENTMYSQL connection)
 {
-    return mysql_error(connection->real_mysql);
+    if (connection->real_mysql)
+    {
+        return mysql_error(connection->real_mysql);
+    }
+
+    return "mysql is nullptr";
 }
 
 unsigned long long client_mysql_rows_num(HCLIENTMYSQLRES result)

@@ -1138,7 +1138,7 @@ struct SDynaFieldList
         return sql;
     }
 
-    void GetDesc(std::vector<std::string>& name_type_list)
+    void GetDesc(std::vector<std::string>& name_type_list) override
     {
         HRBNODE node = rb_first(m_dyna_fields);
 
