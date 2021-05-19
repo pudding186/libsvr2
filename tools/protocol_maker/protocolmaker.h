@@ -3,6 +3,9 @@
 #include <set>
 #include <vector>
 #include <map>
+
+//#define MT
+
 enum EDataType
 {
     eStruct = 1,
@@ -20,7 +23,9 @@ enum EATTRIB
     eSelect,
     eLength,
     eComment,
-    eArray
+    eArray,
+    eAlias,
+    eIndex
 };
 
 typedef std::set<std::string> CDataSet;
@@ -35,7 +40,7 @@ public:
     CProtocolMaker(void);
     ~CProtocolMaker(void);
 
-    bool MakeProtocol(const std::string& strXML, const std::string& strOutPutPath);
+    bool MakeProtocol(const std::string& strXML, const std::string& strOutPutPath, const std::string& strPrefix = "");
     std::string& GetErrorInfo(void);
 protected:
     bool __IsKeyType(const std::string& strType);
@@ -48,6 +53,7 @@ protected:
     bool __WritePackge(FILE* pHppFile, CMarkupSTL& rXml, const std::string& strPackgePath);
     bool __WriteMacro(FILE* pHppFile, CMarkupSTL& rXml);
     bool __WriteData(FILE* pHppFile, CMarkupSTL& rXml);
+    //bool __WriteHandler(FILE* pHppFile, CMarkupSTL& rXml);
     //bool __WriteDynamicProtocol(FILE* pHppFile, CMarkupSTL& rXml);
     //bool __WriteDataFunction(FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml);
     bool __WriteItem(FILE* pHppFile, CMarkupSTL& rXml, EDataType eDataType, CItem& mapItem);
@@ -58,6 +64,9 @@ protected:
     bool __WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile);
     bool __WriteStructProtocolOperatorEqual(CMarkupSTL& rXml, FILE* pHppFile);
     bool __WriteStructProtocolOperatorCopy(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteStructProtocolToJsonFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteHandler(CMarkupSTL& rXml, FILE* pHppFile);
     //bool __WriteUnionEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     //bool __WriteUnionDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     bool __WriteProtocolClass(const std::string& strProtocolName, FILE* pHppFile);

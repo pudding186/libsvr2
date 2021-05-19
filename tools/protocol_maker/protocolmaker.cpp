@@ -78,6 +78,62 @@
                                     }\
                                     m_strErrorInfo +="/>\r\n";
 
+
+std::string __integral_to_c_type(std::string & str_integral)
+{
+    if (str_integral == "uint8")
+    {
+        return "unsigned char";
+    }
+    else if (str_integral == "int8")
+    {
+        return "char";
+    }
+    else if (str_integral == "uint16")
+    {
+        return "unsigned short";
+    }
+    else if (str_integral == "int16")
+    {
+        return "short";
+    }
+    else if (str_integral == "uint32")
+    {
+        return "unsigned int";
+    }
+    else if (str_integral == "int32")
+    {
+        return "int";
+    }
+    else if (str_integral == "uint64")
+    {
+        return "unsigned long long";
+    }
+    else if (str_integral == "int64")
+    {
+        return "long long";
+    }
+
+    return "";
+}
+
+bool __is_integral(std::string & strType)
+{
+    if (strType == "uint8" ||
+        strType == "int8" ||
+        strType == "uint16" ||
+        strType == "int16" ||
+        strType == "uint32" ||
+        strType == "int32" ||
+        strType == "uint64" ||
+        strType == "int64")
+    {
+        return true;
+    }
+
+    return false;
+}
+
 CProtocolMaker::CProtocolMaker(void)
 {
     
@@ -87,7 +143,7 @@ CProtocolMaker::~CProtocolMaker(void)
 {
 }
 
-bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string& strOutPutPath )
+bool CProtocolMaker::MakeProtocol(const std::string& strXML, const std::string& strOutPutPath, const std::string& strPrefix)
 {
     CMarkupSTL oXml;
     std::string strVal;
@@ -109,8 +165,8 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
     FIND_ELEM("protocol_define");
     GET_ATTRIB("name");
 
-    strHppFile = strOutPutPath + strVal + ".hpp";
-    strCppFile = strOutPutPath + strVal + ".cpp";
+    strHppFile = strOutPutPath + strPrefix + strVal + ".hpp";
+    strCppFile = strOutPutPath + strPrefix + strVal + ".cpp";
     pHppFile = fopen(strHppFile.c_str(), "wb");
     pCppFile = fopen(strCppFile.c_str(), "wb");
     if (NULL == pHppFile || NULL == pCppFile)
@@ -128,7 +184,7 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
     fprintf(pHppFile, u8"#pragma once\r\n\r\n");
     fprintf(pHppFile, u8"#include \"net_data.hpp\"\r\n\r\n");
     fprintf(pCppFile, u8"#include <new>\r\n\r\n");
-    fprintf(pCppFile, u8"#include \"%s.hpp\"\r\n\r\n", strVal.c_str());
+    fprintf(pCppFile, u8"#include \"%s.hpp\"\r\n\r\n", (strPrefix + strVal).c_str());
 
     strMouleName = strVal;
 
@@ -144,6 +200,11 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
 
     if (!__WritePackge(pHppFile, oXml, strOutPutPath))
         goto ERROR_DEAL;
+
+    if (!strPrefix.empty())
+    {
+        fprintf(pHppFile, u8"namespace %s {\r\n\r\n", strPrefix.c_str());
+    }
 
     if (!__WriteMacro(pHppFile, oXml))
         goto ERROR_DEAL;
@@ -162,11 +223,17 @@ bool CProtocolMaker::MakeProtocol( const std::string& strXML, const std::string&
         goto ERROR_DEAL;
     }
 
+    if (!strPrefix.empty())
+    {
+        fprintf(pHppFile, u8"}\r\n");
+    }
+
     return true;
 
 ERROR_DEAL:
     return false;
 }
+
 
 bool CProtocolMaker::__IsKeyType( const std::string& strType )
 {
@@ -413,6 +480,427 @@ bool CProtocolMaker::__WriteMacro( FILE* pHppFile, CMarkupSTL& rXml )
     return true;
 }
 
+bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile)
+{
+    std::string strName = rXml.GetAttrib("name");
+    //std::string strHandlerName = strName + u8"Handler";
+
+    //std::string strType = rXml.GetAttrib("type");
+    //std::string strComment = rXml.GetAttrib("comment");
+
+    if (!rXml.IntoElem())
+    {
+        m_strErrorInfo += "进入子级失败";
+        return false;
+    }
+
+    std::vector<CAttrib> m_item_list;
+
+    std::vector<CAttrib> m_number_list;
+    std::vector<CAttrib> m_string_list;
+    std::vector<CAttrib> m_array_list;
+    std::vector<CAttrib> m_array_old_list;
+    std::vector<CAttrib> m_struct_list;
+
+    int idx = 0;
+    rXml.ResetMainPos();
+    while (rXml.FindElem("item"))
+    {
+        CAttrib vecAttrib(11);
+        vecAttrib[eName] = rXml.GetAttrib("name");
+        vecAttrib[eType] = rXml.GetAttrib("type");
+        vecAttrib[eCount] = rXml.GetAttrib("count");
+        vecAttrib[eRefer] = rXml.GetAttrib("refer");
+        vecAttrib[eId] = rXml.GetAttrib("id");
+        vecAttrib[eSelect] = rXml.GetAttrib("select");
+        vecAttrib[eComment] = rXml.GetAttrib("comment");
+        vecAttrib[eLength] = rXml.GetAttrib("length");
+        vecAttrib[eArray] = rXml.GetAttrib("array");
+        vecAttrib[eAlias] = rXml.GetAttrib("alias");
+
+        char idx_buff[32];
+        snprintf(idx_buff, sizeof(idx_buff), "%d", idx);
+        vecAttrib[eIndex] = idx_buff;
+
+        std::string strName = vecAttrib[eName];
+        std::string strType = vecAttrib[eType];
+        std::string strCount = vecAttrib[eCount];
+        std::string strArray = vecAttrib[eArray];
+
+        if (strType == "string")
+        {
+            m_string_list.push_back(vecAttrib);
+        }
+        else if (strCount.empty() && strArray.empty())
+        {
+            if (__is_integral(strType))
+            {
+                m_number_list.push_back(vecAttrib);
+            }
+            else
+            {
+                m_struct_list.push_back(vecAttrib);
+            }
+        }
+        else
+        {
+            if (!strArray.empty())
+            {
+                if (strType == "uint8")
+                {
+                    m_string_list.push_back(vecAttrib);
+                }
+                else
+                    m_array_list.push_back(vecAttrib);
+            }
+
+            if (!strCount.empty())
+            {
+                m_array_old_list.push_back(vecAttrib);
+            }
+        }
+
+        m_item_list.push_back(vecAttrib);
+
+        ++idx;
+    }
+    
+    fprintf(pHppFile, u8"\r\n    //===============Json===============\r\n\r\n");
+
+    fprintf(pHppFile, u8"    class Handler :\r\n");
+    fprintf(pHppFile, u8"        public JsonHandler\r\n");
+    fprintf(pHppFile, u8"    {\r\n");
+    fprintf(pHppFile, u8"    public:\r\n");
+    fprintf(pHppFile, u8"        Handler(%s& data, JsonHandler* parent = nullptr)\r\n", strName.c_str());
+    fprintf(pHppFile, u8"            :\r\n");
+    //fprintf(pHppFile, u8"            m_handler(nullptr),\r\n");
+    fprintf(pHppFile, u8"            JsonHandler(parent),\r\n");
+    fprintf(pHppFile, u8"            m_data(data),\r\n");
+
+    for (size_t i = 0; i < m_struct_list.size(); i++)
+    {
+        CAttrib& attr = m_struct_list[i];
+
+        fprintf(pHppFile, u8"            m_%s_handler(m_data.%s, this),\r\n", attr[eName].c_str(), attr[eName].c_str());
+    }
+
+    for (size_t i = 0; i < m_array_list.size(); i++)
+    {
+        CAttrib& attr = m_array_list[i];
+
+        fprintf(pHppFile, u8"            m_%s_handler(m_data.%s, this),\r\n", attr[eName].c_str(), attr[eName].c_str());
+    }
+
+    for (size_t i = 0; i < m_array_old_list.size(); i++)
+    {
+        CAttrib& attr = m_array_old_list[i];
+
+        fprintf(pHppFile, u8"            m_%s_handler(m_data.%s, this, %s),\r\n", 
+            attr[eName].c_str(), attr[eName].c_str(), attr[eCount].c_str());
+    }
+
+    fprintf(pHppFile, u8"            m_state(0) {}\r\n");
+    fprintf(pHppFile, u8"        ~Handler()\r\n");
+    fprintf(pHppFile, u8"        {\r\n");
+    fprintf(pHppFile, u8"        }\r\n\r\n");
+
+    fprintf(pHppFile, u8"        void ResetState(void)\r\n");
+    fprintf(pHppFile, u8"        {\r\n");
+    fprintf(pHppFile, u8"            m_state = 0;\r\n");
+    
+    for (size_t i = 0; i < m_struct_list.size(); i++)
+    {
+        CAttrib& attr = m_struct_list[i];
+
+        fprintf(pHppFile, u8"            m_%s_handler.ResetState();\r\n", attr[eName].c_str());
+    }
+
+    fprintf(pHppFile, u8"        }\r\n\r\n");
+
+    if (m_item_list.size())
+    {
+        fprintf(pHppFile, u8"        bool Key(const char* str, rapidjson::SizeType length, bool copy) override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            (void)copy;\r\n\r\n");
+        fprintf(pHppFile, u8"            if (strncmp(str, m_alias_list[m_state], length) && \r\n");
+        fprintf(pHppFile, u8"                strncmp(str, m_key_list[m_state], length))\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+        fprintf(pHppFile, u8"                for (size_t i = 0; i < (sizeof(m_key_list)/sizeof(m_key_list[0])); i++)\r\n");
+        fprintf(pHppFile, u8"                {\r\n");
+        fprintf(pHppFile, u8"                    if (!strncmp(str, m_alias_list[i], length) ||\r\n");
+        fprintf(pHppFile, u8"                        !strncmp(str, m_key_list[i], length))\r\n");
+        fprintf(pHppFile, u8"                    {\r\n");
+        fprintf(pHppFile, u8"                        m_state = static_cast<int>(i);\r\n");
+        fprintf(pHppFile, u8"                        return true;\r\n");
+        fprintf(pHppFile, u8"                    }\r\n");
+        fprintf(pHppFile, u8"                }\r\n\r\n");
+        fprintf(pHppFile, u8"                return false;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
+        fprintf(pHppFile, u8"            return true;\r\n");
+        fprintf(pHppFile, u8"        }\r\n\r\n");
+    }
+
+    if (m_number_list.size())
+    {
+        fprintf(pHppFile, u8"        bool RawNumber(const char* str, rapidjson::SizeType length, bool copy) override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            (void)copy;\r\n\r\n");
+        fprintf(pHppFile, u8"            switch (m_state)\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+
+        for (size_t i = 0; i < m_number_list.size(); i++)
+        {
+            CAttrib& attr = m_number_list[i];
+
+            fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+            fprintf(pHppFile, u8"                JsonDelIntegral(m_data.%s, str, length);\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"                break;\r\n");
+        }
+
+        fprintf(pHppFile, u8"            default:\r\n");
+        fprintf(pHppFile, u8"                return false;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
+        fprintf(pHppFile, u8"            m_state++;\r\n");
+        fprintf(pHppFile, u8"            return true;\r\n");
+        fprintf(pHppFile, u8"        }\r\n\r\n");
+    }
+
+    if (m_string_list.size())
+    {
+        fprintf(pHppFile, u8"        bool String(const char* str, rapidjson::SizeType length, bool copy) override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            (void)copy;\r\n\r\n");
+        fprintf(pHppFile, u8"            switch (m_state)\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+
+        for (size_t i = 0; i < m_string_list.size(); i++)
+        {
+            CAttrib& attr = m_string_list[i];
+
+            if (attr[eType] == "uint8" && attr[eArray].length())
+            {
+                fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+                fprintf(pHppFile, u8"                {\r\n");
+                
+                fprintf(pHppFile, u8"                    DataArrayHandler<%s, %s> handler(m_data.%s, this);\r\n", 
+                    __integral_to_c_type(attr[eType]).c_str(), 
+                    __integral_to_c_type(attr[eArray]).c_str(),
+                    attr[eName].c_str());
+
+                fprintf(pHppFile, u8"                    handler.String(str, length, copy);\r\n");
+                fprintf(pHppFile, u8"                }\r\n");
+                fprintf(pHppFile, u8"                break;\r\n");
+            }
+            else
+            {
+                fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+                fprintf(pHppFile, u8"                JsonDelString(m_data.%s, str, length);\r\n", attr[eName].c_str());
+                fprintf(pHppFile, u8"                break;\r\n");
+            }
+        }
+
+        fprintf(pHppFile, u8"            default:\r\n");
+        fprintf(pHppFile, u8"                return false;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
+        fprintf(pHppFile, u8"            m_state++;\r\n");
+        fprintf(pHppFile, u8"            return true;\r\n");
+        fprintf(pHppFile, u8"        }\r\n\r\n");
+    }
+
+    if (m_struct_list.size())
+    {
+        fprintf(pHppFile, u8"        JsonHandler* StartObject() override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            switch (m_state)\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+
+        for (size_t i = 0; i < m_struct_list.size(); i++)
+        {
+            CAttrib& attr = m_struct_list[i];
+
+            fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+            fprintf(pHppFile, u8"            {\r\n");
+            //fprintf(pHppFile, u8"                m_data.%s.Reset();\r\n", attr[eName].c_str());
+            //fprintf(pHppFile, u8"                m_%s_handler.ResetState();\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"                return &m_%s_handler;\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            }\r\n");
+            fprintf(pHppFile, u8"            break;\r\n");
+
+        }
+
+        fprintf(pHppFile, u8"            default:\r\n");
+        fprintf(pHppFile, u8"                return nullptr;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
+        fprintf(pHppFile, u8"        }\r\n\r\n");
+
+
+
+        fprintf(pHppFile, u8"        bool EndObject(JsonHandler* childen, rapidjson::SizeType memberCount) override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            (void)memberCount;\r\n");
+        fprintf(pHppFile, u8"            (void)childen;\r\n\r\n");
+
+        fprintf(pHppFile, u8"            m_state++;\r\n");
+        fprintf(pHppFile, u8"            return true;\r\n");
+        fprintf(pHppFile, u8"        }\r\n");
+    }
+
+    if (m_array_list.size() || m_array_old_list.size())
+    {
+        fprintf(pHppFile, u8"        JsonHandler* StartArray() override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            switch (m_state)\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+
+        for (size_t i = 0; i < m_array_list.size(); i++)
+        {
+            CAttrib& attr = m_array_list[i];
+
+            fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+            fprintf(pHppFile, u8"            {\r\n");
+
+            fprintf(pHppFile, u8"                return &m_%s_handler;\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            }\r\n");
+            fprintf(pHppFile, u8"            break;\r\n");
+        }
+
+        for (size_t i = 0; i < m_array_old_list.size(); i++)
+        {
+            CAttrib& attr = m_array_old_list[i];
+
+            fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
+            fprintf(pHppFile, u8"            {\r\n");
+
+            fprintf(pHppFile, u8"                return &m_%s_handler;\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            }\r\n");
+            fprintf(pHppFile, u8"            break;\r\n");
+        }
+
+        fprintf(pHppFile, u8"            default:\r\n");
+        fprintf(pHppFile, u8"                return nullptr;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
+        fprintf(pHppFile, u8"        }\r\n\r\n");
+
+
+
+        fprintf(pHppFile, u8"        bool EndArray(JsonHandler* childen, rapidjson::SizeType elementCount) override\r\n");
+        fprintf(pHppFile, u8"        {\r\n");
+        fprintf(pHppFile, u8"            (void)elementCount;\r\n");
+        fprintf(pHppFile, u8"            (void)childen;\r\n\r\n");
+        fprintf(pHppFile, u8"            m_state++;\r\n");
+        fprintf(pHppFile, u8"            return true;\r\n");
+
+        fprintf(pHppFile, u8"        }\r\n");
+    }
+
+    fprintf(pHppFile, u8"    private:\r\n");
+    fprintf(pHppFile, u8"        %s& m_data;\r\n", strName.c_str());
+
+    for (size_t i = 0; i < m_struct_list.size(); i++)
+    {
+        CAttrib& attr = m_struct_list[i];
+
+        fprintf(pHppFile, u8"        %s::Handler m_%s_handler;\r\n", attr[eType].c_str(), attr[eName].c_str());
+    }
+
+    for (size_t i = 0; i < m_array_list.size(); i++)
+    {
+        CAttrib& attr = m_array_list[i];
+
+        if (__is_integral(attr[eType]))
+        {
+            fprintf(pHppFile, u8"        DataArrayHandler<%s, %s> m_%s_handler;\r\n",
+                __integral_to_c_type(attr[eType]).c_str(), __integral_to_c_type(attr[eArray]).c_str(), attr[eName].c_str());
+        }
+        else
+        {
+            fprintf(pHppFile, u8"        DataArrayHandler<%s, %s, %s::Handler> m_%s_handler;\r\n",
+                attr[eType].c_str(), __integral_to_c_type(attr[eArray]).c_str(), attr[eType].c_str(), attr[eName].c_str());
+        }
+
+        
+    }
+
+    for (size_t i = 0; i < m_array_old_list.size(); i++)
+    {
+        CAttrib& attr = m_array_old_list[i];
+
+        if (__is_integral(attr[eType]))
+        {
+            fprintf(pHppFile, u8"        DataArrayOldHandler<%s, %s> m_%s_handler;\r\n", 
+                __integral_to_c_type(attr[eType]).c_str(), attr[eCount].c_str(), attr[eName].c_str());
+        }
+        else
+        {
+            fprintf(pHppFile, u8"        DataArrayOldHandler<%s, %s, %s::Handler> m_%s_handler;\r\n",
+                attr[eType].c_str(), attr[eCount].c_str(), attr[eType].c_str(), attr[eName].c_str());
+        }
+    }
+
+    fprintf(pHppFile, u8"        int m_state;\r\n");
+
+    if (m_item_list.size())
+    {
+        fprintf(pHppFile, u8"        const char* m_key_list[%zu] = {\r\n", m_number_list.size() + m_string_list.size() + m_array_list.size() + m_array_old_list.size() + m_struct_list.size());
+
+        for (size_t i = 0; i < m_item_list.size(); i++)
+        {
+            CAttrib& attr = m_item_list[i];
+            if ((i + 1) == m_item_list.size())
+            {
+                fprintf(pHppFile, u8"    		u8\"%s\"\r\n", attr[eName].c_str());
+            }
+            else
+            {
+                fprintf(pHppFile, u8"    		u8\"%s\",\r\n", attr[eName].c_str());
+            }
+        }
+
+        fprintf(pHppFile, u8"        };\r\n");
+
+        fprintf(pHppFile, u8"        const char* m_alias_list[%zu] = {\r\n", m_number_list.size() + m_string_list.size() + m_array_list.size() + m_array_old_list.size() + m_struct_list.size());
+
+        for (size_t i = 0; i < m_item_list.size(); i++)
+        {
+            CAttrib& attr = m_item_list[i];
+
+            std::string name = attr[eAlias];
+
+            if (name.empty())
+            {
+                name = attr[eName];
+            }
+
+            if ((i + 1) == m_item_list.size())
+            {
+                fprintf(pHppFile, u8"    		u8\"%s\"\r\n", name.c_str());
+            }
+            else
+            {
+                fprintf(pHppFile, u8"    		u8\"%s\",\r\n", name.c_str());
+            }
+        }
+
+        fprintf(pHppFile, u8"        };\r\n");
+    }
+
+    fprintf(pHppFile, u8"    };\r\n\r\n");
+
+    //rXml.ResetMainPos();
+    //while (rXml.FindElem("item"))
+    //{
+
+    //}
+
+    if (!rXml.OutOfElem())
+    {
+        m_strErrorInfo += "从子集返回失败";
+        return false;
+    }
+
+    return true;
+}
+
 bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
 {
     //查找所有数据定义
@@ -546,6 +1034,21 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
                     return false;
                 }
             }
+
+            if (!__WriteHandler(rXml, pHppFile))
+            {
+                return false;
+            }
+
+            if (!__WriteStructProtocolToJsonFunc(rXml, pHppFile))
+            {
+                return false;
+            }
+
+            if (!__WriteMarshalUnmarshalJsonFunc(rXml, pHppFile))
+            {
+                return false;
+            }
         }
         else if (strType == "union")
         {
@@ -607,6 +1110,21 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, CMarkupSTL& rXml )
                 //fprintf(pHppFile, u8"\t%s& operator = (const %s& src);\r\n", strName.c_str(), strName.c_str());
                 //fprintf(pHppFile, u8"\tbool operator == (const %s& src) const;\r\n", strName.c_str());
                 //fprintf(pHppFile, u8"\tbool operator != (const %s& src) const;\r\n", strName.c_str());
+            }
+
+            if (!__WriteHandler(rXml, pHppFile))
+            {
+                return false;
+            }
+
+            if (!__WriteStructProtocolToJsonFunc(rXml, pHppFile))
+            {
+                return false;
+            }
+
+            if (!__WriteMarshalUnmarshalJsonFunc(rXml, pHppFile))
+            {
+                return false;
             }
         }
         else
@@ -1091,61 +1609,6 @@ bool CProtocolMaker::__WriteItem( FILE* pHppFile, CMarkupSTL& rXml, EDataType eD
     return true;
 }
 
-std::string __integral_to_c_type(std::string& str_integral)
-{
-	if (str_integral == "uint8")
-	{
-		return "unsigned char";
-	}
-	else if (str_integral == "int8")
-	{
-		return "char";
-	}
-	else if (str_integral == "uint16")
-	{
-		return "unsigned short";
-	}
-	else if (str_integral == "int16")
-	{
-		return "short";
-	}
-	else if (str_integral == "uint32")
-	{
-		return "unsigned int";
-	}
-	else if (str_integral == "int32")
-	{
-		return "int";
-	}
-	else if (str_integral == "uint64")
-	{
-		return "unsigned long long";
-	}
-	else if (str_integral == "int64")
-	{
-		return "long long";
-	}
-
-	return "";
-}
-
-bool __is_integral(std::string& strType)
-{
-	if (strType == "uint8"	||
-		strType == "int8"	||
-		strType == "uint16" ||
-		strType == "int16"	||
-		strType == "uint32" ||
-		strType == "int32"	||
-		strType == "uint64" ||
-		strType == "int64" )
-	{
-		return true;
-	}
-
-	return false;
-}
-
 bool CProtocolMaker::__WriteStructProtocolResetFunc(CMarkupSTL& rXml, FILE* pHppFile)
 {
     std::string strName = rXml.GetAttrib("name");
@@ -1446,6 +1909,108 @@ bool CProtocolMaker::__WriteStructProtocolOperatorCopy(CMarkupSTL& rXml, FILE* p
 
     fprintf(pHppFile, u8"\t\treturn *this;\r\n");
     fprintf(pHppFile, u8"\t}\r\n");
+    return true;
+}
+
+bool CProtocolMaker::__WriteStructProtocolToJsonFunc(CMarkupSTL& rXml, FILE* pHppFile)
+{
+    std::string strName = rXml.GetAttrib("name");
+    fprintf(pHppFile, u8"\tbool ToJson(JsonEnCode& json_data) const\r\n\t{\r\n");
+    fprintf(pHppFile, u8"\t\tjson_data.Writer().StartObject();\r\n\r\n");
+    bool is_empty = true;
+    rXml.IntoElem();
+    rXml.ResetMainPos();
+    while (rXml.FindElem("item"))
+    {
+        is_empty = false;
+        std::string strName = rXml.GetAttrib("name");
+        std::string strType = rXml.GetAttrib("type");
+        std::string strCount = rXml.GetAttrib("count");
+        std::string strRefer = rXml.GetAttrib("refer");
+        std::string strSelect = rXml.GetAttrib("select");
+        std::string strArray = rXml.GetAttrib("array");
+        std::string strAlias = rXml.GetAttrib("alias");
+        std::string strEnFuncName = "";
+
+        std::string key = strAlias;
+        if (key.empty())
+        {
+            key = strName;
+        }
+
+        if (strType == "string")
+        {
+            fprintf(pHppFile, u8"\t\tjson_data.AddString(u8\"%s\", %s, sizeof(%s));\r\n\r\n", key.c_str(), strName.c_str(), strName.c_str());
+        }
+        else if (strCount.empty() && strArray.empty())
+        {
+            if (__is_integral(strType))
+            {
+                fprintf(pHppFile, u8"\t\tjson_data.AddIntegral(u8\"%s\", %s);\r\n\r\n", key.c_str(), strName.c_str());
+            }
+            else
+            {
+                fprintf(pHppFile, u8"\t\tjson_data.Writer().Key(u8\"%s\", sizeof(u8\"%s\") - 1);\r\n", key.c_str(), key.c_str());
+                fprintf(pHppFile, u8"\t\t%s.ToJson(json_data);\r\n\r\n", strName.c_str());
+            }
+        }
+        else
+        {
+            if (!strArray.empty())
+            {
+                fprintf(pHppFile, u8"\t\tjson_data.Writer().Key(u8\"%s\", sizeof(u8\"%s\") - 1);\r\n", key.c_str(), key.c_str());
+                fprintf(pHppFile, u8"\t\tjson_data.AddArray(%s);\r\n\r\n", strName.c_str());
+            }
+
+            if (!strCount.empty())
+            {
+                if (strRefer.empty())
+                {
+                    fprintf(pHppFile, u8"\t\t{\r\n\t\t\tint iCount = %s;\r\n", strCount.c_str());
+                }
+                else
+                {
+                    fprintf(pHppFile, u8"\t\t{\r\n\t\t\tint iCount = (((%s) < ((int)this->%s)) ? (%s) : ((int)this->%s));\r\n", strCount.c_str(), strRefer.c_str(), strCount.c_str(), strRefer.c_str());
+                }
+
+                fprintf(pHppFile, u8"\t\t\tjson_data.Writer().Key(u8\"%s\", sizeof(u8\"%s\") - 1);\r\n", key.c_str(), key.c_str());
+                fprintf(pHppFile, u8"\t\t\tjson_data.AddArrayOld(%s, iCount);\r\n\t\t}\r\n", strName.c_str());
+            }
+        }
+    }
+    rXml.OutOfElem();
+
+    //if (is_empty)
+    //{
+    //    fprintf(pHppFile, u8"\t\t(void)(net_data);\r\n");
+    //}
+    fprintf(pHppFile, u8"\t\tjson_data.Writer().EndObject();\r\n\r\n");
+    fprintf(pHppFile, u8"\t\treturn true;\r\n");
+    fprintf(pHppFile, u8"\t}\r\n\r\n");
+    return true;
+}
+
+bool CProtocolMaker::__WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHppFile)
+{
+    std::string strName = rXml.GetAttrib("name");
+
+    fprintf(pHppFile, u8"    std::string MarshalJson(void) const\r\n");
+    fprintf(pHppFile, u8"    {\r\n");
+    fprintf(pHppFile, u8"        JsonEnCode json_encode(4096);\r\n\r\n");
+    fprintf(pHppFile, u8"        this->ToJson(json_encode);\r\n\r\n");
+    fprintf(pHppFile, u8"        return json_encode.ToString();\r\n\r\n");
+    fprintf(pHppFile, u8"    }\r\n\r\n");
+
+    fprintf(pHppFile, u8"    bool UnmarshalJson(const std::string& json)\r\n");
+    fprintf(pHppFile, u8"    {\r\n");
+    fprintf(pHppFile, u8"        %s::Handler h(*this, nullptr);\r\n", strName.c_str());
+    fprintf(pHppFile, u8"        JsonDeCode jd(&h);\r\n\r\n");
+    fprintf(pHppFile, u8"        JsonAllocator json_allocator;\r\n");
+    fprintf(pHppFile, u8"        rapidjson::GenericReader<rapidjson::UTF8<>, rapidjson::UTF8<>, JsonAllocator> rd(&json_allocator, 1024);\r\n");
+    fprintf(pHppFile, u8"        rapidjson::StringStream ss(json.c_str());\r\n");
+    fprintf(pHppFile, u8"        return rd.Parse<rapidjson::kParseNumbersAsStringsFlag>(ss, jd);\r\n");
+    fprintf(pHppFile, u8"    }\r\n");
+
     return true;
 }
 
@@ -1915,7 +2480,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
         fprintf(pHppFile, u8"\t\tcase %zu:\r\n", i + 1);
 #else
         fprintf(pHppFile, u8"\t\tcase %zu:\r\n", i);
-#endif // MT
+#endif
 
         
         fprintf(pHppFile, u8"\t\t{\r\n");
