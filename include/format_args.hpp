@@ -75,7 +75,7 @@ struct SFormatArgs<>
         cache_use_size = 0;
     }
 
-    ~SFormatArgs()
+    virtual ~SFormatArgs()
     {
     }
 

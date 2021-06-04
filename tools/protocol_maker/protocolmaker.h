@@ -25,7 +25,9 @@ enum EATTRIB
     eComment,
     eArray,
     eAlias,
-    eIndex
+    eDefault,
+    eIndex,
+    eMax
 };
 
 typedef std::set<std::string> CDataSet;
@@ -52,7 +54,7 @@ protected:
     bool __CheckPackge(const std::string& strPkg);
     bool __WritePackge(FILE* pHppFile, CMarkupSTL& rXml, const std::string& strPackgePath);
     bool __WriteMacro(FILE* pHppFile, CMarkupSTL& rXml);
-    bool __WriteData(FILE* pHppFile, CMarkupSTL& rXml);
+    bool __WriteData(FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml);
     //bool __WriteHandler(FILE* pHppFile, CMarkupSTL& rXml);
     //bool __WriteDynamicProtocol(FILE* pHppFile, CMarkupSTL& rXml);
     //bool __WriteDataFunction(FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rXml);
@@ -66,7 +68,7 @@ protected:
     bool __WriteStructProtocolOperatorCopy(CMarkupSTL& rXml, FILE* pHppFile);
     bool __WriteStructProtocolToJsonFunc(CMarkupSTL& rXml, FILE* pHppFile);
     bool __WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHppFile);
-    bool __WriteHandler(CMarkupSTL& rXml, FILE* pHppFile);
+    bool __WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     //bool __WriteUnionEnCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     //bool __WriteUnionDeCodeFunc(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCppFile);
     bool __WriteProtocolClass(const std::string& strProtocolName, FILE* pHppFile);

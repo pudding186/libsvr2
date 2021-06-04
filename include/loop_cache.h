@@ -18,9 +18,9 @@ extern bool (loop_cache_push)(HLOOPCACHE cache, size_t size);
 
 extern bool (loop_cache_pop)(HLOOPCACHE cache, size_t size);
 
-extern void (loop_cache_get_free)(HLOOPCACHE cache, void** cache_ptr, size_t* cache_len);
+extern void* (loop_cache_get_free)(HLOOPCACHE cache, size_t* cache_len);
 
-extern void (loop_cache_get_data)(HLOOPCACHE cache, void** cache_ptr, size_t* cache_len);
+extern void* (loop_cache_get_data)(HLOOPCACHE cache, size_t* cache_len);
 
 extern size_t(loop_cache_free_size)(HLOOPCACHE cache);
 

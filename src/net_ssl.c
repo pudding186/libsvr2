@@ -17,8 +17,8 @@ CRITICAL_SECTION* ssl_locks_arry = 0;
 
 void ssl_lock_callback(int mode, int n, const char *file, int line)
 {
-	file;
-	line;
+	(void)file;
+	(void)line;
 	if (mode & CRYPTO_LOCK)
 		EnterCriticalSection(&ssl_locks_arry[n]);
 	else
@@ -27,8 +27,8 @@ void ssl_lock_callback(int mode, int n, const char *file, int line)
 
 struct CRYPTO_dynlock_value* ssl_lock_dyn_create_callback(const char *file, int line)
 {
-	file;
-	line;
+    (void)file;
+    (void)line;
 	struct CRYPTO_dynlock_value *l = (struct CRYPTO_dynlock_value*)malloc(sizeof(struct CRYPTO_dynlock_value));
 	InitializeCriticalSection(&l->lock);
 	return l;
@@ -36,8 +36,8 @@ struct CRYPTO_dynlock_value* ssl_lock_dyn_create_callback(const char *file, int 
 
 void ssl_lock_dyn_callback(int mode, struct CRYPTO_dynlock_value* l, const char *file, int line)
 {
-	file;
-	line;
+    (void)file;
+    (void)line;
 	if (mode & CRYPTO_LOCK)
 		EnterCriticalSection(&l->lock);
 	else
@@ -46,8 +46,8 @@ void ssl_lock_dyn_callback(int mode, struct CRYPTO_dynlock_value* l, const char 
 
 void ssl_lock_dyn_destroy_callback(struct CRYPTO_dynlock_value* l, const char *file, int line)
 {
-	file;
-	line;
+    (void)file;
+    (void)line;
 	DeleteCriticalSection(&l->lock);
 	free(l);
 }

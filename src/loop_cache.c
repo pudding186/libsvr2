@@ -161,7 +161,7 @@ bool loop_cache_pop(loop_cache* cache, size_t size)
     return true;
 }
 
-void loop_cache_get_free(loop_cache* cache, void** cache_ptr, size_t* cache_len)
+void* loop_cache_get_free(loop_cache* cache, size_t* cache_len)
 {
     size_t dist = cache->tail + cache->size - cache->head;
     size_t used = dist >= cache->size ? (dist - cache->size) : dist;
@@ -183,10 +183,10 @@ void loop_cache_get_free(loop_cache* cache, void** cache_ptr, size_t* cache_len)
         *cache_len = cache->cache_end - cache->tail;
     }
 
-    *cache_ptr = cache->tail;
+    return cache->tail;
 }
 
-void loop_cache_get_data(loop_cache* cache, void** cache_ptr, size_t* cache_len)
+void* loop_cache_get_data(loop_cache* cache, size_t* cache_len)
 {
     size_t dist = cache->tail + cache->size - cache->head;
     size_t used = dist >= cache->size ? (dist - cache->size) : dist;
@@ -208,7 +208,7 @@ void loop_cache_get_data(loop_cache* cache, void** cache_ptr, size_t* cache_len)
         *cache_len = cache->cache_end - cache->head;
     }
 
-    *cache_ptr = cache->head;
+    return cache->head;
 }
 
 size_t loop_cache_free_size(loop_cache* cache)

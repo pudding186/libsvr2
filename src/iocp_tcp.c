@@ -439,11 +439,10 @@ void _push_data_event(iocp_tcp_socket* sock_ptr, unsigned int data_len)
 {
     if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
-        struct st_net_event* evt;
         size_t evt_len = sizeof(struct st_net_event);
 
         EVENT_LOCK;
-        loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+        struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
         if (evt_len != sizeof(struct st_net_event))
         {
@@ -461,10 +460,9 @@ void _push_data_event(iocp_tcp_socket* sock_ptr, unsigned int data_len)
 
 void _push_establish_event(iocp_tcp_listener* listener, iocp_tcp_socket* sock_ptr)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -481,10 +479,9 @@ void _push_establish_event(iocp_tcp_listener* listener, iocp_tcp_socket* sock_pt
 
 void _push_ssl_establish_event(iocp_tcp_socket* sock_ptr)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -501,10 +498,9 @@ void _push_ssl_establish_event(iocp_tcp_socket* sock_ptr)
 
 void _push_system_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -521,10 +517,9 @@ void _push_system_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 
 void _push_ssl_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -541,10 +536,9 @@ void _push_ssl_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 
 void _push_module_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -561,10 +555,9 @@ void _push_module_error_event(iocp_tcp_socket* sock_ptr, int err_code)
 
 void _push_terminate_event(iocp_tcp_socket* sock_ptr)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -580,10 +573,9 @@ void _push_terminate_event(iocp_tcp_socket* sock_ptr)
 
 void _push_connect_fail_event(iocp_tcp_socket* sock_ptr, int err_code)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
     EVENT_LOCK;
-    loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
     if (evt_len != sizeof(struct st_net_event))
     {
@@ -602,10 +594,9 @@ void _push_recv_active_event(iocp_tcp_socket* sock_ptr)
 {
     if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
-        struct st_net_event* evt;
         size_t evt_len = sizeof(struct st_net_event);
         EVENT_LOCK;
-        loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt, &evt_len);
+        struct st_net_event* evt = (struct st_net_event*)loop_cache_get_free(sock_ptr->mgr->evt_queue, &evt_len);
 
         if (evt_len != sizeof(struct st_net_event))
         {
@@ -775,12 +766,10 @@ bool _iocp_tcp_socket_post_recv(iocp_tcp_socket* sock_ptr)
     DWORD byte_received;
     DWORD flags = 0;
 
-    char* recv_ptr = 0;
     size_t recv_len = 0;
+    char* recv_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &recv_len);
 
     ZeroMemory(&sock_ptr->iocp_recv_data.over_lapped, sizeof(sock_ptr->iocp_recv_data.over_lapped));
-
-    loop_cache_get_free(sock_ptr->recv_loop_cache, &recv_ptr, &recv_len);
 
     sock_ptr->iocp_recv_data.wsa_buf.buf = recv_ptr;
     sock_ptr->iocp_recv_data.wsa_buf.len = (ULONG)recv_len;
@@ -881,10 +870,8 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
         }
     }
 
-    char* free_data_ptr = 0;
     size_t free_data_len = 0;
-
-    loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+    char* free_data_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_len);
 
     while (free_data_len)
     {
@@ -912,9 +899,8 @@ void _iocp_tcp_socket_on_ssl_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
             break;
         }
 
-        free_data_ptr = 0;
         free_data_len = 0;
-        loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+        free_data_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_len);
     }
 
     if (sock_ptr->ssl_data_ptr->ssl_state == SSL_HAND_SHAKE)
@@ -992,10 +978,9 @@ void _iocp_tcp_socket_on_ssl_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
         trans_byte = 0;
     }
 
-    char* data_ptr = 0;
     size_t data_len = 0;
 
-    loop_cache_get_data(sock_ptr->send_loop_cache, &data_ptr, &data_len);
+    char* data_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &data_len);
 
     while (data_len)
     {
@@ -1026,9 +1011,8 @@ void _iocp_tcp_socket_on_ssl_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD tra
             break;
         }
 
-        data_ptr = 0;
         data_len = 0;
-        loop_cache_get_data(sock_ptr->send_loop_cache, &data_ptr, &data_len);
+        data_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &data_len);
     }
 
     if (trans_byte)
@@ -1134,9 +1118,6 @@ void _iocp_tcp_socket_on_recv(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
 
 void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_byte)
 {
-    char* send_ptr = 0;
-    size_t send_len = 0;
-
     if (!ret)
     {
         _iocp_tcp_socket_close(sock_ptr, error_system, WSAGetLastError(), true);
@@ -1176,7 +1157,9 @@ void _iocp_tcp_socket_on_send(iocp_tcp_socket* sock_ptr, BOOL ret, DWORD trans_b
         }
     }
 
-    loop_cache_get_data(sock_ptr->send_loop_cache, &send_ptr, &send_len);
+    size_t send_len = 0;
+
+    char* send_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &send_len);
 
     if (send_len)
     {
@@ -1648,9 +1631,9 @@ void _iocp_tcp_listener_on_accept(iocp_tcp_listener* listener, BOOL ret, struct 
     }
 
     memcpy(&sock_ptr->local_sockaddr, local_addr, 
-        min(local_addr_len, sizeof(sock_ptr->local_sockaddr)));
+        min((size_t)local_addr_len, sizeof(sock_ptr->local_sockaddr)));
     memcpy(&sock_ptr->peer_sockaddr, peer_addr, 
-        min(local_addr_len, sizeof(sock_ptr->peer_sockaddr)));
+        min((size_t)local_addr_len, sizeof(sock_ptr->peer_sockaddr)));
 
     sock_ptr->iocp_recv_data.operation = IOCP_OPT_RECV;
     sock_ptr->iocp_send_data.operation = IOCP_OPT_SEND;
@@ -1837,10 +1820,9 @@ ERROR_DEAL:
 
 bool _proc_net_event(iocp_tcp_manager* mgr)
 {
-    struct st_net_event* evt;
     size_t evt_len = sizeof(struct st_net_event);
 
-    loop_cache_get_data(mgr->evt_queue, &evt, &evt_len);
+    struct st_net_event* evt = (struct st_net_event*)loop_cache_get_data(mgr->evt_queue, &evt_len);
 
     if (evt_len < sizeof(struct st_net_event))
     {
@@ -1858,7 +1840,6 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
     {
     case NET_EVENT_DATA:
     {
-        char* data_ptr = 0;
         size_t data_len;
         unsigned int parser_len = 0;
 
@@ -1866,7 +1847,7 @@ bool _proc_net_event(iocp_tcp_manager* mgr)
 
         data_len = sock_ptr->data_has_recv;
 
-        loop_cache_get_data(sock_ptr->recv_loop_cache, &data_ptr, &data_len);
+        char* data_ptr = (char*)loop_cache_get_data(sock_ptr->recv_loop_cache, &data_len);
 
         if ((unsigned int)data_len < sock_ptr->data_has_recv)
         {

@@ -32,6 +32,7 @@ class IField
 public:
     DataState m_state;
     IField() :m_state(data_state_init) {}
+    virtual ~IField() {}
     virtual const std::string& GetColumnName(void) const = 0;
     virtual const std::string& GetColumnType(void) const = 0;
     virtual const std::string& GetColumnExtra(void) const = 0;
@@ -149,7 +150,7 @@ public:
 
     std::string ToSQL(HCLIENTMYSQL client_mysql) override
     {
-        client_mysql = client_mysql;
+        (void)client_mysql;
         return fmt::format("{:d}", m_data);
     }
 protected:
@@ -581,7 +582,7 @@ struct SFieldList<>
 {
     SFieldList():m_custom_sql(u8""){}
     SFieldList(const std::string& custom_sql):m_custom_sql(custom_sql){}
-    ~SFieldList(){}
+    virtual ~SFieldList(){}
 
 #ifdef _MSC_VER
 #pragma warning( push )
@@ -599,36 +600,47 @@ struct SFieldList<>
 
     ptrdiff_t Compare(const SFieldList<>& other) const
     {
+        (void)other;
         return 0;
     }
 
     virtual std::string ListSQL(size_t idx = 0)
     {
+        (void)idx;
         return "";
     }
 
     virtual std::string ListNameSQL(size_t idx = 0)
     {
+        (void)idx;
         return "";
     }
 
     virtual std::string SetSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0)
     {
+        (void)client_mysql;
+        (void)idx;
         return "";
     }
 
     virtual std::string AndSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0)
     {
+        (void)client_mysql;
+        (void)idx;
         return "";
     }
 
     virtual std::string OrSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0)
     {
+        (void)client_mysql;
+        (void)idx;
         return "";
     }
 
     virtual std::string ValueSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0)
     {
+        (void)client_mysql;
+        (void)idx;
         return "";
     }
 
@@ -639,7 +651,7 @@ struct SFieldList<>
 
     virtual void GetDesc(std::vector<std::string>& name_type_list)
     {
-
+        (void)name_type_list;
     }
 
     virtual size_t size() const
@@ -649,7 +661,8 @@ struct SFieldList<>
 
     virtual void LoadData(const CLIENTMYSQLROW& row, unsigned long idx = 0)
     {
-
+        (void)row;
+        (void)idx;
     }
 
 private:
@@ -815,7 +828,7 @@ struct SFieldList<First, Rest...>
         return sql += SFieldList<Rest...>::CreateSQL();
     }
 
-    void GetDesc(std::vector<std::string>& name_type_list)
+    void GetDesc(std::vector<std::string>& name_type_list) override
     {
         name_type_list.push_back(First::ColumnName());
         name_type_list.push_back(First::ColumnType());
@@ -1309,6 +1322,7 @@ class IResult
 {
 public:
     IResult():m_err_msg(""),m_wrn_msg(""){}
+    virtual ~IResult() {}
     virtual void OnCall(void) = 0;
     virtual void OnResult(CLIENTMYSQLRES& res) = 0;
     inline void SetError(const std::string& err_msg) { m_err_msg = err_msg; }

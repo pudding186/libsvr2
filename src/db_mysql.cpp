@@ -25,6 +25,7 @@
 class db_cmd
 {
 public:
+    virtual ~db_cmd() {};
     virtual void OnExecute() = 0;
     virtual void OnResult() = 0;
     virtual void OnRelease() = 0;
@@ -136,7 +137,7 @@ public:
         {
             m_db_proc->next_proc = g_db_manager->db_proc_head;
         } while (InterlockedCompareExchangePointer(
-            &reinterpret_cast<PVOID>(g_db_manager->db_proc_head),
+            reinterpret_cast<PVOID*>(&(g_db_manager->db_proc_head)),
             m_db_proc,
             m_db_proc->next_proc) != m_db_proc->next_proc);
 #elif __GNUC__

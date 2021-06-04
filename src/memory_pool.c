@@ -211,11 +211,22 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->mem_block_head_mt.u_data.bit128,
         &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -247,11 +258,22 @@ mem_block* _create_memory_block_mt(mem_unit* unit, size_t unit_count)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_mt.u_data.bit128,
         &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -368,11 +390,22 @@ void _check_mutli_free_cache(mem_unit* unit)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_cache.u_data.bit128,
         &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -435,11 +468,22 @@ void* _multi_thread_alloc(mem_unit* unit)
         alloc_pt_next.u_data.bit128.Int[0],
         alloc_tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_mt.u_data.bit128,
         &alloc_tp.u_data.bit128,
         &alloc_pt_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -503,11 +547,22 @@ void _multi_thread_free(mem_unit* unit, void** ptr_mem_unit)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_mt.u_data.bit128,
         &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -535,11 +590,22 @@ void _multi_thread_free_cache(mem_unit* unit, void** ptr_mem_unit)
         tp_next.u_data.bit128.Int[0],
         tp.u_data.bit128.Int))
 #elif __GNUC__
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored"-Watomic-alignment"
+#endif
+
     while (!__atomic_compare_exchange(
         &unit->unit_free_head_cache.u_data.bit128,
         &tp.u_data.bit128,
         &tp_next.u_data.bit128,
         false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 #else
 #error "unknown compiler"
 #endif
@@ -747,7 +813,8 @@ void* memory_pool_alloc(mem_pool* pool, size_t mem_size)
         memory_unit_set_grow_bytes(unit, pool->grow);
 
 #ifdef _MSC_VER
-        if (InterlockedCompareExchangePointer(&(pool->units[i]), unit, zero_unit))
+        void* volatile *ptr_unit = (void* volatile*)&(pool->units[i]);
+        if (InterlockedCompareExchangePointer(ptr_unit, unit, zero_unit))
 #elif __GNUC__
         if (!__atomic_compare_exchange(&(pool->units[i]), &zero_unit, &unit,
             false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))

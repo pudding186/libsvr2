@@ -632,10 +632,9 @@ bool _is_ssl_error(int ssl_error)
 
 void _epoll_tcp_proc_push_evt_establish(epoll_tcp_proc* proc, epoll_tcp_listener* listener, epoll_tcp_socket* sock_ptr)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -651,10 +650,9 @@ void _epoll_tcp_proc_push_evt_establish(epoll_tcp_proc* proc, epoll_tcp_listener
 
 void _epoll_tcp_proc_push_evt_ssl_establish(epoll_tcp_proc* proc, epoll_tcp_listener* listener, epoll_tcp_socket* sock_ptr)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -672,10 +670,9 @@ void _epoll_tcp_proc_push_evt_data(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 {
     if (sock_ptr->state == SOCKET_STATE_ESTABLISH)
     {
-        net_event* evt;
         size_t evt_len = sizeof(net_event);
 
-        loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+        net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
         if (evt_len != sizeof(net_event))
         {
@@ -692,10 +689,9 @@ void _epoll_tcp_proc_push_evt_data(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
 void _epoll_tcp_proc_push_evt_system_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -711,10 +707,9 @@ void _epoll_tcp_proc_push_evt_system_error(epoll_tcp_proc* proc, epoll_tcp_socke
 
 void _epoll_tcp_proc_push_evt_ssl_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
 {
-	net_event* evt;
 	size_t evt_len = sizeof(net_event);
 
-	loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
 	if (evt_len != sizeof(net_event))
 	{
@@ -730,10 +725,9 @@ void _epoll_tcp_proc_push_evt_ssl_error(epoll_tcp_proc* proc, epoll_tcp_socket* 
 
 void _epoll_tcp_proc_push_evt_module_error(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error err_code)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -749,10 +743,9 @@ void _epoll_tcp_proc_push_evt_module_error(epoll_tcp_proc* proc, epoll_tcp_socke
 
 void _epoll_tcp_proc_push_evt_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -767,10 +760,9 @@ void _epoll_tcp_proc_push_evt_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* 
 
 void _epoll_tcp_proc_push_evt_connect_fail(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, int err_code)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -786,10 +778,9 @@ void _epoll_tcp_proc_push_evt_connect_fail(epoll_tcp_proc* proc, epoll_tcp_socke
 
 void _epoll_tcp_proc_push_evt_accept(epoll_tcp_proc* proc, epoll_tcp_listener* listener, int accetp_socket_fd)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -806,10 +797,9 @@ void _epoll_tcp_proc_push_evt_accept(epoll_tcp_proc* proc, epoll_tcp_listener* l
 
 void _epoll_tcp_proc_push_evt_accept_fail(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -824,10 +814,9 @@ void _epoll_tcp_proc_push_evt_accept_fail(epoll_tcp_proc* proc, epoll_tcp_socket
 
 void _epoll_tcp_proc_push_evt_recv_activate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_event* evt;
     size_t evt_len = sizeof(net_event);
 
-    loop_cache_get_free(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_free(proc->list_net_evt, &evt_len);
 
     if (evt_len != sizeof(net_event))
     {
@@ -842,10 +831,9 @@ void _epoll_tcp_proc_push_evt_recv_activate(epoll_tcp_proc* proc, epoll_tcp_sock
 
 void _epoll_tcp_proc_push_req_close_listener(epoll_tcp_proc* proc, epoll_tcp_listener* listener)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -861,10 +849,9 @@ void _epoll_tcp_proc_push_req_close_listener(epoll_tcp_proc* proc, epoll_tcp_lis
 
 void _epoll_tcp_proc_push_req_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, net_tcp_error module_error, int system_error)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -881,10 +868,9 @@ void _epoll_tcp_proc_push_req_terminate(epoll_tcp_proc* proc, epoll_tcp_socket* 
 
 void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -899,10 +885,9 @@ void _epoll_tcp_proc_push_req_connect(epoll_tcp_proc* proc, epoll_tcp_socket* so
 
 void _epoll_tcp_proc_push_req_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr, SSL_CTX* ssl_ctx_data)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -919,10 +904,9 @@ void _epoll_tcp_proc_push_req_ssl_connect(epoll_tcp_proc* proc, epoll_tcp_socket
 
 void _epoll_tcp_proc_push_req_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -939,10 +923,9 @@ void _epoll_tcp_proc_push_req_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
 
 void _epoll_tcp_proc_push_req_accept(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -957,10 +940,9 @@ void _epoll_tcp_proc_push_req_accept(epoll_tcp_proc* proc, epoll_tcp_socket* soc
 
 void _epoll_tcp_proc_push_req_accept_fail(epoll_tcp_proc* proc, int accept_fd)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -976,10 +958,9 @@ void _epoll_tcp_proc_push_req_accept_fail(epoll_tcp_proc* proc, int accept_fd)
 
 void _epoll_tcp_proc_push_req_recv_activate(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -994,10 +975,9 @@ void _epoll_tcp_proc_push_req_recv_activate(epoll_tcp_proc* proc, epoll_tcp_sock
 
 void _epoll_tcp_proc_push_req_close_socket(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
 {
-    net_request* req;
     size_t req_len = sizeof(net_request);
 
-    loop_cache_get_free(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_free(proc->list_net_req, &req_len);
 
     if (req_len != sizeof(net_request))
     {
@@ -1524,9 +1504,8 @@ void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
     }
 
     size_t send_len = 0;
-    char* send_ptr = 0;
 
-    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+    char* send_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &send_len);
 
     while (send_len)
     {
@@ -1561,9 +1540,7 @@ void _epoll_tcp_socket_on_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         }
 
         send_len = 0;
-        send_ptr = 0;
-
-        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&send_ptr, &send_len);
+        send_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &send_len);
     }
 
     sock_ptr->need_send_active = true;
@@ -1581,11 +1558,10 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         return;
     }
 
-    char* recv_ptr = 0;
-    size_t recv_len = 0;
     unsigned data_push_len = 0;
 
-    loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&recv_ptr, &recv_len);
+    size_t recv_len = 0;
+    char* recv_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &recv_len);
 
     while (recv_len)
     {
@@ -1633,9 +1609,8 @@ void _epoll_tcp_socket_on_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_ptr)
         }
 
         recv_len = 0;
-        recv_ptr = 0;
 
-        loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&recv_ptr, &recv_len);
+        recv_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &recv_len);
     }
 
     if (data_push_len)
@@ -1661,11 +1636,9 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         return;
     }
 
-
-    char* data_ptr = 0;
     size_t data_len = 0;
 
-    loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
+    char* data_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &data_len);
 
     while (data_len)
     {
@@ -1690,9 +1663,8 @@ void _epoll_tcp_socket_on_ssl_send(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             break;
         }
 
-        data_ptr = 0;
         data_len = 0;
-        loop_cache_get_data(sock_ptr->send_loop_cache, (void**)&data_ptr, &data_len);
+        data_ptr = (char*)loop_cache_get_data(sock_ptr->send_loop_cache, &data_len);
     }
 
     sock_ptr->need_send_active = true;
@@ -1850,10 +1822,9 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
         }
     }
 
-    char* free_data_ptr = 0;
     size_t free_data_len = 0;
 
-    loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+    char* free_data_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_len);
 
     while (free_data_len)
     {
@@ -1880,10 +1851,8 @@ void _epoll_tcp_socket_on_ssl_recv(epoll_tcp_proc* proc, epoll_tcp_socket* sock_
             break;
         }
 
-
-        free_data_ptr = 0;
         free_data_len = 0;
-        loop_cache_get_free(sock_ptr->recv_loop_cache, (void**)&free_data_ptr, &free_data_len);
+        free_data_ptr = (char*)loop_cache_get_free(sock_ptr->recv_loop_cache, &free_data_len);
     }
 
     if (error_type != error_none)
@@ -2084,10 +2053,9 @@ unsigned int _do_epoll_evt(epoll_tcp_proc* proc, int time_out)
 unsigned int _do_net_req(epoll_tcp_proc* proc)
 {
 	unsigned int do_req_count = 0;
-	net_request* req;
 	size_t req_len = sizeof(net_request);
 
-	loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+    net_request* req = (net_request*)loop_cache_get_data(proc->list_net_req, &req_len);
 
 	while (req_len == sizeof(net_request))
 	{
@@ -2171,7 +2139,7 @@ unsigned int _do_net_req(epoll_tcp_proc* proc)
 			CRUSH_CODE();
 		}
 
-		loop_cache_get_data(proc->list_net_req, (void**)&req, &req_len);
+		req = (net_request*)loop_cache_get_data(proc->list_net_req, &req_len);
 	}
 
 	return do_req_count;
@@ -2181,10 +2149,9 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 {
 	timer_update(proc->timer_mgr, 0);
 
-	net_event* evt;
 	size_t evt_len = sizeof(net_event);
 
-	loop_cache_get_data(proc->list_net_evt, (void**)&evt, &evt_len);
+    net_event* evt = (net_event*)loop_cache_get_data(proc->list_net_evt, &evt_len);
 
 	if (evt_len < sizeof(net_event))
 	{
@@ -2197,15 +2164,13 @@ bool _do_net_evt(epoll_tcp_proc* proc)
 	{
 	case NET_EVENT_DATA:
 	{
-		char* data_ptr = 0;
-		size_t data_len;
 		unsigned int parser_len = 0;
 
 		sock_ptr->data_has_recv += evt->evt.evt_data.data_len;
 
-		data_len = sock_ptr->data_has_recv;
+		size_t data_len = sock_ptr->data_has_recv;
 
-		loop_cache_get_data(sock_ptr->recv_loop_cache, (void**)&data_ptr, &data_len);
+        char* data_ptr = (char*)loop_cache_get_data(sock_ptr->recv_loop_cache, &data_len);
 
 		if ((unsigned int)data_len < sock_ptr->data_has_recv)
 		{

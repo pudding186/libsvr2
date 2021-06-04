@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <bitset>
 #include "./lib_svr_def.h"
 #include "./smemory.hpp"
 #include "rapidjson/document.h"
@@ -1326,6 +1327,7 @@ class JsonHandler
 {
 public:
     JsonHandler(JsonHandler* parent) :m_parent_handler(parent) {}
+    virtual ~JsonHandler() {}
     virtual bool Null() { return false; }
     virtual bool Bool(bool b) { (void)b; return false; }
     virtual bool Int(int i) { (void)i; return false; }
@@ -1365,9 +1367,116 @@ public:
     virtual JsonHandler* StartArray() { return nullptr; }
     virtual bool EndArray(JsonHandler* childen, rapidjson::SizeType elementCount) { (void)childen; (void)elementCount; return false; }
     inline JsonHandler* ParentHandler(void) { return m_parent_handler; }
+    inline void SetParentHandler(JsonHandler* parent_handler) { m_parent_handler = parent_handler; }
 protected:
 private:
     JsonHandler* m_parent_handler;
+};
+
+class HoleJsonHandler :
+    public JsonHandler
+{
+public:
+    HoleJsonHandler(JsonHandler* parent = nullptr)
+        :JsonHandler(parent), m_real_parent_handler(parent), m_ref_count(0){}
+    ~HoleJsonHandler(){}
+
+    void Reset(JsonHandler* parent = nullptr)
+    {
+        m_real_parent_handler = parent;
+        m_ref_count = 0;
+        SetParentHandler(m_real_parent_handler);
+    }
+
+    bool Null() override { return true; }
+    bool Bool(bool b) override { (void)b; return true; }
+    bool Int(int i) override { (void)i; return true; }
+    bool Uint(unsigned u) override { (void)u; return true; }
+    bool Int64(int64_t i) override { (void)i; return true; }
+    bool Uint64(uint64_t u) override { (void)u; return true; }
+    bool Double(double d) override { (void)d; return true; }
+    bool RawNumber(const char* str, rapidjson::SizeType length, bool copy) override
+    {
+        (void)str;
+        (void)length;
+        (void)copy;
+
+        return true;
+    }
+
+    bool String(const char* str, rapidjson::SizeType length, bool copy) override
+    {
+        (void)str;
+        (void)length;
+        (void)copy;
+
+        return true;
+    }
+
+    virtual bool Key(const char* str, rapidjson::SizeType length, bool copy) override
+    {
+        (void)str;
+        (void)length;
+        (void)copy;
+
+        return true;
+    }
+
+   JsonHandler* StartObject() override 
+   {
+       if (!m_ref_count)
+       {
+           SetParentHandler(this);
+       }
+       ++m_ref_count;
+       return this;
+   }
+
+   bool EndObject(JsonHandler* childen, rapidjson::SizeType memberCount) override 
+   {
+       (void)childen;
+       (void)memberCount;
+
+       --m_ref_count;
+
+       if (!m_ref_count)
+       {
+           SetParentHandler(m_real_parent_handler);
+       }
+       return true;
+   }
+
+   JsonHandler* StartArray() override 
+   {
+       if (!m_ref_count)
+       {
+           SetParentHandler(this);
+       }
+       ++m_ref_count;
+       return this;
+   }
+
+   bool EndArray(JsonHandler* childen, rapidjson::SizeType elementCount) override 
+   { 
+       (void)childen;
+       (void)elementCount;
+
+       --m_ref_count;
+
+       if (!m_ref_count)
+       {
+           SetParentHandler(m_real_parent_handler);
+       }
+       return true;
+   }
+
+   bool IsAllMemberSet()
+   { 
+       return true; 
+   }
+
+   JsonHandler* m_real_parent_handler;
+   size_t m_ref_count;
 };
 
 class JsonDeCode
@@ -1568,7 +1677,8 @@ class DataArrayOldHandler<T, N, H, false> :
 {
 public:
     DataArrayOldHandler(T(&data)[N], JsonHandler* parent, size_t max_count)
-        :JsonHandler(parent), m_data(data), m_handler(nullptr), m_max_count(max_count), m_cur_count(0)
+        :JsonHandler(parent), m_data(data), m_handler(nullptr), m_max_count(max_count), 
+        m_cur_count(0), m_element_count(0)
     {
         m_max_count = std::min(N, max_count);
     }
@@ -1606,6 +1716,10 @@ public:
         (void)memberCount;
         if (m_handler == childen)
         {
+            if (m_handler->IsAllMemberSet())
+            {
+                ++m_element_count;
+            }
             S_DELETE(m_handler);
             m_handler = nullptr;
 
@@ -1616,12 +1730,23 @@ public:
             return false;
         }
     }
+
+    bool IsAllMemberSet(void)
+    {
+        return m_element_count == m_cur_count;
+    }
+
+    void ResetState(void)
+    {
+        m_element_count = 0;
+    }
 protected:
 private:
     T(&m_data)[N];
     H* m_handler;
     size_t m_max_count;
     size_t m_cur_count;
+    size_t m_element_count;
 };
 
 template < typename T, size_t N >
@@ -1657,6 +1782,11 @@ public:
         return true;
     }
 
+    bool IsAllMemberSet(void)
+    {
+        return true;
+    }
+
 private:
     T(&m_data)[N];
     size_t m_max_count;
@@ -1686,7 +1816,7 @@ class DataArrayHandler<T, U, H, N, false> :
 {
 public:
     DataArrayHandler(DataArray<T, U, N>& data, JsonHandler* parent)
-        :JsonHandler(parent), m_data(data), m_handler(m_t, this) {}
+        :JsonHandler(parent), m_data(data), m_handler(m_t, this), m_element_count(0) {}
     ~DataArrayHandler()
     {
     }
@@ -1705,6 +1835,11 @@ public:
 
         m_data.push_back(m_t);
 
+        if (m_handler.IsAllMemberSet())
+        {
+            m_element_count++;
+        }
+
         if (&m_handler == childen)
         {
             return true;
@@ -1715,10 +1850,21 @@ public:
         }
     }
 
+    bool IsAllMemberSet(void)
+    {
+        return m_element_count == m_data.size();
+    }
+
+    void ResetState(void)
+    {
+        m_element_count = 0;
+    }
+
 private:
-    DataArray<T, U, N>&    m_data;
+    DataArray<T, U, N>& m_data;
     T                   m_t;
     H                   m_handler;
+    U                   m_element_count;
 };
 
 template < typename T, typename U, size_t N >
@@ -1748,6 +1894,11 @@ public:
 
         m_data.push_back(var);
 
+        return true;
+    }
+
+    bool IsAllMemberSet(void)
+    {
         return true;
     }
 
@@ -1808,6 +1959,8 @@ public:
     protocol_base(unsigned short m_id,
         unsigned short p_id) :
         module_id(m_id), protocol_id(p_id) {}
+
+    virtual ~protocol_base() {}
 public:
     virtual bool EnCodeEx(NetEnCode& net_data) = 0;
     virtual bool DeCodeEx(NetDeCode& net_data) = 0;

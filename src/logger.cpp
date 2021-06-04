@@ -222,7 +222,7 @@ public:
         {
             m_log_proc->next_proc = g_logger_manager->log_proc_head;
         } while (InterlockedCompareExchangePointer(
-            &reinterpret_cast<PVOID>(g_logger_manager->log_proc_head),
+            reinterpret_cast<PVOID*>(&(g_logger_manager->log_proc_head)),
             m_log_proc,
             m_log_proc->next_proc) != m_log_proc->next_proc);
 #elif __GNUC__
@@ -1193,11 +1193,10 @@ bool print_thread::_do_pt_cmd(HLOOPCACHE print_cache)
         _check_print(&cmd);
 
         size_t print_len = cmd.data_len;
-        char* data = 0;
 
         while (cmd.data_len)
         {
-            loop_cache_get_data(print_cache, (void**)&data, &print_len);
+            char* data = (char*)loop_cache_get_data(print_cache, &print_len);
             fwrite(data, sizeof(char), print_len, stdout);
 
             loop_cache_push_data(m_print_cache, data, print_len);
@@ -1582,7 +1581,6 @@ file_logger* create_file_logger(const char* path_utf8, const char* name_utf8)
 
     logger->log_thread_idx = _get_idle_log_thread_idx();
     logger->file = 0;
-    logger->file_time = { 0 };
     logger->file_size = 0;
     logger->file_idx = 0;
     logger->create_proc = _get_log_proc();
