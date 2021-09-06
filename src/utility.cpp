@@ -376,6 +376,63 @@ unsigned long long get_cycle(void)
     return __rdtsc();
 }
 
+char bin2str_table[] = { '0', '1', '2', '3', '4', '5', '6', '7',
+                        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+
+bool bin2str(unsigned char* bin_data, size_t bin_len, char* str, size_t str_len)
+{
+    if ((bin_len * 2 + 1) > str_len)
+    {
+        return false;
+    }
+
+    size_t i;
+    for (i = 0; i < bin_len; ++i) {
+        unsigned char b = bin_data[i];
+        str[i * 2] = bin2str_table[b >> 4 & 0xF];
+        str[i * 2 + 1] = bin2str_table[b & 0xF];
+    }
+
+    str[i * 2] = 0;
+    return str;
+}
+
+
+char str2bin_table[] = {
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  0,  0,
+    0,  0,  0,  0,  0, 10, 11, 12, 13, 14, 15,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 10, 11, 12,
+   13, 14, 15,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0
+};
+
+bool str2bin(const char* str, unsigned char* bin, size_t bin_len)
+{
+    size_t i = 0;
+    while (str[i * 2]) {
+        auto c0 = (unsigned char)str[i * 2];
+        auto c1 = (unsigned char)str[i * 2 + 1];
+
+        bin[i] = str2bin_table[c0] * 0x10 + str2bin_table[c1];
+        i++;
+
+        if (i > bin_len)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 #ifdef _MSC_VER
 bool (for_each_wfile)(const wchar_t* dir, pfn_wfile do_file, pfn_wdir do_dir, void* user_data)
 {
@@ -655,133 +712,6 @@ private:
     int			            m_top;
 };
 
-//class CFuncPerformanceMgr
-//{
-//    friend class CFuncPerformanceCheck;
-//public:
-//    CFuncPerformanceMgr(void)
-//    {
-//        m_func_list = 0;
-//        m_func_stack = 0;
-//        //m_shm_key = 0;
-//        m_cur_func_perf_info = 0;
-//    }
-//    ~CFuncPerformanceMgr(void)
-//    {
-//
-//    }
-//
-//    inline void RecordFunc(CFuncPerformanceInfo* func_perf_info)
-//    {
-//        func_perf_info->next = m_func_list;
-//        m_func_list = func_perf_info;
-//    }
-//
-//    CFuncPerformanceInfo* FuncPerfFirst(void)
-//    {
-//        return m_func_list;
-//    }
-//
-//    int StackTop(void)
-//    {
-//        return m_func_stack->m_top;
-//    }
-//
-//    CFuncPerformanceInfo* StackFuncPerfInfo(int idx)
-//    {
-//        if (idx >= 0 && idx < std::min(m_func_stack->m_top, MAX_STACK_CAPACITY-1))
-//        {
-//            return m_func_stack->m_stack[idx];
-//        }
-//
-//        return 0;
-//    }
-//
-//    struct func_stack
-//    {
-//        int						m_top;
-//        CFuncPerformanceInfo*	m_stack[MAX_STACK_CAPACITY];
-//
-//        inline void Push(CFuncPerformanceInfo* func_perf_info)
-//        {
-//            if (m_top < MAX_STACK_CAPACITY-20)
-//            {
-//                m_stack[m_top] = func_perf_info;
-//            }
-//            else
-//            {
-//                m_top -= 20;
-//                CRUSH_CODE();
-//            }
-//            ++m_top;
-//        }
-//
-//        inline void Pop(void)
-//        {
-//            if (m_top > 0)
-//            {
-//                --m_top;
-//            }
-//            else
-//            {
-//                CRUSH_CODE();
-//            }
-//        }
-//    };
-//
-//    bool Init(void)
-//    {
-//
-//        //if (!shm_key)
-//        //{
-//        //    m_shm_key = (int)rand_integer(1, INT_MAX);
-//        //}
-//        //else
-//        //    m_shm_key = shm_key;
-//
-//        //size_t shm_size = sizeof(struct func_stack) + sizeof(size_t);
-//        //m_func_stack = (struct func_stack*)shm_alloc(m_shm_key, (unsigned int)shm_size);
-//        m_func_stack = (struct func_stack*)malloc(sizeof(struct func_stack) + sizeof(size_t));
-//        if (!m_func_stack)
-//        {
-//            return false;
-//        }
-//
-//        m_func_stack->m_top = 0;
-//        m_cur_func_perf_info = 0;
-//
-//        return true;
-//    }
-//
-//    void UnInit(void)
-//    {
-//        if (m_func_stack)
-//        {
-//            //shm_free(m_func_stack);
-//            free(m_func_stack);
-//            m_func_stack = 0;
-//        }
-//
-//        m_func_list = 0;
-//    }
-//
-//protected:
-//    CFuncPerformanceInfo * m_func_list;
-//    //void*                   m_shm;
-//    //int						m_shm_key;
-//    struct func_stack*		m_func_stack;
-//    CFuncPerformanceInfo*	m_cur_func_perf_info;
-//private:
-//};
-
-//CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, HFUNCPERFMGR mgr)
-//    :func_name(func_name)
-//    , elapse_cycles(0)
-//    , hit_count(0)
-//{
-//    mgr->RecordFunc(this);
-//}
-
 CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, CFuncPerformance& fpf)
     :func_name(func_name)
     , elapse_cycles(0)
@@ -790,17 +720,6 @@ CFuncPerformanceInfo::CFuncPerformanceInfo(const char* func_name, CFuncPerforman
     fpf.RecordFunc(this);
 }
 
-//CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, HFUNCPERFMGR mgr)
-//{
-//    m_mgr = mgr;
-//    m_func_perf_info = info;
-//    m_parent_func_perf_info = mgr->m_cur_func_perf_info;
-//    mgr->m_cur_func_perf_info = info;
-//    mgr->m_func_stack->Push(info);
-//    //m_cycles = __rdtsc();
-//    info->once_cycles = __rdtsc();
-//}
-
 CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, CFuncPerformance& fpf)
 {
     m_fpf = &fpf;
@@ -808,59 +727,21 @@ CFuncPerformanceCheck::CFuncPerformanceCheck(CFuncPerformanceInfo* info, CFuncPe
     m_parent_func_perf_info = fpf.m_cur_func_perf_info;
     fpf.m_cur_func_perf_info = info;
     fpf.Push(info);
-    info->once_cycles = __rdtsc();
+    m_cycles = __rdtsc();
 }
 
 CFuncPerformanceCheck::~CFuncPerformanceCheck(void)
 {
-    //m_cycles = __rdtsc() - m_cycles;
-    m_func_perf_info->once_cycles = __rdtsc() - m_func_perf_info->once_cycles;
-    //m_mgr->m_func_stack->Pop();
+    m_cycles = __rdtsc() - m_cycles;
     m_fpf->Pop();
-    m_func_perf_info->elapse_cycles += m_func_perf_info->once_cycles;//m_cycles;
+    m_func_perf_info->elapse_cycles += m_cycles;
+    m_func_perf_info->once_cycles = m_cycles;
     if (m_parent_func_perf_info)
     {
-        m_parent_func_perf_info->elapse_cycles -= m_func_perf_info->once_cycles;//m_cycles;
+        m_parent_func_perf_info->elapse_cycles -= m_cycles;
     }
     m_fpf->m_cur_func_perf_info = m_parent_func_perf_info;
 }
-
-//HFUNCPERFMGR CreateFuncPerfMgr(void)
-//{
-//    HFUNCPERFMGR mgr = new CFuncPerformanceMgr;
-//
-////    if (!shm_key)
-////    {
-////#ifdef _MSC_VER
-////        shm_key = ::GetCurrentThreadId();
-////#elif __GNUC__
-////        shm_key = (int)syscall(__NR_getpid);
-////#else
-////#error "unknown compiler"
-////#endif
-////
-////    }
-//
-//    if (mgr->Init())
-//    {
-//        return mgr;
-//    }
-//    else
-//    {
-//        mgr->UnInit();
-//        delete mgr;
-//
-//        return 0;
-//    }
-//}
-//
-//TLS_VAR CFuncPerformanceMgr* def_func_perf_mgr = 0;
-//
-//void DestroyFuncPerfMgr(HFUNCPERFMGR mgr)
-//{
-//    mgr->UnInit();
-//    delete mgr;
-//}
 
 CFuncPerformanceInfo* FuncPerfFirst(CFuncPerformance& fpf)
 {
@@ -887,6 +768,7 @@ size_t FuncStackToCache(CFuncPerformance& fpf, char* cache, size_t cache_size)
 {
     size_t total_len = 0;
     cache_size -= 1;
+    cache[cache_size] = 0;
     int format_len = snprintf(cache, cache_size, "****** call stack ******\r\n");
     int stack_idx = fpf.StackTop();
 

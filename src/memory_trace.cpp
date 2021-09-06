@@ -3,6 +3,8 @@
 #include "../include/memory_pool.h"
 #include "../include/memory_trace.hpp"
 
+bool mem_trace_valid = false;
+
 #ifdef _MSC_VER
 #include <Windows.h>
 class CThreadLock
@@ -134,12 +136,16 @@ public:
 
         m_trace_info_unit = create_memory_unit(sizeof(mem_trace_info));
         memory_unit_set_grow_count(m_trace_info_unit, 128);
+
+        mem_trace_valid = true;
         //m_trace_ptr_unit = create_memory_unit(sizeof(ptr_info));
         //memory_unit_set_grow_count(m_trace_ptr_unit, 8192);
     }
 
     ~mem_trace()
     {
+        mem_trace_valid = false;
+
         if (m_trace_mgr_map)
         {
             destroy_memory_unit(rb_node_unit(m_trace_mgr_map));
@@ -180,206 +186,133 @@ mem_trace g_mem_trace;
 
 void _trace_memory(const char* name, const char* file, int line, trace_sign* sign)
 {
-    HRBNODE node;
-
-    mem_trace_info find_info;
-
-    find_info.file = file;
-    find_info.line = line;
-    find_info.name = name;
-
-    node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &find_info);
-
-    if (!node)
+    if (mem_trace_valid)
     {
-        sign->m_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
-        sign->m_info->file = file;
-        sign->m_info->line = line;
-        sign->m_info->name = name;
-        sign->m_info->size = sign->m_size;
-        sign->m_info->alloc = 1;
-        sign->m_info->free = 0;
+        HRBNODE node;
 
-        g_mem_trace.m_lock.Lock();
-        bool ret = rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, sign->m_info, 0, &node);
-        g_mem_trace.m_lock.UnLock();
+        mem_trace_info find_info;
 
-        if (ret)
+        find_info.file = file;
+        find_info.line = line;
+        find_info.name = name;
+
+        node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &find_info);
+
+        if (!node)
         {
-            return;
+            sign->m_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
+            sign->m_info->file = file;
+            sign->m_info->line = line;
+            sign->m_info->name = name;
+            sign->m_info->size = sign->m_size;
+            sign->m_info->alloc = 1;
+            sign->m_info->free = 0;
+
+            g_mem_trace.m_lock.Lock();
+            bool ret = rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, sign->m_info, 0, &node);
+            g_mem_trace.m_lock.UnLock();
+
+            if (ret)
+            {
+                return;
+            }
+            else
+            {
+                memory_unit_free(g_mem_trace.m_trace_info_unit, sign->m_info);
+                sign->m_info = (mem_trace_info*)rb_node_key_user(node);
+            }
         }
         else
         {
-            memory_unit_free(g_mem_trace.m_trace_info_unit, sign->m_info);
             sign->m_info = (mem_trace_info*)rb_node_key_user(node);
         }
-    }
-    else
-    {
-        sign->m_info = (mem_trace_info*)rb_node_key_user(node);
-    }
 
 #ifdef _MSC_VER
-    InterlockedAdd64((LONG64*)(&sign->m_info->size), sign->m_size);
-    InterlockedIncrement64((LONG64*)(&sign->m_info->alloc));
+        InterlockedAdd64((LONG64*)(&sign->m_info->size), sign->m_size);
+        InterlockedIncrement64((LONG64*)(&sign->m_info->alloc));
 #elif __GNUC__
-    __atomic_add_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
-    __atomic_add_fetch(&(sign->m_info->alloc), 1, __ATOMIC_SEQ_CST);
+        __atomic_add_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
+        __atomic_add_fetch(&(sign->m_info->alloc), 1, __ATOMIC_SEQ_CST);
 #else
 #error "unknown compiler"
 #endif
+    }
 }
 
 extern void _check_memory(trace_sign* sign)
 {
+    if (mem_trace_valid)
+    {
 #ifdef _MSC_VER
-    LONG64 s_size = sign->m_size;
-    InterlockedAdd64((LONG64*)(&sign->m_info->size), -s_size);
-    InterlockedIncrement64((LONG64*)(&sign->m_info->free));
+        LONG64 s_size = sign->m_size;
+        InterlockedAdd64((LONG64*)(&sign->m_info->size), -s_size);
+        InterlockedIncrement64((LONG64*)(&sign->m_info->free));
 #elif __GNUC__
-    __atomic_sub_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
-    __atomic_add_fetch(&(sign->m_info->free), 1, __ATOMIC_SEQ_CST);
+        __atomic_sub_fetch(&(sign->m_info->size), sign->m_size, __ATOMIC_SEQ_CST);
+        __atomic_add_fetch(&(sign->m_info->free), 1, __ATOMIC_SEQ_CST);
 #else
 #error "unknown compiler"
 #endif
+    }
 }
 
 extern void _trace_unit(HMEMORYUNIT unit)
 {
-    g_mem_trace.m_lock.Lock();
-    HRBNODE node;
-    rb_tree_try_insert_user(g_mem_trace.m_trace_unit_map, unit, unit, &node);
+    if (mem_trace_valid)
+    {
+        g_mem_trace.m_lock.Lock();
+        HRBNODE node;
+        rb_tree_try_insert_user(g_mem_trace.m_trace_unit_map, unit, unit, &node);
 
-    g_mem_trace.m_lock.UnLock();
-
-
+        g_mem_trace.m_lock.UnLock();
+    }
 }
 
 extern void _untrace_unit(HMEMORYUNIT unit)
 {
-    g_mem_trace.m_lock.Lock();
-
-    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_unit_map, unit);
-
-    if (node)
+    if (mem_trace_valid)
     {
-        rb_tree_erase(g_mem_trace.m_trace_unit_map, node);
-    }
+        g_mem_trace.m_lock.Lock();
 
-    g_mem_trace.m_lock.UnLock();
+        HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_unit_map, unit);
+
+        if (node)
+        {
+            rb_tree_erase(g_mem_trace.m_trace_unit_map, node);
+        }
+
+        g_mem_trace.m_lock.UnLock();
+    }
 }
 
 extern void _trace_manager(HMEMORYMANAGER mgr)
 {
-    g_mem_trace.m_lock.Lock();
-    HRBNODE node;
-    rb_tree_try_insert_user(g_mem_trace.m_trace_mgr_map, mgr, mgr, &node);
+    if (mem_trace_valid)
+    {
+        g_mem_trace.m_lock.Lock();
+        HRBNODE node;
+        rb_tree_try_insert_user(g_mem_trace.m_trace_mgr_map, mgr, mgr, &node);
 
-    g_mem_trace.m_lock.UnLock();
+        g_mem_trace.m_lock.UnLock();
+    }
 }
 
 extern void _untrace_manager(HMEMORYMANAGER mgr)
 {
-    g_mem_trace.m_lock.Lock();
-
-    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_mgr_map, mgr);
-
-    if (node)
+    if (mem_trace_valid)
     {
-        rb_tree_erase(g_mem_trace.m_trace_mgr_map, node);
+        g_mem_trace.m_lock.Lock();
+
+        HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_mgr_map, mgr);
+
+        if (node)
+        {
+            rb_tree_erase(g_mem_trace.m_trace_mgr_map, node);
+        }
+
+        g_mem_trace.m_lock.UnLock();
     }
-
-    g_mem_trace.m_lock.UnLock();
 }
-
-//void trace_alloc(const char* name, const char* file, int line, void* ptr, size_t size)
-//{
-//    if (!ptr)
-//    {
-//        return;
-//    }
-//    HRBNODE node;
-//    mem_trace_info info;
-//    mem_trace_info* exist_info;
-//    ptr_info* _ptr_info;
-//
-//    info.file = file;
-//    info.line = line;
-//    info.name = name;
-//
-//    g_mem_trace.m_lock.Lock();
-//
-//    node = rb_tree_find_user(g_mem_trace.m_trace_info_map, &info);
-//
-//    if (node)
-//    {
-//        exist_info = (mem_trace_info*)rb_node_key_user(node);
-//        exist_info->size += size;
-//        exist_info->alloc++;
-//    }
-//    else
-//    {
-//        exist_info = (mem_trace_info*)memory_unit_alloc(g_mem_trace.m_trace_info_unit);
-//        exist_info->file = file;
-//        exist_info->line = line;
-//        exist_info->name = name;
-//        exist_info->size = size;
-//        exist_info->alloc = 1;
-//        exist_info->free = 0;
-//
-//        if (!rb_tree_try_insert_user(g_mem_trace.m_trace_info_map, exist_info, 0, &node))
-//        {
-//            CRUSH_CODE();
-//        }
-//    }
-//
-//    _ptr_info = (ptr_info*)memory_unit_alloc(g_mem_trace.m_trace_ptr_unit);
-//
-//    _ptr_info->info = exist_info;
-//    _ptr_info->size = size;
-//
-//    if (!rb_tree_try_insert_user(g_mem_trace.m_trace_ptr_map, ptr, _ptr_info, &node))
-//    {
-//        CRUSH_CODE();
-//    }
-//    g_mem_trace.m_lock.UnLock();
-//}
-//
-//void trace_free(void* ptr)
-//{
-//    if (!ptr)
-//    {
-//        return;
-//    }
-//    ptr_info* _ptr_info;
-//
-//    g_mem_trace.m_lock.Lock();
-//
-//    HRBNODE node = rb_tree_find_user(g_mem_trace.m_trace_ptr_map, ptr);
-//
-//    if (node)
-//    {
-//        _ptr_info = (ptr_info*)rb_node_value_user(node);
-//
-//        if (_ptr_info->info->size < _ptr_info->size)
-//        {
-//            CRUSH_CODE();
-//        }
-//
-//        _ptr_info->info->size -= _ptr_info->size;
-//        _ptr_info->info->free++;
-//
-//        rb_tree_erase(g_mem_trace.m_trace_ptr_map, node);
-//
-//        memory_unit_free(g_mem_trace.m_trace_ptr_unit, _ptr_info);
-//    }
-//    else
-//    {
-//        CRUSH_CODE();
-//    }
-//
-//    g_mem_trace.m_lock.UnLock();
-//}
 
 HRBNODE mem_trace_info_head(void)
 {

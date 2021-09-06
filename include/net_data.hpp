@@ -11,20 +11,75 @@
 #include "rapidjson/reader.h"
 
 #ifdef  __cplusplus
-template< typename T, typename U = size_t, size_t N = 254/sizeof(T)+1, bool is_pod = std::is_pod<T>::value, bool is_unsigned = std::is_unsigned<U>::value >
+template< typename T, typename U = size_t, U N = 254/sizeof(T)+1, bool is_pod = std::is_pod<T>::value, bool is_unsigned = std::is_unsigned<U>::value >
 class DataArray
 {
 
 };
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 class DataArray<T, U, N, true, true>
 {
+public:
+    class iterator
+    {
+    public:
+        iterator()
+            :
+            m_index(0),
+            m_data_array(nullptr)
+        {
+
+        }
+
+        iterator(const DataArray* data_array, U index)
+            :
+            m_index(index),
+            m_data_array(data_array)
+        {
+
+        }
+
+        ~iterator()
+        {
+
+        }
+
+        iterator &operator++(void)
+        {
+            if (m_index < m_data_array->size())
+            {
+                ++m_index;
+            }
+
+            return *this;
+        }
+
+        bool operator!=(const iterator &ite)
+        {
+            if (m_data_array != ite.m_data_array)
+            {
+                return true;
+            }
+
+            return m_index != ite.m_index;
+        }
+
+        T& operator*(void)
+        {
+            return (*m_data_array)[m_index];
+        }
+
+    private:
+        U m_index;
+        const DataArray* m_data_array;
+    };
+
 public:
     DataArray(void)
     {
         m_size = 0;
-        m_capacity = static_cast<U>(N);
+        m_capacity = N;
         m_array = m_cache;
     }
 
@@ -42,9 +97,9 @@ public:
 
     DataArray(const DataArray& src)
     {
-        if (src.m_size <= static_cast<U>(N))
+        if (src.m_size <= N)
         {
-            m_capacity = static_cast<U>(N);
+            m_capacity = N;
             m_size = src.m_size;
             m_array = m_cache;
         }
@@ -56,6 +111,29 @@ public:
         }
 
         memcpy(m_array, src.m_array, sizeof(T) * m_size);
+    }
+
+    DataArray(DataArray&& src)
+    {
+        m_capacity = src.m_capacity;
+        m_size = src.m_size;
+
+        if (src.m_array == src.m_cache)
+        {
+            m_array = m_cache;
+
+            memcpy(m_array, src.m_array, sizeof(T) * m_size);
+
+            src.m_size = 0;
+        }
+        else
+        {
+            m_array = src.m_array;
+
+            src.m_capacity = N;
+            src.m_size = 0;
+            src.m_array = src.m_cache;
+        }
     }
 
     DataArray& operator= (const DataArray& src)
@@ -77,6 +155,42 @@ public:
         memcpy(m_array, src.m_array, sizeof(T)*m_size);
 
         return *this;
+    }
+
+    DataArray& operator= (DataArray&& src)
+    {
+        m_size = src.m_size;
+
+        if (src.m_array == src.m_cache)
+        {
+            memcpy(m_array, src.m_array, sizeof(T) * m_size);
+            src.m_size = 0;
+        }
+        else
+        {
+            if (m_array != m_cache)
+            {
+                S_FREE(m_array);
+            }
+
+            m_capacity = src.m_capacity;
+            m_array = src.m_array;
+
+
+            src.m_capacity = N;
+            src.m_size = 0;
+            src.m_array = src.m_cache;
+        }
+    }
+
+    iterator begin(void) const
+    {
+        return iterator(this, 0);
+    }
+
+    iterator end(void) const
+    {
+        return iterator(this, m_size);
     }
 
     bool operator== (const DataArray& src) const 
@@ -154,16 +268,16 @@ public:
         }
         else
         {
-            if ((std::numeric_limits<U>::max)() - m_capacity < m_capacity)
+            if ((m_max_capcity - m_capacity) < m_capacity)
             {
-                if (m_capacity == (std::numeric_limits<U>::max)())
+                if (m_capacity == m_max_capcity)
                 {
                     //CRUSH_CODE();
                     throw "capacity is max";
                 }
                 else
                 {
-                    m_capacity = (std::numeric_limits<U>::max)();
+                    m_capacity = m_max_capcity;
                 }
             }
             else
@@ -233,7 +347,7 @@ public:
     template <U S>
     inline void append_data(T(&datas)[S])
     {
-        if ((std::numeric_limits<U>::max)() - m_size < S)
+        if (m_max_capcity - m_size < S)
         {
             throw "capacity is max";
         }
@@ -249,7 +363,7 @@ public:
 
     inline void append_data(const T *datas, U length)
     {
-        if ((std::numeric_limits<U>::max)() - m_size < length)
+        if (m_max_capcity - m_size < length)
         {
             throw "capacity is max";
         }
@@ -266,7 +380,7 @@ public:
     template <typename STL>
     inline void append_data(const STL &stl)
     {
-        size_t max_capacity = (std::numeric_limits<U>::max)() - m_size;
+        size_t max_capacity = m_max_capcity - m_size;
 
         if (max_capacity < stl.size())
         {
@@ -286,7 +400,7 @@ public:
 
     inline void append_data(const std::vector<T>& stl)
     {
-        size_t max_capacity = (std::numeric_limits<U>::max)() - m_size;
+        size_t max_capacity = m_max_capcity - m_size;
 
         if (max_capacity < stl.size())
         {
@@ -304,7 +418,7 @@ public:
 
     inline void append_data(const std::string& str)
     {
-        size_t max_capacity = (std::numeric_limits<U>::max)() - m_size;
+        size_t max_capacity = m_max_capcity - m_size;
 
         if (max_capacity < str.size())
         {
@@ -330,19 +444,78 @@ private:
     T*  m_array;
     T   m_cache[N];
     static const char* m_name;
+    static const U m_max_capcity;
 };
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 const char* DataArray<T, U, N, true, true>::m_name = typeid(T).name();
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
+const U DataArray<T, U, N, true, true>::m_max_capcity = (std::numeric_limits<U>::max)() - 1;
+
+template <typename T, typename U, U N>
 class DataArray<T, U, N, false, true>
 {
+public:
+    class iterator
+    {
+    public:
+        iterator()
+            :
+            m_index(0),
+            m_data_array(nullptr)
+        {
+
+        }
+
+        iterator(const DataArray* data_array, U index)
+            :
+            m_index(index),
+            m_data_array(data_array)
+        {
+
+        }
+
+        ~iterator()
+        {
+
+        }
+
+        iterator& operator++(void)
+        {
+            if (m_index < m_data_array->size())
+            {
+                ++m_index;
+            }
+
+            return *this;
+        }
+
+        bool operator!=(const iterator& ite)
+        {
+            if (m_data_array != ite.m_data_array)
+            {
+                return true;
+            }
+
+            return m_index != ite.m_index;
+        }
+
+        T& operator*(void)
+        {
+            return (*m_data_array)[m_index];
+        }
+
+    private:
+        U m_index;
+        const DataArray* m_data_array;
+    };
+
 public:
     DataArray(void)
     {
         m_size = 0;
-        m_capacity = static_cast<U>(N);
+        m_capacity = N;
         m_array = m_cache;
     }
 
@@ -365,9 +538,9 @@ public:
 
     DataArray(const DataArray& src)
     {
-        if (src.m_size <= static_cast<U>(N))
+        if (src.m_size <= N)
         {
-            m_capacity = static_cast<U>(N);
+            m_capacity = N;
             m_size = src.m_size;
             m_array = m_cache;
         }
@@ -381,6 +554,33 @@ public:
         for (U i = 0; i < m_size; i++)
         {
             new(m_array + i)T(src.m_array[i]);
+        }
+    }
+
+    DataArray(DataArray&& src)
+    {
+        m_capacity = src.m_capacity;
+        m_size = src.m_size;
+
+        if (src.m_array == src.m_cache)
+        {
+            m_array = m_cache;
+
+            for (U i = 0; i < m_size; i++)
+            {
+                new(m_array + i)T(src.m_array[i]);
+                (src.m_array + i)->~T();
+            }
+
+            src.m_size = 0;
+        }
+        else
+        {
+            m_array = src.m_array;
+
+            src.m_capacity = N;
+            src.m_size = 0;
+            src.m_array = src.m_cache;
         }
     }
 
@@ -412,6 +612,50 @@ public:
         }
 
         return *this;
+    }
+
+    DataArray& operator= (DataArray&& src)
+    {
+        for (U i = 0; i < m_size; i++)
+        {
+            (m_array + i)->~T();
+        }
+        m_size = src.m_size;
+
+        if (src.m_array == src.m_cache)
+        {
+            for (U i = 0; i < m_size; i++)
+            {
+                new(m_array + i)T(src.m_array[i]);
+                (src.m_array + i)->~T();
+            }
+
+            src.m_size = 0;
+        }
+        else
+        {
+            if (m_array != m_cache)
+            {
+                S_FREE(m_array);
+            }
+
+            m_capacity = src.m_capacity;
+            m_array = src.m_array;
+
+            src.m_capacity = N;
+            src.m_size = 0;
+            src.m_array = src.m_cache;
+        }
+    }
+
+    iterator begin(void) const
+    {
+        return iterator(this, 0);
+    }
+
+    iterator end(void) const
+    {
+        return iterator(this, m_size);
     }
 
     bool operator != (const DataArray& src) const
@@ -526,16 +770,16 @@ public:
         }
         else
         {
-            if ((std::numeric_limits<U>::max)() - m_capacity < m_capacity)
+            if (m_max_capacity - m_capacity < m_capacity)
             {
-                if (m_capacity == (std::numeric_limits<U>::max)())
+                if (m_capacity == m_max_capacity)
                 {
                     //CRUSH_CODE();
                     throw "capacity is max";
                 }
                 else
                 {
-                    m_capacity = (std::numeric_limits<U>::max)();
+                    m_capacity = m_max_capacity;
                 }
             }
             else
@@ -615,7 +859,7 @@ public:
     template <U S>
     inline void append_data(T(&datas)[S])
     {
-        if ((std::numeric_limits<U>::max)() - m_size < S)
+        if (m_max_capacity - m_size < S)
         {
             throw "capacity is max";
         }
@@ -633,7 +877,7 @@ public:
 
     inline void append_data(const T *datas, U length)
     {
-        if ((std::numeric_limits<U>::max)() - m_size < length)
+        if (m_max_capacity - m_size < length)
         {
             throw "capacity is max";
         }
@@ -652,7 +896,7 @@ public:
     template <typename STL>
     inline void append_data(const STL &stl)
     {
-        if ((std::numeric_limits<U>::max)() - m_size < stl.size())
+        if (m_max_capacity - m_size < stl.size())
         {
             throw "capacity is max";
         }
@@ -679,10 +923,14 @@ private:
     T*  m_array;
     T   m_cache[N];
     static const char* m_name;
+    static const U m_max_capacity;
 };
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 const char* DataArray<T, U, N, false, true>::m_name = typeid(T).name();
+
+template <typename T, typename U, U N>
+const U DataArray<T, U, N, false, true>::m_max_capacity = (std::numeric_limits<U>::max)() - 1;
 
 
 class NetEnCode
@@ -1803,14 +2051,14 @@ class IntegralDataArrayHandler :
 
 };
 
-template < typename T, typename U, typename H = IntegralDataArrayHandler, size_t N = 254 / sizeof(T) + 1, bool is_integral = std::is_integral<T>::value >
+template < typename T, typename U, typename H = IntegralDataArrayHandler, U N = 254 / sizeof(T) + 1, bool is_integral = std::is_integral<T>::value >
 class DataArrayHandler :
     public JsonHandler
 {
 
 };
 
-template <typename T, typename U, typename H, size_t N>
+template <typename T, typename U, typename H, U N>
 class DataArrayHandler<T, U, H, N, false> :
     public JsonHandler
 {
@@ -1867,7 +2115,7 @@ private:
     U                   m_element_count;
 };
 
-template < typename T, typename U, size_t N >
+template < typename T, typename U, U N >
 class DataArrayHandler<T, U, IntegralDataArrayHandler, N, true> :
     public JsonHandler
 {
@@ -1906,7 +2154,7 @@ private:
     DataArray<T, U, N>& m_data;
 };
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 std::string DataArray<T, U, N, true, true>::marshal_json(void) const
 {
     JsonEnCode json_encode(4096);
@@ -1916,7 +2164,7 @@ std::string DataArray<T, U, N, true, true>::marshal_json(void) const
     return json_encode.ToString();
 }
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 bool DataArray<T, U, N, true, true>::unmarshal_json(const std::string& json)
 {
     DataArrayHandler<T, U> h(*this, nullptr);
@@ -1928,7 +2176,7 @@ bool DataArray<T, U, N, true, true>::unmarshal_json(const std::string& json)
     return rd.Parse<rapidjson::kParseNumbersAsStringsFlag>(ss, jd);
 }
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 std::string DataArray<T, U, N, false, true>::marshal_json(void) const
 {
     JsonEnCode json_encode(4096);
@@ -1938,7 +2186,7 @@ std::string DataArray<T, U, N, false, true>::marshal_json(void) const
     return json_encode.ToString();
 }
 
-template <typename T, typename U, size_t N>
+template <typename T, typename U, U N>
 bool DataArray<T, U, N, false, true>::unmarshal_json(const std::string& json)
 {
     DataArrayHandler<T, U, typename T::Handler, N> h(*this, nullptr);
@@ -1953,17 +2201,19 @@ bool DataArray<T, U, N, false, true>::unmarshal_json(const std::string& json)
 class protocol_base
 {
 public:
-    const unsigned short module_id;
-    const unsigned short protocol_id;
 
-    protocol_base(unsigned short m_id,
-        unsigned short p_id) :
-        module_id(m_id), protocol_id(p_id) {}
+    protocol_base() = default;
 
-    virtual ~protocol_base() {}
+    virtual ~protocol_base() = default;
+
 public:
     virtual bool EnCodeEx(NetEnCode& net_data) = 0;
     virtual bool DeCodeEx(NetDeCode& net_data) = 0;
+
+    virtual unsigned short ModuleId() const = 0;
+    virtual unsigned short ProtocolId() const = 0;
+    
+    virtual const char* Name() const = 0;
 protected:
 private:
 };
@@ -1972,7 +2222,6 @@ template<typename T>
 class Protocol: public protocol_base
 {
 public:
-    ~Protocol(){}
 
     bool EnCode(NetEnCode& net_data)
     {
@@ -1986,10 +2235,36 @@ public:
         return false;
     }
 
+    unsigned short ModuleId(void) const
+    {
+        return module_id;
+    }
+
+    unsigned short ProtocolId(void) const
+    {
+        return protocol_id;
+    }
+
+    const char* Name(void) const
+    {
+        return SName();
+    }
+
+    static const char* SName(void)
+    {
+        static const char* name = typeid(T).name();
+
+        return name;
+    }
+
+    static const unsigned short module_id;
+    static const unsigned short protocol_id;
+
 protected:
 private:
-    Protocol(unsigned short m_id, unsigned short p_id)
-        :protocol_base(m_id, p_id) {}
+    //Protocol(unsigned short m_id, unsigned short p_id)
+    //    :protocol_base(m_id, p_id) {}
+    Protocol() = default;
     friend T;
 };
 

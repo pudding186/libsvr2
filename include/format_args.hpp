@@ -216,14 +216,15 @@ struct SFormatArgs<const char(&)[N], Rest...>
     SFormatArgs() :value(0) {}
     SFormatArgs(const char (&fmt)[N], Rest&&... rest)
         :SFormatArgs<Rest...>(std::forward<Rest>(rest)...),
-        value(SFormatArgs<>::copy_str(fmt, N-1)) {}
+        value(fmt){}
+        //value(SFormatArgs<>::copy_str(fmt, N-1)) {}
 
     ~SFormatArgs()
     {
-        SFormatArgs<>::free_str(value);
+        //SFormatArgs<>::free_str(value);
     }
 
-    virtual void format_to_buffer(my_fmt_memory_buffer& buffer)
+    void format_to_buffer(my_fmt_memory_buffer& buffer) override
     {
         try
         {
@@ -241,7 +242,7 @@ struct SFormatArgs<const char(&)[N], Rest...>
         }
     }
 
-    virtual void format_c_to_buffer(my_fmt_memory_buffer& buffer)
+    void format_c_to_buffer(my_fmt_memory_buffer& buffer) override
     {
         try
         {
