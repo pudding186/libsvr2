@@ -38,6 +38,10 @@ extern const void* (memmem_s)(const void *haystack, size_t haystacklen, const vo
 
 extern unsigned long long (get_cycle)(void);
 
+extern bool bin2str(unsigned char* bin_data, size_t bin_len, char* str, size_t str_len);
+
+extern bool str2bin(const char* str, unsigned char* bin, size_t bin_len);
+
 #ifdef _MSC_VER
 
 #elif __GNUC__
@@ -131,7 +135,7 @@ protected:
     CFuncPerformanceInfo*   m_parent_func_perf_info;
     CFuncPerformanceInfo*   m_func_perf_info;
     CFuncPerformance*       m_fpf;
-    //HFUNCPERFMGR	        m_mgr;
+    unsigned long long      m_cycles;
 private:
 };
 
