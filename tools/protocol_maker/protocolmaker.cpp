@@ -176,7 +176,7 @@ bool CProtocolMaker::MakeProtocol(const std::string& strXML, const std::string& 
 
     {
         //utf8-bom
-        char bom[3] = { 0xEF, 0xBB, 0xBF };
+        char bom[3] = { (char)0xEF, (char)0xBB, (char)0xBF };
         fwrite(bom, 1, 3, pHppFile);
         fwrite(bom, 1, 3, pCppFile);
     }
@@ -938,7 +938,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
     if (m_item_list.size())
     {
-        fprintf(pHppFile, u8"            if ((m_assigned_bitset ^ template_assigned_bitset).any())\r\n");
+        fprintf(pHppFile, u8"            if (((template_assigned_bitset & m_assigned_bitset) ^ template_assigned_bitset).any())\r\n");
         fprintf(pHppFile, u8"            {\r\n");
         fprintf(pHppFile, u8"                return false;\r\n");
         fprintf(pHppFile, u8"            }\r\n\r\n");
@@ -946,31 +946,39 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
         for (size_t i = 0; i < m_struct_list.size(); i++)
         {
             CAttrib& attr = m_struct_list[i];
-
-            fprintf(pHppFile, u8"            if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                return false;\r\n");
-            fprintf(pHppFile, u8"            }\r\n\r\n");
+            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"                {\r\n");
+            fprintf(pHppFile, u8"                    return false;\r\n");
+            fprintf(pHppFile, u8"                }\r\n\r\n");
+            fprintf(pHppFile, u8"            }\r\n");
         }
 
         for (size_t i = 0; i < m_array_list.size(); i++)
         {
             CAttrib& attr = m_array_list[i];
 
-            fprintf(pHppFile, u8"            if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                return false;\r\n");
-            fprintf(pHppFile, u8"            }\r\n\r\n");
+            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"                {\r\n");
+            fprintf(pHppFile, u8"                    return false;\r\n");
+            fprintf(pHppFile, u8"                }\r\n\r\n");
+            fprintf(pHppFile, u8"            }\r\n");
         }
 
         for (size_t i = 0; i < m_array_old_list.size(); i++)
         {
             CAttrib& attr = m_array_old_list[i];
 
-            fprintf(pHppFile, u8"            if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                return false;\r\n");
-            fprintf(pHppFile, u8"            }\r\n\r\n");
+            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+            fprintf(pHppFile, u8"                {\r\n");
+            fprintf(pHppFile, u8"                    return false;\r\n");
+            fprintf(pHppFile, u8"                }\r\n\r\n");
+            fprintf(pHppFile, u8"            }\r\n");
         }
     }
 
@@ -1074,9 +1082,10 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
         fprintf(pCppFile, u8"const std::bitset<%zu> %s::template_assigned_bitset { ", m_number_list.size() + m_string_list.size() + m_array_list.size() + m_array_old_list.size() + m_struct_list.size(), strHandlerName.c_str());
         fprintf(pCppFile, u8"\"");
-        for (size_t i = 0; i < m_item_list.size(); i++)
+        //for (size_t i = 0; i < m_item_list.size(); i++)
+        for (size_t i = m_item_list.size(); i>0; i--)
         {
-            CAttrib& attr = m_item_list[i];
+            CAttrib& attr = m_item_list[i - 1];
 
             if (m_def_list.find(attr[eName]) == m_def_list.end())
             {
@@ -1151,6 +1160,20 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rX
             //fprintf(pHppFile,"\tconst %-*s moudleid;\r\n", 19, "unsigned short");
             //fprintf(pHppFile,"\tconst %-*s protocolid;\r\n", 19, "unsigned short");
             eDataType = eProtocol;
+            m_vecProtocol.push_back(strName);
+
+#ifdef MT
+            fprintf(pCppFile, u8"template<>\r\n");
+            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
+            fprintf(pCppFile, u8"template<>\r\n");
+            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size());
+#else
+            fprintf(pCppFile, u8"template<>\r\n");
+            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
+            fprintf(pCppFile, u8"template<>\r\n");
+            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size() - 1);
+#endif // 
+
         }
         else
         {
@@ -1264,17 +1287,6 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rX
         {
             m_mapStruct[strName] = mapItem;
             m_mapProtocol[strName] = mapItem;
-            m_vecProtocol.push_back(strName);
-            //fprintf(pHppFile, "\t%s():moudleid(%s),protocolid(%d){}\r\n", strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size());
-            //fprintf(pHppFile, u8"\t%s():protocol_base(%s, %d){}\r\n", strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size()+1);
-#ifdef MT
-            fprintf(pHppFile, u8"\t%s():Protocol<%s>(%s, %d){}\r\n", strName.c_str(), strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size());
-#else
-            fprintf(pHppFile, u8"\t%s():Protocol<%s>(%s, %d){}\r\n", strName.c_str(), strName.c_str(), m_strMoudleID.c_str(), m_vecProtocol.size() - 1);
-#endif // 
-
-            
-			//fprintf(pHppFile, u8"\tbool EnCode(NetEnCode& net_data);\r\n\tbool DeCode(NetDeCode& net_data);\r\n");
 
             if (!__WriteStructProtocolEnCodeFunc(rXml, pHppFile))
             {
@@ -2678,14 +2690,38 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
 
 
     fprintf(pHppFile, u8"\tbool BuildProtocol(protocol_base* proto, NetEnCode& net_data)\r\n\t{\r\n");
-    fprintf(pHppFile, u8"\t\tif (proto->module_id != %s)\r\n", m_strMoudleID.c_str());
+    fprintf(pHppFile, u8"\t\tif (proto->ModuleId() != %s)\r\n", m_strMoudleID.c_str());
     fprintf(pHppFile, u8"\t\t\treturn false;\r\n\r\n");
-    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->module_id);\r\n");
-    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->protocol_id);\r\n\r\n");
+    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ModuleId());\r\n");
+    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ProtocolId());\r\n\r\n");
 
     fprintf(pHppFile, u8"\t\treturn proto->EnCodeEx(net_data);\r\n");
     fprintf(pHppFile, u8"\t}\r\n\r\n");
 
+    //协议名获取函数
+    fprintf(pHppFile, u8"\tconst char* ProtocolName(unsigned short protocol_id) const\r\n\t{\r\n");
+    fprintf(pHppFile, u8"\t\tstatic char unknow_protocol[32];\r\n\r\n");
+    fprintf(pHppFile, u8"\t\tswitch (protocol_id)\r\n\t\t{\r\n");
+
+    for (size_t i = 0; i < m_vecProtocol.size(); i++)
+    {
+#ifdef MT
+        fprintf(pHppFile, u8"\t\tcase %zu:\r\n", i + 1);
+#else
+        fprintf(pHppFile, u8"\t\tcase %zu:\r\n", i);
+#endif
+        fprintf(pHppFile, u8"\t\t{\r\n");
+        fprintf(pHppFile, u8"\t\t\treturn %s::SName();\r\n", m_vecProtocol[i].c_str());
+        fprintf(pHppFile, u8"\t\t}\r\n\t\tbreak;\r\n");
+    }
+
+    fprintf(pHppFile, u8"\t\tdefault:\r\n");
+    fprintf(pHppFile, u8"\t\t{\r\n");
+    fprintf(pHppFile, u8"\t\t\tsnprintf(unknow_protocol, sizeof(unknow_protocol), u8\"Unknow Protocol Id = %%d\", protocol_id);\r\n");
+    fprintf(pHppFile, u8"\t\t\treturn unknow_protocol;\r\n");
+    fprintf(pHppFile, u8"\t\t}\r\n");
+    fprintf(pHppFile, u8"\t\t}\r\n");
+    fprintf(pHppFile, u8"\t}\r\n\r\n");
 
     //处理协议函数
     fprintf(pHppFile, u8"\tbool HandleProtocol(NetDeCode& net_data)\r\n\t{\r\n");
