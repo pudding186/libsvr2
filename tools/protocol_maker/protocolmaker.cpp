@@ -938,48 +938,109 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
     if (m_item_list.size())
     {
-        fprintf(pHppFile, u8"            if (((template_assigned_bitset & m_assigned_bitset) ^ template_assigned_bitset).any())\r\n");
+        if (m_def_list.empty())
+        {
+            fprintf(pHppFile, u8"            if ((m_assigned_bitset ^ template_assigned_bitset).any())\r\n");
+        }
+        else
+        {
+            fprintf(pHppFile, u8"            if (((template_assigned_bitset & m_assigned_bitset) ^ template_assigned_bitset).any())\r\n");
+        }
+
         fprintf(pHppFile, u8"            {\r\n");
         fprintf(pHppFile, u8"                return false;\r\n");
         fprintf(pHppFile, u8"            }\r\n\r\n");
 
-        for (size_t i = 0; i < m_struct_list.size(); i++)
+        for (size_t i = 0; i < m_item_list.size(); i++)
         {
-            CAttrib& attr = m_struct_list[i];
-            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
-            fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
-            fprintf(pHppFile, u8"                {\r\n");
-            fprintf(pHppFile, u8"                    return false;\r\n");
-            fprintf(pHppFile, u8"                }\r\n\r\n");
-            fprintf(pHppFile, u8"            }\r\n");
+            CAttrib& attr = m_item_list[i];
+            bool need_all_set = false;
+
+            if (attr[eType] == "string")
+            {
+                //m_string_list.push_back(vecAttrib);
+            }
+            else if (attr[eCount].empty() && attr[eArray].empty())
+            {
+                if (__is_integral(attr[eType]))
+                {
+                    //m_number_list.push_back(vecAttrib);
+                }
+                else
+                {
+                    //m_struct_list.push_back(vecAttrib);
+                    need_all_set = true;
+                }
+            }
+            else
+            {
+                if (!attr[eArray].empty())
+                {
+                    if (attr[eType] == "uint8" || attr[eType] == "int8")
+                    {
+                        //m_string_list.push_back(vecAttrib);
+                    }
+                    else
+                    {
+                        //m_array_list.push_back(vecAttrib);
+                        need_all_set = true;
+                    }
+                }
+
+                if (!attr[eCount].empty())
+                {
+                    //m_array_old_list.push_back(vecAttrib);
+                    need_all_set = true;
+                }
+            }
+
+            if (need_all_set)
+            {
+                if (m_def_list.find(attr[eName]) != m_def_list.end())
+                {
+                    fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
+                    fprintf(pHppFile, u8"            {\r\n");
+                    fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+                    fprintf(pHppFile, u8"                {\r\n");
+                    fprintf(pHppFile, u8"                    return false;\r\n");
+                    fprintf(pHppFile, u8"                }\r\n\r\n");
+                    fprintf(pHppFile, u8"            }\r\n");
+                }
+                else
+                {
+                    fprintf(pHppFile, u8"            if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+                    fprintf(pHppFile, u8"            {\r\n");
+                    fprintf(pHppFile, u8"                return false;\r\n");
+                    fprintf(pHppFile, u8"            }\r\n\r\n");
+                }
+            }
         }
 
-        for (size_t i = 0; i < m_array_list.size(); i++)
-        {
-            CAttrib& attr = m_array_list[i];
+        //for (size_t i = 0; i < m_array_list.size(); i++)
+        //{
+        //    CAttrib& attr = m_array_list[i];
 
-            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
-            fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
-            fprintf(pHppFile, u8"                {\r\n");
-            fprintf(pHppFile, u8"                    return false;\r\n");
-            fprintf(pHppFile, u8"                }\r\n\r\n");
-            fprintf(pHppFile, u8"            }\r\n");
-        }
+        //    fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
+        //    fprintf(pHppFile, u8"            {\r\n");
+        //    fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+        //    fprintf(pHppFile, u8"                {\r\n");
+        //    fprintf(pHppFile, u8"                    return false;\r\n");
+        //    fprintf(pHppFile, u8"                }\r\n\r\n");
+        //    fprintf(pHppFile, u8"            }\r\n");
+        //}
 
-        for (size_t i = 0; i < m_array_old_list.size(); i++)
-        {
-            CAttrib& attr = m_array_old_list[i];
+        //for (size_t i = 0; i < m_array_old_list.size(); i++)
+        //{
+        //    CAttrib& attr = m_array_old_list[i];
 
-            fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
-            fprintf(pHppFile, u8"            {\r\n");
-            fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
-            fprintf(pHppFile, u8"                {\r\n");
-            fprintf(pHppFile, u8"                    return false;\r\n");
-            fprintf(pHppFile, u8"                }\r\n\r\n");
-            fprintf(pHppFile, u8"            }\r\n");
-        }
+        //    fprintf(pHppFile, u8"            if (m_assigned_bitset.test(%s))\r\n", attr[eIndex].c_str());
+        //    fprintf(pHppFile, u8"            {\r\n");
+        //    fprintf(pHppFile, u8"                if (!m_%s_handler.IsAllMemberSet())\r\n", attr[eName].c_str());
+        //    fprintf(pHppFile, u8"                {\r\n");
+        //    fprintf(pHppFile, u8"                    return false;\r\n");
+        //    fprintf(pHppFile, u8"                }\r\n\r\n");
+        //    fprintf(pHppFile, u8"            }\r\n");
+        //}
     }
 
     fprintf(pHppFile, u8"            return true;\r\n");
