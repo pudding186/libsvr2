@@ -4,7 +4,7 @@
 #include <vector>
 #include <map>
 
-#define MT
+//#define MT
 
 enum EDataType
 {
