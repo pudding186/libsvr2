@@ -1934,6 +1934,11 @@ void CTableMaker::_print_func_ReLoadLua(FILE* hpp_file)
     fprintf(hpp_file, u8"        }\r\n");
     fprintf(hpp_file, u8"        RegLuaDelegate();\r\n");
     fprintf(hpp_file, u8"    }\r\n");
+
+    fprintf(hpp_file, u8"    void ResetLua(void)\r\n");
+    fprintf(hpp_file, u8"    {\r\n");
+    fprintf(hpp_file, u8"        m_lua_data_map.Reset();\r\n");
+    fprintf(hpp_file, u8"    }\r\n");
     fprintf(hpp_file, u8"#endif\r\n");
 }
 

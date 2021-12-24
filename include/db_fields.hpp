@@ -19,31 +19,37 @@ extern "C"
 
 #define MAX_ESCAPE_CACHE_SIZE   1024*128
 //////////////////////////////////////////////////////////////////////////
-using DataState = enum EDataState
+enum class FieldDataType :int 
 {
-    data_state_init = 0,
-    data_state_load,
-    data_state_update,
+    INT8 = 0,
+    UINT8,
+    INT16,
+    UINT16,
+    INT32,
+    UINT32,
+    INT64,
+    UINT64,
+    TEXT,
+    LONGTEXT,
+    VARCHAR,
 };
-
 
 class IField
 {
 public:
-    DataState m_state;
-    IField() :m_state(data_state_init) {}
-    virtual ~IField() {}
+    IField() = default;
+    virtual ~IField() = default;
     virtual const std::string& GetColumnName(void) const = 0;
     virtual const std::string& GetColumnType(void) const = 0;
     virtual const std::string& GetColumnExtra(void) const = 0;
     virtual const std::string& GetColumnComment(void) const = 0;
+    virtual FieldDataType GetDataType(void) const = 0;
     virtual void FromSQL(CLIENTMYSQLVALUE client_mysql_value) = 0;
     virtual std::string ToSQL(HCLIENTMYSQL client_mysql) = 0;
     virtual IField* Clone() const = 0;
     static const std::string& ColumnNull(void) { static std::string column_null = u8""; return column_null; }
 protected:
 private:
-    
 };
 
 template<typename T>
@@ -63,54 +69,10 @@ public:
         return column_attr;
     }
 
-    inline T GetData(void) { return m_data; }
-    void SetData(T data, bool is_from_db = false)
+    inline T GetData(void) const { return m_data; }
+    void SetData(T data)
     {
-        switch (m_state)
-        {
-        case data_state_init:
-        {
-            if (is_from_db)
-            {
-                m_state = data_state_load;
-            }
-            else
-            {
-                m_state = data_state_update;
-            }
-
-            m_data = data;
-        }
-        break;
-        case data_state_load:
-        {
-            if (m_data != data)
-            {
-                m_data = data;
-
-                if (!is_from_db)
-                {
-                    m_state = data_state_update;
-                }
-            }
-        }
-        break;
-        case data_state_update:
-        {
-            if (m_data != data)
-            {
-                if (is_from_db)
-                {
-                    assert(false);
-                }
-                else
-                {
-                    m_data = data;
-                }
-            }
-        }
-        break;
-        }
+        m_data = data;
     }
 
     bool operator < (const FieldINT<T>& other) const
@@ -121,6 +83,16 @@ public:
     bool operator > (const FieldINT<T>& other) const
     {
         return m_data > other.m_data;
+    }
+
+    bool operator == (const FieldINT<T>& other) const
+    {
+        return m_data == other.m_data;
+    }
+
+    bool operator != (const FieldINT<T>& other) const
+    {
+        return m_data != other.m_data;
     }
 
     FieldINT<T>& operator=(const FieldINT<T>& rhs)
@@ -153,6 +125,7 @@ public:
         (void)client_mysql;
         return fmt::format("{:d}", m_data);
     }
+
 protected:
 private:
     typename std::enable_if<std::is_integral<T>::value, T>::type m_data;
@@ -177,54 +150,10 @@ public:
         return column_attr;
     }
 
-    inline std::string GetData(void) { return m_data; }
-    void SetData(const std::string& data, bool is_from_db = false)
+    inline std::string GetData(void) const { return m_data; }
+    void SetData(const std::string& data)
     {
-        switch (m_state)
-        {
-        case data_state_init:
-        {
-            if (is_from_db)
-            {
-                m_state = data_state_load;
-            }
-            else
-            {
-                m_state = data_state_update;
-            }
-
-            m_data = data;
-        }
-        break;
-        case data_state_load:
-        {
-            if (m_data != data)
-            {
-                m_data = data;
-
-                if (!is_from_db)
-                {
-                    m_state = data_state_update;
-                }
-            }
-        }
-        break;
-        case data_state_update:
-        {
-            if (m_data != data)
-            {
-                if (is_from_db)
-                {
-                    assert(false);
-                }
-                else
-                {
-                    m_data = data;
-                }
-            }
-        }
-        break;
-        }
+        m_data = data;
     }
 
     bool operator < (const FieldTXT& other) const
@@ -235,6 +164,16 @@ public:
     bool operator > (const FieldTXT& other) const
     {
         return m_data > other.m_data;
+    }
+
+    bool operator == (const FieldTXT& other) const
+    {
+        return m_data == other.m_data;
+    }
+
+    bool operator != (const FieldTXT& other) const
+    {
+        return m_data != other.m_data;
     }
 
     FieldTXT& operator=(const FieldTXT& rhs)
@@ -266,6 +205,11 @@ public:
     void ToCharArray(char(&data)[N])
     {
         StrSafeCopy(data, m_data);
+    }
+
+    void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
+    {
+        SetData(std::string(client_mysql_value.value, client_mysql_value.size));
     }
 
     std::string ToSQL(HCLIENTMYSQL client_mysql) override
@@ -326,6 +270,11 @@ public:
     {
         SetData(client_mysql_value_int8(client_mysql_value));
     }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::INT8;
+    }
 };
 
 class FieldUINT8
@@ -350,6 +299,11 @@ public:
     {
         SetData(client_mysql_value_uint8(client_mysql_value));
     }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::UINT8;
+    }
 };
 
 class FieldINT16
@@ -372,6 +326,11 @@ public:
     void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
     {
         SetData(client_mysql_value_int16(client_mysql_value));
+    }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::INT16;
     }
 };
 
@@ -396,6 +355,11 @@ public:
     {
         SetData(client_mysql_value_uint16(client_mysql_value));
     }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::UINT16;
+    }
 };
 
 class FieldINT32
@@ -418,6 +382,11 @@ public:
     void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
     {
         SetData(client_mysql_value_int32(client_mysql_value));
+    }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::INT32;
     }
 };
 
@@ -442,6 +411,11 @@ public:
     {
         SetData(client_mysql_value_uint32(client_mysql_value));
     }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::UINT32;
+    }
 };
 
 class FieldINT64
@@ -464,6 +438,11 @@ public:
     void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
     {
         SetData(client_mysql_value_int64(client_mysql_value));
+    }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::INT64;
     }
 };
 
@@ -488,6 +467,11 @@ public:
     {
         SetData(client_mysql_value_uint64(client_mysql_value));
     }
+
+    FieldDataType GetDataType(void) const override
+    {
+        return FieldDataType::UINT64;
+    }
 };
 
 class FieldText
@@ -510,9 +494,9 @@ public:
         return FieldTXT::ColumnExtra();
     }
 
-    void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
+    FieldDataType GetDataType(void) const override
     {
-        SetData(std::string(client_mysql_value.value, client_mysql_value.size));
+        return FieldDataType::TEXT;
     }
 };
 
@@ -536,9 +520,9 @@ public:
         return FieldTXT::ColumnExtra();
     }
 
-    void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
+    FieldDataType GetDataType(void) const override
     {
-        SetData(std::string(client_mysql_value.value, client_mysql_value.size));
+        return FieldDataType::LONGTEXT;
     }
 };
 
@@ -566,9 +550,9 @@ public:
         return column_attr;
     }
 
-    void FromSQL(CLIENTMYSQLVALUE client_mysql_value) override
+    FieldDataType GetDataType(void) const override
     {
-        SetData(std::string(client_mysql_value.value, client_mysql_value.size));
+        return FieldDataType::VARCHAR;
     }
 };
 
@@ -583,6 +567,46 @@ struct SFieldList<>
     SFieldList():m_custom_sql(u8""){}
     SFieldList(const std::string& custom_sql):m_custom_sql(custom_sql){}
     virtual ~SFieldList(){}
+
+    SFieldList(const SFieldList<>& rhs)
+    {
+        m_custom_sql = rhs.m_custom_sql;
+    }
+
+    SFieldList(SFieldList<>&& rhs)
+    {
+        m_custom_sql = std::move(rhs.m_custom_sql);
+    }
+
+    SFieldList<>& operator = (const SFieldList<>& rhs)
+    {
+        if (this != &rhs)
+        {
+            m_custom_sql = rhs.m_custom_sql;
+        }
+        
+        return *this;
+    }
+
+    SFieldList<>& operator = (SFieldList<>&& rhs)
+    {
+        if (this != &rhs)
+        {
+            m_custom_sql = std::move(rhs.m_custom_sql);
+        }
+
+        return *this;
+    }
+
+    bool operator == (const SFieldList<>& rhs) const
+    {
+        return m_custom_sql == rhs.m_custom_sql;
+    }
+
+    bool operator != (const SFieldList<>& rhs) const
+    {
+        return m_custom_sql != rhs.m_custom_sql;
+    }
 
 #ifdef _MSC_VER
 #pragma warning( push )
@@ -600,8 +624,18 @@ struct SFieldList<>
 
     ptrdiff_t Compare(const SFieldList<>& other) const
     {
-        (void)other;
-        return 0;
+        if (m_custom_sql < other.m_custom_sql)
+        {
+            return -1;
+        }
+        else if (m_custom_sql > other.m_custom_sql)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
     }
 
     virtual std::string ListSQL(size_t idx = 0)
@@ -677,193 +711,6 @@ private:
 #endif
 };
 
-template <typename First, typename... Rest>
-struct SFieldList<First, Rest...>
-    :public SFieldList<Rest...>
-{
-    SFieldList(){}
-    SFieldList(First&& first, Rest&&... rest)
-        :SFieldList<Rest...>(std::forward<Rest>(rest)...),
-        value(std::forward<First>(first)) {}
-
-    ptrdiff_t Compare(const SFieldList<First, Rest...>& other) const
-    {
-        if (value < other.value)
-        {
-            return -1;
-        }
-        else if (value > other.value)
-        {
-            return 1;
-        }
-        else
-        {
-            return SFieldList<Rest...>::Compare(static_cast<const SFieldList<Rest...>&>(other));
-        }
-    }
-
-    std::string ListSQL(size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx == 0)
-        {
-            sql += u8" ";
-        }
-        else
-        {
-            sql += u8", ";
-        }
-
-        sql += u8"`" + First::ColumnName() + u8"`";
-
-        return sql += SFieldList<Rest...>::ListSQL(idx + 1);
-    }
-
-    std::string ListNameSQL(size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx == 0)
-        {
-            sql += u8" ";
-        }
-        else
-        {
-            sql += u8", ";
-        }
-
-        sql += u8"`" + First::ColumnName() + u8"`";
-
-        return sql += SFieldList<Rest...>::ListNameSQL(idx + 1);
-    }
-
-    std::string SetSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx)
-        {
-            sql += u8", ";
-        }
-        
-        sql += u8"`" + First::ColumnName() + u8"`";
-        sql += u8" = ";
-        sql += value.ToSQL(client_mysql);
-
-        return sql += SFieldList<Rest...>::SetSQL(client_mysql, idx + 1);
-    }
-
-    std::string AndSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx)
-        {
-            sql += u8" AND ";
-        }
-
-        sql += u8"`" + First::ColumnName() + u8"`";
-        sql += " = ";
-        sql += value.ToSQL(client_mysql);
-
-        return sql += SFieldList<Rest...>::AndSQL(client_mysql, idx + 1);
-    }
-
-    std::string OrSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx)
-        {
-            sql += u8" OR ";
-        }
-
-        sql += u8"`" + First::ColumnName() + u8"`";
-        sql += u8" = ";
-        sql += value.ToSQL(client_mysql);
-
-        return sql += SFieldList<Rest...>::OrSQL(client_mysql, idx + 1);
-    }
-
-    std::string ValueSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
-    {
-        std::string sql;
-
-        if (idx)
-        {
-            sql += u8", ";
-        }
-
-        sql += value.ToSQL(client_mysql);
-
-        return sql += SFieldList<Rest...>::ValueSQL(client_mysql, idx + 1);
-    }
-
-    std::string CreateSQL(void) override
-    {
-        std::string sql;
-
-        sql +=
-            u8"`" +
-            First::ColumnName() +
-            u8"` " +
-            First::ColumnType() +
-            u8" " +
-            First::ColumnExtra() +
-            u8" ";
-            if (First::ColumnComment().length())
-            {
-                sql += u8"COMMENT \"";
-                sql += First::ColumnComment();
-                sql += u8"\",";
-            }
-            else
-            {
-                sql += u8",";
-            }
-            
-            
-
-        return sql += SFieldList<Rest...>::CreateSQL();
-    }
-
-    void GetDesc(std::vector<std::string>& name_type_list) override
-    {
-        name_type_list.push_back(First::ColumnName());
-        name_type_list.push_back(First::ColumnType());
-        name_type_list.push_back(First::ColumnExtra());
-
-        SFieldList<Rest...>::GetDesc(name_type_list);
-    }
-
-    virtual size_t size() const override
-    {
-        return sizeof...(Rest) + 1;
-    }
-
-    void LoadData(const CLIENTMYSQLROW& row, unsigned long idx = 0) override
-    {
-        value.FromSQL(client_mysql_value(row, idx));
-        SFieldList<Rest...>::LoadData(row, idx + 1);
-    }
-
-    template<typename F>
-    F& Field(void) const;
-
-    typename std::enable_if<
-        std::is_base_of<FieldUINT8, First>::value
-        || std::is_base_of<FieldINT8, First>::value
-        || std::is_base_of<FieldUINT16, First>::value
-        || std::is_base_of<FieldINT16, First>::value
-        || std::is_base_of<FieldUINT32, First>::value
-        || std::is_base_of<FieldINT32, First>::value
-        || std::is_base_of<FieldUINT64, First>::value
-        || std::is_base_of<FieldINT64, First>::value
-        || std::is_base_of<FieldTXT, First>::value
-        , First>::type value;
-};
-
 struct SDynaFieldList
     :public SFieldList<>
 {
@@ -924,6 +771,31 @@ struct SDynaFieldList
         S_DELETE(new_field);
 
         return false;
+    }
+
+    template<typename T>
+    typename std::enable_if<std::is_base_of<FieldUINT8, T>::value
+        || std::is_base_of<FieldINT8, T>::value
+        || std::is_base_of<FieldUINT16, T>::value
+        || std::is_base_of<FieldINT16, T>::value
+        || std::is_base_of<FieldUINT32, T>::value
+        || std::is_base_of<FieldINT32, T>::value
+        || std::is_base_of<FieldUINT64, T>::value
+        || std::is_base_of<FieldINT64, T>::value
+        || std::is_base_of<FieldTXT, T>::value, void>::type UpdField(const T& field)
+    {
+        HRBNODE node = nullptr;
+
+        if (rb_tree_try_insert_user(m_dyna_fields, field.GetColumnName().c_str(), nullptr, &node))
+        {
+            rb_node_set_value_user(node, S_NEW(T, 1, field));
+        }
+        else
+        {
+            IField* old_field = static_cast<IField*>(rb_node_value_user(node));
+            S_DELETE(old_field);
+            rb_node_set_value_user(node, S_NEW(T, 1, field));
+        }
     }
 
     template<typename T>
@@ -1185,11 +1057,455 @@ struct SDynaFieldList
         }
     }
 
+    bool operator == (const SDynaFieldList& rhs) const
+    {
+        if (rb_tree_size(m_dyna_fields) != rb_tree_size(rhs.m_dyna_fields))
+        {
+            return false;
+        }
+
+        HRBNODE node = rb_first(m_dyna_fields);
+        HRBNODE rhs_node = rb_first(rhs.m_dyna_fields);
+
+        while (node)
+        {
+            IField* field = (IField*)rb_node_value_user(node);
+            IField* rhs_field = (IField*)rb_node_value_user(rhs_node);
+
+            if (field->GetColumnName().c_str() != 
+                rhs_field->GetColumnName().c_str())
+            {
+                return false;
+            }
+
+            if (field->GetDataType() != rhs_field->GetDataType())
+            {
+                return false;
+            }
+
+            switch (field->GetDataType())
+            {
+            case FieldDataType::INT8:
+            {
+                FieldINT8* field_real = static_cast<FieldINT8*>(field);
+                FieldINT8* rhs_field_real = static_cast<FieldINT8*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::UINT8:
+            {
+                FieldUINT8* field_real = static_cast<FieldUINT8*>(field);
+                FieldUINT8* rhs_field_real = static_cast<FieldUINT8*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::INT16:
+            {
+                FieldINT16* field_real = static_cast<FieldINT16*>(field);
+                FieldINT16* rhs_field_real = static_cast<FieldINT16*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::UINT16:
+            {
+                FieldUINT16* field_real = static_cast<FieldUINT16*>(field);
+                FieldUINT16* rhs_field_real = static_cast<FieldUINT16*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::INT32:
+            {
+                FieldINT32* field_real = static_cast<FieldINT32*>(field);
+                FieldINT32* rhs_field_real = static_cast<FieldINT32*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::UINT32:
+            {
+                FieldUINT32* field_real = static_cast<FieldUINT32*>(field);
+                FieldUINT32* rhs_field_real = static_cast<FieldUINT32*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::INT64:
+            {
+                FieldINT64* field_real = static_cast<FieldINT64*>(field);
+                FieldINT64* rhs_field_real = static_cast<FieldINT64*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::UINT64:
+            {
+                FieldUINT64* field_real = static_cast<FieldUINT64*>(field);
+                FieldUINT64* rhs_field_real = static_cast<FieldUINT64*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            case FieldDataType::TEXT:
+            case FieldDataType::LONGTEXT:
+            case FieldDataType::VARCHAR:
+            {
+                FieldTXT* field_real = static_cast<FieldTXT*>(field);
+                FieldTXT* rhs_field_real = static_cast<FieldTXT*>(rhs_field);
+
+                if ((*field_real) != (*rhs_field_real))
+                {
+                    return false;
+                }
+            }
+            break;
+            default:
+                return false;
+            }
+
+
+            node = rb_next(node);
+            rhs_node = rb_next(rhs_node);
+        }
+
+        return true;
+    }
+
+    bool operator != (const SDynaFieldList& rhs) const
+    {
+        return !(*this == rhs);
+    }
 
     HRBTREE m_dyna_fields;
-
-
 };
+
+template <typename First, typename... Rest>
+struct SFieldList<First, Rest...>
+    :public SFieldList<Rest...>
+{
+    SFieldList(){}
+    SFieldList(First&& first, Rest&&... rest)
+        :SFieldList<Rest...>(std::forward<Rest>(rest)...),
+        value(std::forward<First>(first)) {}
+    virtual ~SFieldList(){}
+
+    SFieldList(const SFieldList<First, Rest...>& rhs)
+        :SFieldList<Rest...>(static_cast<const SFieldList<Rest...>&>(rhs))
+    {
+        value = rhs.value;
+    }
+
+    SFieldList(SFieldList<First, Rest...>&& rhs)
+        :SFieldList<Rest...>(static_cast<SFieldList<Rest...>&&>(rhs))
+    {
+        value = std::move(rhs.value);
+    }
+
+    SFieldList<First, Rest...>& operator = (const SFieldList<First, Rest...>& rhs)
+    {
+        if (this != &rhs)
+        {
+            value = rhs.value;
+
+            static_cast<SFieldList<Rest...>&>(*this) = static_cast<const SFieldList<Rest...>&>(rhs);
+        }
+
+        return *this;
+    }
+
+    SFieldList<First, Rest...>& operator = (SFieldList<First, Rest...>&& rhs)
+    {
+        if (this != &rhs)
+        {
+            value = std::move(rhs.value);
+
+            static_cast<SFieldList<Rest...>&>(*this) = std::move(static_cast<SFieldList<Rest...>&>(rhs));
+        }
+
+        return *this;
+    }
+
+    bool operator == (const SFieldList<First, Rest...>& other) const
+    {
+        if (value == other.value)
+        {
+            return static_cast<const SFieldList<Rest...>&>(*this) == static_cast<const SFieldList<Rest...>&>(other);
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    bool operator != (const SFieldList<First, Rest...>& other) const
+    {
+        return !(*this == other);
+    }
+
+    ptrdiff_t Compare(const SFieldList<First, Rest...>& other) const
+    {
+        if (value < other.value)
+        {
+            return -1;
+        }
+        else if (value > other.value)
+        {
+            return 1;
+        }
+        else
+        {
+            return SFieldList<Rest...>::Compare(static_cast<const SFieldList<Rest...>&>(other));
+        }
+    }
+
+    std::string ListSQL(size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx == 0)
+        {
+            sql += u8" ";
+        }
+        else
+        {
+            sql += u8", ";
+        }
+
+        sql += u8"`" + First::ColumnName() + u8"`";
+
+        return sql += SFieldList<Rest...>::ListSQL(idx + 1);
+    }
+
+    std::string ListNameSQL(size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx == 0)
+        {
+            sql += u8" ";
+        }
+        else
+        {
+            sql += u8", ";
+        }
+
+        sql += u8"`" + First::ColumnName() + u8"`";
+
+        return sql += SFieldList<Rest...>::ListNameSQL(idx + 1);
+    }
+
+    std::string SetSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx)
+        {
+            sql += u8", ";
+        }
+        
+        sql += u8"`" + First::ColumnName() + u8"`";
+        sql += u8" = ";
+        sql += value.ToSQL(client_mysql);
+
+        return sql += SFieldList<Rest...>::SetSQL(client_mysql, idx + 1);
+    }
+
+    std::string AndSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx)
+        {
+            sql += u8" AND ";
+        }
+
+        sql += u8"`" + First::ColumnName() + u8"`";
+        sql += " = ";
+        sql += value.ToSQL(client_mysql);
+
+        return sql += SFieldList<Rest...>::AndSQL(client_mysql, idx + 1);
+    }
+
+    std::string OrSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx)
+        {
+            sql += u8" OR ";
+        }
+
+        sql += u8"`" + First::ColumnName() + u8"`";
+        sql += u8" = ";
+        sql += value.ToSQL(client_mysql);
+
+        return sql += SFieldList<Rest...>::OrSQL(client_mysql, idx + 1);
+    }
+
+    std::string ValueSQL(HCLIENTMYSQL& client_mysql, size_t idx = 0) override
+    {
+        std::string sql;
+
+        if (idx)
+        {
+            sql += u8", ";
+        }
+
+        sql += value.ToSQL(client_mysql);
+
+        return sql += SFieldList<Rest...>::ValueSQL(client_mysql, idx + 1);
+    }
+
+    std::string CreateSQL(void) override
+    {
+        std::string sql;
+
+        sql +=
+            u8"`" +
+            First::ColumnName() +
+            u8"` " +
+            First::ColumnType() +
+            u8" " +
+            First::ColumnExtra() +
+            u8" ";
+            if (First::ColumnComment().length())
+            {
+                sql += u8"COMMENT \"";
+                sql += First::ColumnComment();
+                sql += u8"\",";
+            }
+            else
+            {
+                sql += u8",";
+            }
+            
+            
+
+        return sql += SFieldList<Rest...>::CreateSQL();
+    }
+
+    void GetDesc(std::vector<std::string>& name_type_list) override
+    {
+        name_type_list.push_back(First::ColumnName());
+        name_type_list.push_back(First::ColumnType());
+        name_type_list.push_back(First::ColumnExtra());
+
+        SFieldList<Rest...>::GetDesc(name_type_list);
+    }
+
+    virtual size_t size() const override
+    {
+        return sizeof...(Rest) + 1;
+    }
+
+    void LoadData(const CLIENTMYSQLROW& row, unsigned long idx = 0) override
+    {
+        value.FromSQL(client_mysql_value(row, idx));
+        SFieldList<Rest...>::LoadData(row, idx + 1);
+    }
+
+    template<typename F>
+    F& Field(void) const;
+
+    //////////////////////////////////////////////////////////////////////////
+    template<bool...>
+    struct field_check
+    {
+
+    };
+
+    //////////////////////////////////////////////////////////////////////////
+
+    template<typename F>
+    constexpr static bool HasField(void)
+    {
+        return !std::is_same<
+            field_check<false, std::is_same<First, F>::value, std::is_same<F, Rest>::value...>,
+            field_check<std::is_same<First, F>::value, std::is_same<F, Rest>::value..., false>
+        >::value;
+    }
+
+    template<typename... F>
+    constexpr static bool IsFieldCross(void)
+    {
+        return !std::is_same<
+            field_check<false, HasField<F>()...>,
+            field_check<HasField<F>()..., false>
+        >::value;
+    }
+
+    template<typename F>
+    void Modify(const F& field, SDynaFieldList* modify_field_list = nullptr)
+    {
+        if (field.GetData() != this-> template Field<F>().GetData())
+        {
+            this->template Field<F>().SetData(field.GetData());
+            if (modify_field_list)
+            {
+                modify_field_list->UpdField(field);
+            }
+        }
+    }
+
+    template<typename... F>
+    void ModifyList(const SFieldList<F...>& fields, SDynaFieldList* modify_field_list = nullptr)
+    {
+        int arr[] = { (Modify(fields.template Field<F>(), modify_field_list), 0)... };
+        (void)(arr);
+    }
+
+    template<typename... F>
+    void ModifyEx(SDynaFieldList* modify_field_list, F&&... fields)
+    {
+        int arr[] = { (Modify(fields, modify_field_list), 0)... };
+        (void)(arr);
+    }
+
+    typename std::enable_if<
+        std::is_base_of<FieldUINT8, First>::value
+        || std::is_base_of<FieldINT8, First>::value
+        || std::is_base_of<FieldUINT16, First>::value
+        || std::is_base_of<FieldINT16, First>::value
+        || std::is_base_of<FieldUINT32, First>::value
+        || std::is_base_of<FieldINT32, First>::value
+        || std::is_base_of<FieldUINT64, First>::value
+        || std::is_base_of<FieldINT64, First>::value
+        || std::is_base_of<FieldTXT, First>::value
+        , First>::type value;
+};
+
+//template<typename... F>
+//void SDynaFromFieldList(const SFieldList<F...>& fields, SDynaFieldList& modify_field_list)
+//{
+//    int arr[] = { (modify_field_list.UpdField(fields.Field<F>()), 0)... };
+//}
 
 struct SRecordFieldList
 {
@@ -1306,6 +1622,44 @@ F& SFieldList<First, Rest...>::Field() const
 {
     return GetFieldByType<F>(*this);
 }
+
+//////////////////////////////////////////////////////////////////////////
+
+
+//template <typename First, typename... Rest>
+//void SFieldList<First, Rest...>::Modify(const SFieldList<>& fields)
+//{
+//
+//}
+
+//template <typename First, typename... Rest>
+//template<typename... F>
+//void SFieldList<First, Rest...>::Modify(const SFieldList<F...>& fields)
+//{
+//    if (this->Field<F>().GetData() != fields.Field<F>().GetData())
+//    {
+//        this->Field<F>().SetData(fields.Field<F>().GetData());
+//    }
+//    Modify(static_cast<const SFieldList<FRest...>&>(fields));
+//}
+
+//template<typename... F>
+//template <typename First, typename... Rest>
+//void SFieldList<First, Rest...>::Modify(const SFieldList<F...>& fields)
+//{
+//
+//}
+
+//template <typename First, typename... Rest>
+//template<typename... F>
+//void SFieldList<First, Rest...>::Modify(const SFieldList<F...>& fields)
+//{
+//    for (size_t i = 0; i < fields.size(); i++)
+//    {
+//        std::tuple
+//        this->Field<>()
+//    }
+//}
 
 template <typename T>
 ptrdiff_t FieldListCompare(const void* key1, const void* key2)

@@ -655,6 +655,10 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
         fprintf(pHppFile, u8"        bool Key(const char* str, rapidjson::SizeType length, bool copy) override\r\n");
         fprintf(pHppFile, u8"        {\r\n");
         fprintf(pHppFile, u8"            (void)copy;\r\n\r\n");
+        fprintf(pHppFile, u8"            if (m_state >= static_cast<unsigned int>(sizeof(m_key_list) / sizeof(m_key_list[0])))\r\n");
+        fprintf(pHppFile, u8"            {\r\n");
+        fprintf(pHppFile, u8"                m_state = 0;\r\n");
+        fprintf(pHppFile, u8"            }\r\n\r\n");
         fprintf(pHppFile, u8"            if (strncmp(str, m_alias_list[m_state], length) && \r\n");
         fprintf(pHppFile, u8"                strncmp(str, m_key_list[m_state], length))\r\n");
         fprintf(pHppFile, u8"            {\r\n");
@@ -667,7 +671,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
         fprintf(pHppFile, u8"                        return true;\r\n");
         fprintf(pHppFile, u8"                    }\r\n");
         fprintf(pHppFile, u8"                }\r\n\r\n");
-        fprintf(pHppFile, u8"                m_state = (sizeof(m_key_list) / sizeof(m_key_list[0]));\r\n");
+        fprintf(pHppFile, u8"                m_state = static_cast<unsigned int>(sizeof(m_key_list) / sizeof(m_key_list[0]));\r\n");
         fprintf(pHppFile, u8"                return true;\r\n");
         fprintf(pHppFile, u8"            }\r\n\r\n");
         fprintf(pHppFile, u8"            return true;\r\n");
@@ -698,12 +702,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
             fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-
-            if (m_def_list.find(attr[eName]) == m_def_list.end())
-            {
-                fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
-            }
-            
+            fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
             fprintf(pHppFile, u8"                JsonDelIntegral(m_data.%s, str, length);\r\n", attr[eName].c_str());
             fprintf(pHppFile, u8"            }\r\n");
             fprintf(pHppFile, u8"            break;\r\n");
@@ -745,11 +744,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
             {
                 fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
                 fprintf(pHppFile, u8"            {\r\n");
-                if (m_def_list.find(attr[eName]) == m_def_list.end())
-                {
-                    fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
-                }
-                
+                fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
                 fprintf(pHppFile, u8"                DataArrayHandler<%s, %s> handler(m_data.%s, this);\r\n", 
                     __integral_to_c_type(attr[eType]).c_str(), 
                     __integral_to_c_type(attr[eArray]).c_str(),
@@ -763,10 +758,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
             {
                 fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
                 fprintf(pHppFile, u8"            {\r\n");
-                if (m_def_list.find(attr[eName]) == m_def_list.end())
-                {
-                    fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
-                }
+                fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
                 fprintf(pHppFile, u8"                JsonDelString(m_data.%s, str, length);\r\n", attr[eName].c_str());
                 fprintf(pHppFile, u8"            }\r\n");
                 fprintf(pHppFile, u8"            break;\r\n");
@@ -807,12 +799,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
             fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-
-            if (m_def_list.find(attr[eName]) == m_def_list.end())
-            {
-                fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
-            }
-            
+            fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
             fprintf(pHppFile, u8"                return &m_%s_handler;\r\n", attr[eName].c_str());
             fprintf(pHppFile, u8"            }\r\n");
             fprintf(pHppFile, u8"            break;\r\n");
@@ -872,10 +859,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
 
             fprintf(pHppFile, u8"            case %s:\r\n", attr[eIndex].c_str());
             fprintf(pHppFile, u8"            {\r\n");
-            if (m_def_list.find(attr[eName]) == m_def_list.end())
-            {
-                fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
-            }
+            fprintf(pHppFile, u8"                m_assigned_bitset.set(m_state);\r\n");
             fprintf(pHppFile, u8"                return &m_%s_handler;\r\n", attr[eName].c_str());
             fprintf(pHppFile, u8"            }\r\n");
             fprintf(pHppFile, u8"            break;\r\n");
@@ -1089,7 +1073,7 @@ bool CProtocolMaker::__WriteHandler(CMarkupSTL& rXml, FILE* pHppFile, FILE* pCpp
         }
     }
     fprintf(pHppFile, u8"        HoleJsonHandler m_default_handler;\r\n");
-    fprintf(pHppFile, u8"        int m_state;\r\n");
+    fprintf(pHppFile, u8"        unsigned int m_state;\r\n");
 
     if (m_item_list.size())
     {
@@ -2264,7 +2248,7 @@ bool CProtocolMaker::__WriteStructProtocolToJsonFunc(CMarkupSTL& rXml, FILE* pHp
     //    fprintf(pHppFile, u8"\t\t(void)(net_data);\r\n");
     //}
     fprintf(pHppFile, u8"\t\tjson_data.Writer().EndObject();\r\n\r\n");
-    fprintf(pHppFile, u8"\t\treturn true;\r\n");
+    fprintf(pHppFile, u8"\t\treturn json_data.Writer().IsComplete();\r\n");
     fprintf(pHppFile, u8"\t}\r\n\r\n");
     return true;
 }
@@ -2273,11 +2257,12 @@ bool CProtocolMaker::__WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHp
 {
     std::string strName = rXml.GetAttrib("name");
 
-    fprintf(pHppFile, u8"    std::string MarshalJson(void) const\r\n");
+    fprintf(pHppFile, u8"    bool MarshalJson(std::string& json) const\r\n");
     fprintf(pHppFile, u8"    {\r\n");
     fprintf(pHppFile, u8"        JsonEnCode json_encode(4096);\r\n\r\n");
-    fprintf(pHppFile, u8"        this->ToJson(json_encode);\r\n\r\n");
-    fprintf(pHppFile, u8"        return json_encode.ToString();\r\n\r\n");
+    fprintf(pHppFile, u8"        bool json_ret = this->ToJson(json_encode);\r\n\r\n");
+    fprintf(pHppFile, u8"        json = json_encode.ToString();\r\n\r\n");
+    fprintf(pHppFile, u8"        return json_ret;\r\n");
     fprintf(pHppFile, u8"    }\r\n\r\n");
 
     //fprintf(pHppFile, u8"    bool UnmarshalJson(const std::string& json)\r\n");

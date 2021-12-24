@@ -10,8 +10,12 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/reader.h"
 
+#define DEFAULT_DATAARRAY_SIZE 31
+
 #ifdef  __cplusplus
-template< typename T, typename U = size_t, U N = 254/sizeof(T)+1, bool is_pod = std::is_pod<T>::value, bool is_unsigned = std::is_unsigned<U>::value >
+template< typename T, typename U = size_t, 
+    U N = ((DEFAULT_DATAARRAY_SIZE /sizeof(T)+1) > (std::numeric_limits<U>::max)()) ? (std::numeric_limits<U>::max)() : (DEFAULT_DATAARRAY_SIZE / sizeof(T) + 1),
+    bool is_pod = std::is_pod<T>::value, bool is_unsigned = std::is_unsigned<U>::value >
 class DataArray
 {
 
@@ -268,7 +272,7 @@ public:
         }
         else
         {
-            if ((m_max_capcity - m_capacity) < m_capacity)
+            if ((m_max_capcity - m_capacity) < (m_capacity+1)/2)
             {
                 if (m_capacity == m_max_capcity)
                 {
@@ -282,7 +286,7 @@ public:
             }
             else
             {
-                m_capacity += m_capacity;
+                m_capacity += (m_capacity+1)/2;
             }
 
             if (m_array != m_cache)
@@ -434,7 +438,7 @@ public:
         m_size += static_cast<U>(str.size());
     }
 
-    std::string marshal_json(void) const;
+    bool marshal_json(std::string& json) const;
 
     bool unmarshal_json(const std::string& json);
 
@@ -770,7 +774,7 @@ public:
         }
         else
         {
-            if (m_max_capacity - m_capacity < m_capacity)
+            if (m_max_capacity - m_capacity < (m_capacity + 1)/2)
             {
                 if (m_capacity == m_max_capacity)
                 {
@@ -784,7 +788,7 @@ public:
             }
             else
             {
-                m_capacity += m_capacity;
+                m_capacity += (m_capacity + 1) / 2;
             }
 
             T* new_array = (T*)S_MALLOC_EX(sizeof(T)*m_capacity, m_name);
@@ -912,7 +916,7 @@ public:
         }
     }
 
-    std::string marshal_json(void) const;
+    bool marshal_json(std::string& json) const;
 
     bool unmarshal_json(const std::string& json);
 
@@ -2051,7 +2055,9 @@ class IntegralDataArrayHandler :
 
 };
 
-template < typename T, typename U, typename H = IntegralDataArrayHandler, U N = 254 / sizeof(T) + 1, bool is_integral = std::is_integral<T>::value >
+template < typename T, typename U, typename H = IntegralDataArrayHandler, 
+    U N = ((DEFAULT_DATAARRAY_SIZE / sizeof(T) + 1) > (std::numeric_limits<U>::max)()) ? (std::numeric_limits<U>::max)() : (DEFAULT_DATAARRAY_SIZE / sizeof(T) + 1),
+    bool is_integral = std::is_integral<T>::value >
 class DataArrayHandler :
     public JsonHandler
 {
@@ -2155,19 +2161,21 @@ private:
 };
 
 template <typename T, typename U, U N>
-std::string DataArray<T, U, N, true, true>::marshal_json(void) const
+bool DataArray<T, U, N, true, true>::marshal_json(std::string& json) const
 {
     JsonEnCode json_encode(4096);
 
     json_encode.AddArray(*this);
 
-    return json_encode.ToString();
+    json = json_encode.ToString();
+
+    return json_encode.Writer().IsComplete();
 }
 
 template <typename T, typename U, U N>
 bool DataArray<T, U, N, true, true>::unmarshal_json(const std::string& json)
 {
-    DataArrayHandler<T, U> h(*this, nullptr);
+    DataArrayHandler<T, U, IntegralDataArrayHandler, N> h(*this, nullptr);
     JsonDeCode jd(&h);
 
     JsonAllocator json_allocator;
@@ -2177,13 +2185,15 @@ bool DataArray<T, U, N, true, true>::unmarshal_json(const std::string& json)
 }
 
 template <typename T, typename U, U N>
-std::string DataArray<T, U, N, false, true>::marshal_json(void) const
+bool DataArray<T, U, N, false, true>::marshal_json(std::string& json) const
 {
     JsonEnCode json_encode(4096);
 
     json_encode.AddArray(*this);
 
-    return json_encode.ToString();
+    json = json_encode.ToString();
+
+    return json_encode.Writer().IsComplete();
 }
 
 template <typename T, typename U, U N>

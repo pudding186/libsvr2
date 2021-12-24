@@ -477,6 +477,21 @@ std::string _WriteColumnClass(FILE* pHppFile, table_info& table)
         }
     }
     fprintf(pHppFile, u8"    >;\r\n");
+
+    fprintf(pHppFile, u8"    using PriKey = SFieldList<\r\n");
+    key_info& primary_key = table.m_key_primary[0];
+    for (size_t i = 0; i < primary_key.m_field_list.size(); i++)
+    {
+        if (i == primary_key.m_field_list.size() - 1)
+        {
+            fprintf(pHppFile, u8"        %s::%s\r\n", table.m_name.c_str(), primary_key.m_field_list[i].c_str());
+        }
+        else
+        {
+            fprintf(pHppFile, u8"        %s::%s,\r\n", table.m_name.c_str(), primary_key.m_field_list[i].c_str());
+        }
+    }
+    fprintf(pHppFile, u8"    >;\r\n");
     
     return "";
 }
@@ -586,6 +601,23 @@ std::string _WriteTableClass(FILE* pHppFile, table_info& table)
     }
     fprintf(pHppFile, u8"        > primary_%s;\r\n", primary_key.m_name.c_str());
     fprintf(pHppFile, u8"        return &primary_%s;\r\n", primary_key.m_name.c_str());
+    fprintf(pHppFile, u8"    }\r\n");
+
+    fprintf(pHppFile, u8"    static PriKey PriKeyFromRow(const Row& row)\r\n");
+    fprintf(pHppFile, u8"    {\r\n");
+    fprintf(pHppFile, u8"        return PriKey(\r\n");
+    for (size_t i = 0; i < primary_key.m_field_list.size(); i++)
+    {
+        if (i == primary_key.m_field_list.size() - 1)
+        {
+            fprintf(pHppFile, u8"        row.Field<%s::%s>().GetData()\r\n", table.m_name.c_str(), primary_key.m_field_list[i].c_str());
+        }
+        else
+        {
+            fprintf(pHppFile, u8"        row.Field<%s::%s>().GetData(),\r\n", table.m_name.c_str(), primary_key.m_field_list[i].c_str());
+        }
+    }
+    fprintf(pHppFile, u8"        );\r\n", primary_key.m_name.c_str());
     fprintf(pHppFile, u8"    }\r\n");
 
     fprintf(pHppFile, u8"    std::map<std::string, SFieldList<>*> UniqueKey(void) override\r\n");

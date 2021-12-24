@@ -37,6 +37,7 @@ typedef enum e_log_option
     opt_flush   = (0x00000001 << 2),
     opt_close   = (0x00000001 << 3),
     opt_open    = (0x00000001 << 4),
+    opt_reset   = (0x00000001 << 5),
 }log_option;
 
 typedef std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> TPMS;
@@ -129,6 +130,8 @@ public:
     void _log_func();
 
     bool _check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg);
+
+    bool _reset_log(log_cmd* cmd, log_proc* proc, std::string& err_msg);
 
     void _do_cmd(log_cmd* cmd, log_proc* proc);
 
@@ -527,6 +530,173 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
 
     return true;
 }
+
+bool log_thread::_reset_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
+{
+    wchar_t file_full_path[MAX_LOG_FILE_PATH];
+
+    time_t cur_time = std::chrono::system_clock::to_time_t(cmd->tpms);
+
+    if (cmd->logger->file)
+    {
+        fclose(cmd->logger->file);
+        cmd->logger->file = 0;
+    }
+
+    if (!cmd->logger->file)
+    {
+        localtime_s(&cmd->logger->file_time, &cur_time);
+
+        int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+            L"%ls/%ls_%04d-%02d-%02d.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday);
+
+        if (wcslen(cmd->logger->name) <= 0)
+        {
+            file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                L"%ls/%04d-%02d-%02d.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+        }
+
+        cmd->logger->file = _wfsopen(file_full_path, L"w", _SH_DENYWR);
+        if (!cmd->logger->file)
+        {
+            char sz_file_full_path[MAX_LOG_FILE_PATH];
+            int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+            sz_file_full_path[len] = 0;
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
+
+            return false;
+        }
+
+        cmd->logger->file_idx = 0;
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    long long time_del = cur_time - proc->last_log_time;
+
+    if (time_del)
+    {
+        if (time_del < 60 && time_del > -60)
+        {
+            int new_sec = proc->last_log_tm.tm_sec + (int)time_del;
+
+            if (new_sec >= 0 && new_sec <= 59)
+            {
+                proc->last_log_tm.tm_sec = new_sec;
+            }
+            else
+            {
+                localtime_s(&proc->last_log_tm, &cur_time);
+            }
+        }
+        else
+        {
+            localtime_s(&proc->last_log_tm, &cur_time);
+        }
+
+        proc->last_log_time = cur_time;
+        strftime(proc->time_str, sizeof(proc->time_str), "%Y-%m-%d %H:%M:%S", &proc->last_log_tm);
+
+        if (proc->last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = proc->last_log_tm;
+
+            if (cmd->logger->file)
+            {
+                fclose(cmd->logger->file);
+                cmd->logger->file = 0;
+            }
+
+            int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                L"%ls/%ls_%04d-%02d-%02d.txt",
+                cmd->logger->path, cmd->logger->name,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+
+            if (wcslen(cmd->logger->name) <= 0)
+            {
+                file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                    L"%ls/%04d-%02d-%02d.txt",
+                    cmd->logger->path,
+                    cmd->logger->file_time.tm_year + 1900,
+                    cmd->logger->file_time.tm_mon + 1,
+                    cmd->logger->file_time.tm_mday);
+            }
+
+            cmd->logger->file = _wfsopen(file_full_path, L"w", _SH_DENYWR);
+            if (!cmd->logger->file)
+            {
+                char sz_file_full_path[MAX_LOG_FILE_PATH];
+                int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+                sz_file_full_path[len] = 0;
+                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+                err_msg = sys_error.what();
+                err_msg.append("\n");
+                return false;
+            }
+
+            fseek(cmd->logger->file, 0, SEEK_END);
+            cmd->logger->file_size = ftell(cmd->logger->file);
+        }
+    }
+
+    while (cmd->logger->file_size >= MAX_LOG_FILE_SIZE)
+    {
+        cmd->logger->file_idx++;
+
+        fclose(cmd->logger->file);
+        cmd->logger->file = 0;
+
+        int file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+            L"%ls/%ls_%04d-%02d-%02d_%zu.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday,
+            cmd->logger->file_idx);
+
+        if (wcslen(cmd->logger->name) <= 0)
+        {
+            file_full_path_len = _snwprintf_s(file_full_path, MAX_LOG_FILE_PATH, _TRUNCATE,
+                L"%ls/%04d-%02d-%02d_%zu.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday,
+                cmd->logger->file_idx);
+        }
+
+        cmd->logger->file = _wfsopen(file_full_path, L"w", _SH_DENYWR);
+        if (!cmd->logger->file)
+        {
+            char sz_file_full_path[MAX_LOG_FILE_PATH];
+            int len = wc_to_mb(CP_UTF8, file_full_path, file_full_path_len, sz_file_full_path, MAX_LOG_FILE_PATH);
+            sz_file_full_path[len] = 0;
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", sz_file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
+            return false;
+        }
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    return true;
+}
+
 #elif __GNUC__
 bool _mk_dir(const char* dir)
 {
@@ -719,6 +889,162 @@ bool log_thread::_check_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
     return true;
 }
 
+bool log_thread::_reset_log(log_cmd* cmd, log_proc* proc, std::string& err_msg)
+{
+    char file_full_path[MAX_LOG_FILE_PATH];
+
+    time_t cur_time = std::chrono::system_clock::to_time_t(cmd->tpms);
+
+    if (cmd->logger->file)
+    {
+        fclose(cmd->logger->file);
+        cmd->logger->file = 0;
+    }
+
+    if (!cmd->logger->file)
+    {
+        localtime_r(&cur_time, &cmd->logger->file_time);
+
+        snprintf(file_full_path, MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday);
+
+        if (strlen(cmd->logger->name) <= 0)
+        {
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%04d-%02d-%02d.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+        }
+
+        cmd->logger->file = fopen(file_full_path, "w");
+        if (!cmd->logger->file)
+        {
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
+            return false;
+        }
+
+        cmd->logger->file_idx = 0;
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    long long time_del = cur_time - proc->last_log_time;
+
+    if (time_del)
+    {
+        if (time_del < 60 && time_del > -60)
+        {
+            int new_sec = proc->last_log_tm.tm_sec + (int)time_del;
+
+            if (new_sec >= 0 && new_sec <= 59)
+            {
+                proc->last_log_tm.tm_sec = new_sec;
+            }
+            else
+            {
+                localtime_r(&cur_time, &proc->last_log_tm);
+            }
+        }
+        else
+        {
+            localtime_r(&cur_time, &proc->last_log_tm);
+        }
+
+        proc->last_log_time = cur_time;
+        strftime(proc->time_str, sizeof(proc->time_str), "%Y-%m-%d %H:%M:%S", &proc->last_log_tm);
+
+        if (proc->last_log_tm.tm_yday != cmd->logger->file_time.tm_yday)
+        {
+            cmd->logger->file_time = proc->last_log_tm;
+
+            if (cmd->logger->file)
+            {
+                fclose(cmd->logger->file);
+                cmd->logger->file = 0;
+            }
+
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%s_%04d-%02d-%02d.txt",
+                cmd->logger->path, cmd->logger->name,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday);
+
+            if (strlen(cmd->logger->name) <= 0)
+            {
+                snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                    "%s/%04d-%02d-%02d.txt",
+                    cmd->logger->path,
+                    cmd->logger->file_time.tm_year + 1900,
+                    cmd->logger->file_time.tm_mon + 1,
+                    cmd->logger->file_time.tm_mday);
+            }
+
+            cmd->logger->file = fopen(file_full_path, "w");
+            if (!cmd->logger->file)
+            {
+                fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
+                err_msg = sys_error.what();
+                err_msg.append("\n");
+                return false;
+            }
+
+            fseek(cmd->logger->file, 0, SEEK_END);
+            cmd->logger->file_size = ftell(cmd->logger->file);
+        }
+    }
+
+    while (cmd->logger->file_size >= MAX_LOG_FILE_SIZE)
+    {
+        cmd->logger->file_idx++;
+
+        fclose(cmd->logger->file);
+        cmd->logger->file = 0;
+
+        snprintf(file_full_path, MAX_LOG_FILE_PATH,
+            "%s/%s_%04d-%02d-%02d_%zu.txt",
+            cmd->logger->path, cmd->logger->name,
+            cmd->logger->file_time.tm_year + 1900,
+            cmd->logger->file_time.tm_mon + 1,
+            cmd->logger->file_time.tm_mday,
+            cmd->logger->file_idx);
+
+        if (strlen(cmd->logger->name) <= 0)
+        {
+            snprintf(file_full_path, MAX_LOG_FILE_PATH,
+                "%s/%04d-%02d-%02d_%zu.txt",
+                cmd->logger->path,
+                cmd->logger->file_time.tm_year + 1900,
+                cmd->logger->file_time.tm_mon + 1,
+                cmd->logger->file_time.tm_mday,
+                cmd->logger->file_idx);
+        }
+
+        cmd->logger->file = fopen(file_full_path, "w");
+        if (!cmd->logger->file)
+        {
+            fmt::system_error sys_error(errno, "{}.{:<4}<{:<5}> {}: reset file {} fail-{}: ", proc->time_str, cmd->tpms.time_since_epoch().count() % 1000, proc->t_id, "[ERR]", file_full_path, errno);
+            err_msg = sys_error.what();
+            err_msg.append("\n");
+            return false;
+        }
+
+        fseek(cmd->logger->file, 0, SEEK_END);
+        cmd->logger->file_size = ftell(cmd->logger->file);
+    }
+
+    return true;
+}
+
 #else
 #error "unknown compiler"
 #endif
@@ -840,6 +1166,26 @@ void log_thread::_do_cmd(log_cmd* cmd, log_proc* proc)
             fclose(cmd->logger->file);
             free(cmd->logger);
         }
+    }
+    break;
+    case opt_reset:
+    {
+        std::string err_msg;
+
+        if (!_reset_log(cmd, proc, err_msg))
+        {
+            print_cmd err_pt_cmd;
+            err_pt_cmd.data_len = err_msg.length();
+            err_pt_cmd.lv = log_cri;
+
+            if (loop_cache_free_size(m_print_data_cache) >= sizeof(print_cmd) + err_pt_cmd.data_len)
+            {
+                loop_cache_push_data(m_print_data_cache, &err_pt_cmd, sizeof(print_cmd));
+                loop_cache_push_data(m_print_data_cache, err_msg.c_str(), err_msg.length());
+            }
+        }
+
+        cmd->logger->log_ack++;
     }
     break;
     default:
@@ -1656,6 +2002,40 @@ void destroy_file_logger(file_logger* logger)
     }
 }
 
+void reset_file_logger(file_logger* logger)
+{
+    log_proc* proc = _get_log_proc();
+
+    log_cmd* cmd = _get_log_cmd(proc);
+
+    cmd->option = opt_reset;
+    cmd->fmt_args = 0;
+    cmd->logger = logger;
+    cmd->tpms = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+
+    if (loop_cache_push_data(proc->queue[logger->log_thread_idx].cmd_queue, &cmd, sizeof(log_cmd*)))
+    {
+        if (logger->create_proc == proc)
+        {
+            logger->log_req++;
+        }
+        else
+        {
+#ifdef _MSC_VER
+            InterlockedIncrement64((LONG64*)(&logger->log_req_mt));
+#elif __GNUC__
+            __atomic_add_fetch(&logger->log_req_mt, 1, __ATOMIC_SEQ_CST);
+#else
+#error "unknown compiler"
+#endif
+        }
+    }
+    else
+    {
+        S_DELETE(cmd);
+    }
+}
+
 void file_logger_flush(file_logger* logger)
 {
     log_proc* proc = _get_log_proc();
@@ -1685,7 +2065,6 @@ void file_logger_flush(file_logger* logger)
     }
     else
     {
-        //SMemory::Delete(cmd);
         S_DELETE(cmd);
     }
 }

@@ -1767,7 +1767,12 @@ bool _iocp_tcp_listener_listen(iocp_tcp_listener* listener, unsigned int max_acc
         goto ERROR_DEAL;
     }
 
-    listener->max_accept_ex_num = max(max_accept_ex_num, 256);
+    if (!max_accept_ex_num)
+    {
+        max_accept_ex_num = 256;
+    }
+
+    listener->max_accept_ex_num = max_accept_ex_num;
 
     listener->arry_addr_cache = (char*)malloc(listener->max_accept_ex_num*MAX_ADDR_SIZE);
     if (!listener->arry_addr_cache)

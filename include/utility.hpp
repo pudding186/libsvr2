@@ -143,6 +143,7 @@ private:
 //extern void (DestroyFuncPerfMgr)(HFUNCPERFMGR mgr);
 extern CFuncPerformanceInfo* (FuncPerfFirst)(CFuncPerformance& fpf);
 extern int (GetFuncStackTop)(CFuncPerformance& fpf);
+extern CFuncPerformanceInfo** (GetFuncStack)(CFuncPerformance& fpf);
 extern CFuncPerformanceInfo* (GetStackFuncPerfInfo)(CFuncPerformance& fpf, int idx);
 
 extern CFuncPerformance& (DefFuncPerf)(void);

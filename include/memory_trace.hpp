@@ -1,7 +1,13 @@
 #pragma once
 #include "./lib_svr_def.h"
-#include <utility>
+#include "./utility.hpp"
 #ifdef  __cplusplus
+
+typedef struct st_mem_stack_info
+{
+    int                     m_stack_size;
+    CFuncPerformanceInfo**  m_stack;
+}mem_stack_info;
 
 typedef struct st_trace_sign
 {
@@ -24,5 +30,8 @@ extern size_t memory_alloc_size(void);
 extern size_t memory_total_size(void);
 
 extern void memory_tidy(void);
+
+extern void dump_mem_trace_info(void);
+extern mem_trace_info* get_dump_mem_trace_info(mem_trace_info* info);
 
 #endif
