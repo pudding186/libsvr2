@@ -915,8 +915,6 @@ void db_manager_post_default_cmd(ITable* table, int op_type, SFieldList<>* field
 
 bool db_manager_do_default_cmd(ITable* table, int op_type, SFieldList<>* fields, SFieldList<>* conditions, IResult* result)
 {
-    //db_proc* proc = _get_db_proc();
-
     db_cmd_default* cmd = S_NEW(db_cmd_default, 1, table->GetTableName(), op_type, fields, conditions, result);
 
     //if (proc->client_mysql == nullptr)
