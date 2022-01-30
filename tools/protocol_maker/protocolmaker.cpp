@@ -2248,7 +2248,7 @@ bool CProtocolMaker::__WriteStructProtocolToJsonFunc(CMarkupSTL& rXml, FILE* pHp
     //    fprintf(pHppFile, u8"\t\t(void)(net_data);\r\n");
     //}
     fprintf(pHppFile, u8"\t\tjson_data.Writer().EndObject();\r\n\r\n");
-    fprintf(pHppFile, u8"\t\treturn true;\r\n");
+    fprintf(pHppFile, u8"\t\treturn json_data.Writer().IsComplete();\r\n");
     fprintf(pHppFile, u8"\t}\r\n\r\n");
     return true;
 }
@@ -2257,11 +2257,12 @@ bool CProtocolMaker::__WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHp
 {
     std::string strName = rXml.GetAttrib("name");
 
-    fprintf(pHppFile, u8"    std::string MarshalJson(void) const\r\n");
+    fprintf(pHppFile, u8"    bool MarshalJson(std::string& json) const\r\n");
     fprintf(pHppFile, u8"    {\r\n");
     fprintf(pHppFile, u8"        JsonEnCode json_encode(4096);\r\n\r\n");
-    fprintf(pHppFile, u8"        this->ToJson(json_encode);\r\n\r\n");
-    fprintf(pHppFile, u8"        return json_encode.ToString();\r\n\r\n");
+    fprintf(pHppFile, u8"        bool json_ret = this->ToJson(json_encode);\r\n\r\n");
+    fprintf(pHppFile, u8"        json = json_encode.ToString();\r\n\r\n");
+    fprintf(pHppFile, u8"        return json_ret;\r\n");
     fprintf(pHppFile, u8"    }\r\n\r\n");
 
     //fprintf(pHppFile, u8"    bool UnmarshalJson(const std::string& json)\r\n");
