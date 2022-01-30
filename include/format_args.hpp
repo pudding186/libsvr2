@@ -3,6 +3,7 @@
 #include <typeinfo>
 #include <string.h>
 #include "./smemory.hpp"
+#include "special_decay_type.hpp"
 #ifdef _MSC_VER
 #undef max
 #undef min
@@ -41,22 +42,6 @@ struct idx_seq_gen<0, N...>
 
 template <size_t N>
 using idx_seq_type = typename idx_seq_gen<N>::type;
-
-//////////////////////////////////////////////////////////////////////////
-template <class T>
-struct unwrap_refwrapper_type
-{
-    using type = T;
-};
-
-template <class T>
-struct unwrap_refwrapper_type<std::reference_wrapper<T>>
-{
-    using type = T & ;
-};
-
-template <class T>
-using special_decay_type = typename unwrap_refwrapper_type<typename std::decay<T>::type>::type;
 
 //////////////////////////////////////////////////////////////////////////
 //extern HMEMORYMANAGER logger_mem_pool(void);

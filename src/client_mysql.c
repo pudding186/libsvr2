@@ -132,9 +132,9 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
         return 0;
     }
 
-    mysql_result = client_mysql_query(client_mysql_ptr, "SHOW CHARACTER SET", (unsigned long)strlen("SHOW CHARACTER SET"));
+    //mysql_result = client_mysql_query(client_mysql_ptr, "SHOW CHARACTER SET", (unsigned long)strlen("SHOW CHARACTER SET"));
 
-    if (!client_mysql_result_success(&mysql_result))
+    if (mysql_real_query(client_mysql_ptr->real_mysql, "SHOW CHARACTER SET", sizeof("SHOW CHARACTER SET")-1))
     {
         if (err_info)
         {
@@ -146,6 +146,13 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
         }
         destroy_client_mysql(client_mysql_ptr);
         return 0;
+    }
+    else
+    {
+        mysql_result.cur_mysql = client_mysql_ptr->real_mysql;
+        mysql_result.record_set = mysql_store_result(mysql_result.cur_mysql);
+        mysql_result.error_code = 0;
+        mysql_result.affect_row = 0;
     }
 
     character_set_num = mysql_num_rows(mysql_result.record_set);
@@ -189,11 +196,13 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
         return 0;
     }
 
-    mysql_result = client_mysql_query(client_mysql_ptr,
-        "select @@character_set_client, @@character_set_connection, @@character_set_results;",
-        (unsigned long)strlen("select @@character_set_client, @@character_set_connection, @@character_set_results;"));
+    //mysql_result = client_mysql_query(client_mysql_ptr,
+    //    "select @@character_set_client, @@character_set_connection, @@character_set_results;",
+    //    (unsigned long)strlen("select @@character_set_client, @@character_set_connection, @@character_set_results;"));
 
-    if (!client_mysql_result_success(&mysql_result))
+    if (mysql_real_query(client_mysql_ptr->real_mysql,
+        "select @@character_set_client, @@character_set_connection, @@character_set_results;",
+        sizeof("select @@character_set_client, @@character_set_connection, @@character_set_results;")-1))
     {
         if (err_info)
         {
@@ -206,6 +215,14 @@ HCLIENTMYSQL create_client_mysql(const char *host, unsigned int port,
         destroy_client_mysql(client_mysql_ptr);
         return 0;
     }
+    else
+    {
+        mysql_result.cur_mysql = client_mysql_ptr->real_mysql;
+        mysql_result.record_set = mysql_store_result(mysql_result.cur_mysql);
+        mysql_result.error_code = 0;
+        mysql_result.affect_row = 0;
+    }
+
 
     value_data = client_mysql_row_field_value(&mysql_result, 0, 0);
     character_client = value_data.value;
@@ -267,6 +284,11 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
 
     CLIENTMYSQLRES mysql_result;
 
+    mysql_result.cur_mysql = 0;
+    mysql_result.record_set = 0;
+    mysql_result.affect_row = 0;
+    mysql_result.error_code = 0;
+
     if (client_mysql_ptr->real_mysql)
     {
         mysql_close(client_mysql_ptr->real_mysql);
@@ -292,14 +314,18 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
         return false;
     }
 
-    mysql_result = client_mysql_query(client_mysql_ptr, "SHOW CHARACTER SET", (unsigned long)strlen("SHOW CHARACTER SET"));
-
-    if (!client_mysql_result_success(&mysql_result))
+    if (mysql_real_query(client_mysql_ptr->real_mysql, "SHOW CHARACTER SET", sizeof("SHOW CHARACTER SET")-1))
     {
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
     }
+
+    mysql_result.cur_mysql = client_mysql_ptr->real_mysql;
+    mysql_result.record_set = mysql_store_result(mysql_result.cur_mysql);
+    mysql_result.error_code = 0;
+    mysql_result.affect_row = 0;
+
 
     character_set_num = mysql_num_rows(mysql_result.record_set);
 
@@ -331,16 +357,23 @@ bool _re_connect(HCLIENTMYSQL client_mysql_ptr)
         return false;
     }
 
-    mysql_result = client_mysql_query(client_mysql_ptr,
-        "select @@character_set_client, @@character_set_connection, @@character_set_results;",
-        (unsigned long)strlen("select @@character_set_client, @@character_set_connection, @@character_set_results;"));
+    //mysql_result = client_mysql_query(client_mysql_ptr,
+    //    "select @@character_set_client, @@character_set_connection, @@character_set_results;",
+    //    (unsigned long)strlen("select @@character_set_client, @@character_set_connection, @@character_set_results;"));
 
-    if (!client_mysql_result_success(&mysql_result))
+    if (mysql_real_query(client_mysql_ptr->real_mysql, 
+        "select @@character_set_client, @@character_set_connection, @@character_set_results;", 
+        sizeof("select @@character_set_client, @@character_set_connection, @@character_set_results;")-1))
     {
         mysql_close(client_mysql_ptr->real_mysql);
         client_mysql_ptr->real_mysql = 0;
         return false;
     }
+
+    mysql_result.cur_mysql = client_mysql_ptr->real_mysql;
+    mysql_result.record_set = mysql_store_result(mysql_result.cur_mysql);
+    mysql_result.error_code = 0;
+    mysql_result.affect_row = 0;
 
     value_data = client_mysql_row_field_value(&mysql_result, 0, 0);
     character_client = value_data.value;

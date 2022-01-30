@@ -147,18 +147,6 @@ typedef struct st_rb_tree
 }rb_tree;
 
 //////////////////////////////////////////////////////////////////////////
-typedef struct st_mem_mgr
-{
-    avl_tree    mem_pool_map;
-}mem_mgr;
-
-//extern void* (libsvr_memory_manager_realloc)(void* old_mem, size_t mem_size);
-//
-//extern void* (libsvr_memory_manager_alloc)(size_t mem_size);
-//
-//extern void (libsvr_memory_manager_free)(void* mem);
-//
-//extern bool (libsvr_memory_manager_check)(void* mem);
 
 extern void* default_alloc(size_t mem_size);
 

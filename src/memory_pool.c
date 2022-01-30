@@ -1004,30 +1004,27 @@ void memory_pool_tidy(mem_pool* pool)
     }
 }
 
-mem_mgr* create_memory_manager(size_t align, size_t start_size, size_t max_size, size_t grow_size, size_t grow_power)
+HMEMORYMANAGER create_memory_manager(size_t align, size_t start_size, size_t max_size, size_t grow_size, size_t grow_power)
 {
     size_t last_start_size = sizeof(size_t);
 
-    mem_mgr* mgr = (mem_mgr*)malloc(sizeof(mem_mgr));
+    HAVLTREE mgr = (HAVLTREE)malloc(sizeof_avl_tree());
 
-    mgr->mem_pool_map.root = 0;
-    mgr->mem_pool_map.size = 0;
-    mgr->mem_pool_map.head = 0;
-    mgr->mem_pool_map.tail = 0;
+    mgr->root = 0;
+    mgr->size = 0;
+    mgr->head = 0;
+    mgr->tail = 0;
 
-    mgr->mem_pool_map.key_cmp = 0;
-    mgr->mem_pool_map.tree_unit = 0;
-    mgr->mem_pool_map.node_unit = create_memory_unit(sizeof(avl_node));
-    memory_unit_set_grow_count(mgr->mem_pool_map.node_unit, 32);
-
-    avl_node* tmp_node = memory_unit_alloc(mgr->mem_pool_map.node_unit);
-    memory_unit_free(mgr->mem_pool_map.node_unit, tmp_node);
+    mgr->key_cmp = 0;
+    mgr->tree_unit = 0;
+    mgr->node_unit = create_memory_unit(sizeof(avl_node));
+    memory_unit_set_grow_count(mgr->node_unit, 32);
 
     while (start_size <= max_size)
     {
         HMEMORYPOOL pool = create_memory_pool(align, last_start_size, start_size, grow_size);
 
-        avl_tree_insert_integer(&mgr->mem_pool_map, pool->max_mem_size, pool);
+        avl_tree_insert_integer(mgr, pool->max_mem_size, pool);
         align *= grow_power;
         last_start_size = start_size + 1;
         start_size *= grow_power;
@@ -1036,15 +1033,15 @@ mem_mgr* create_memory_manager(size_t align, size_t start_size, size_t max_size,
     return mgr;
 }
 
-void destroy_memory_manager(mem_mgr* mgr)
+void destroy_memory_manager(HMEMORYMANAGER mgr)
 {
-    HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
+    HAVLNODE pool_node = avl_first(mgr);
     while (pool_node)
     {
         destroy_memory_pool((HMEMORYPOOL)avl_node_value_user(pool_node));
         pool_node = avl_next(pool_node);
     }
-    destroy_memory_unit(mgr->mem_pool_map.node_unit);
+    destroy_memory_unit(mgr->node_unit);
     free(mgr);
 }
 
@@ -1072,9 +1069,9 @@ HAVLNODE avl_tree_find_integer_nearby(HAVLTREE tree, size_t key)
     return nearby_node;
 }
 
-void* memory_manager_alloc(mem_mgr* mgr, size_t mem_size)
+void* memory_manager_alloc(HMEMORYMANAGER mgr, size_t mem_size)
 {
-    HAVLNODE pool_node = avl_tree_find_integer_nearby(&mgr->mem_pool_map, mem_size);
+    HAVLNODE pool_node = avl_tree_find_integer_nearby(mgr, mem_size);
 
     if ((size_t)avl_node_key_integer(pool_node) < mem_size)
     {
@@ -1087,7 +1084,7 @@ void* memory_manager_alloc(mem_mgr* mgr, size_t mem_size)
     return memory_pool_alloc((HMEMORYPOOL)avl_node_value_user(pool_node), mem_size);
 }
 
-void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
+void* memory_manager_realloc(HMEMORYMANAGER mgr, void* old_mem, size_t mem_size)
 {
     HMEMORYUNIT unit = 0;
     void* new_mem = 0;
@@ -1103,9 +1100,8 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
 
     unit = memory_unit_sign_to_unit(check_data);
 
-    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    if ((*check_data) == avl_node_value_user(avl_last(mgr)))
     {
-        //return memory_pool_realloc((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), old_mem, mem_size);
         return memory_pool_realloc((HMEMORYPOOL)(*check_data), old_mem, mem_size);
     }
 
@@ -1114,7 +1110,7 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
         return old_mem;
     }
 
-    old_node = avl_tree_find_integer_nearby(&mgr->mem_pool_map, unit->unit_size);
+    old_node = avl_tree_find_integer_nearby(mgr, unit->unit_size);
     if (avl_node_key_integer(old_node) < unit->unit_size)
     {
         if (avl_next(old_node))
@@ -1123,7 +1119,7 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
         }
     }
 
-    new_node = avl_tree_find_integer_nearby(&mgr->mem_pool_map, mem_size);
+    new_node = avl_tree_find_integer_nearby(mgr, mem_size);
     if (avl_node_key_integer(new_node) < mem_size)
     {
         if (avl_next(new_node))
@@ -1143,7 +1139,7 @@ void* memory_manager_realloc(mem_mgr* mgr, void* old_mem, size_t mem_size)
     return new_mem;
 }
 
-void memory_manager_free(mem_mgr* mgr, void* mem)
+void memory_manager_free(HMEMORYMANAGER mgr, void* mem)
 {
     HMEMORYUNIT unit = 0;
     HAVLNODE pool_node = 0;
@@ -1155,14 +1151,13 @@ void memory_manager_free(mem_mgr* mgr, void* mem)
     void** check_data = memory_unit_get_sign(mem);
     unit = memory_unit_sign_to_unit(check_data);
 
-    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    if ((*check_data) == avl_node_value_user(avl_last(mgr)))
     {
-        //memory_pool_free((HMEMORYPOOL)avl_node_value_user(avl_last(&mgr->mem_pool_map)), mem);
         memory_pool_free((HMEMORYPOOL)(*check_data), mem);
         return;
     }
 
-    pool_node = avl_tree_find_integer_nearby(&mgr->mem_pool_map, unit->unit_size);
+    pool_node = avl_tree_find_integer_nearby(mgr, unit->unit_size);
     if (avl_node_key_integer(pool_node) < unit->unit_size)
     {
         if (avl_next(pool_node))
@@ -1188,7 +1183,7 @@ void memory_manager_free(mem_mgr* mgr, void* mem)
     }
 }
 
-bool memory_manager_check(mem_mgr* mgr, void* mem)
+bool memory_manager_check(HMEMORYMANAGER mgr, void* mem)
 {
     HMEMORYUNIT unit = 0;
     HAVLNODE pool_node = 0;
@@ -1197,12 +1192,12 @@ bool memory_manager_check(mem_mgr* mgr, void* mem)
     void** check_data = memory_unit_get_sign(mem);
     unit = memory_unit_sign_to_unit(check_data);
 
-    if ((*check_data) == avl_node_value_user(avl_last(&mgr->mem_pool_map)))
+    if ((*check_data) == avl_node_value_user(avl_last(mgr)))
     {
         return true;
     }
 
-    pool_node = avl_tree_find_integer_nearby(&mgr->mem_pool_map, unit->unit_size);
+    pool_node = avl_tree_find_integer_nearby(mgr, unit->unit_size);
     if (avl_node_key_integer(pool_node) < unit->unit_size)
     {
         if (avl_next(pool_node))
@@ -1226,11 +1221,11 @@ bool memory_manager_check(mem_mgr* mgr, void* mem)
     return false;
 }
 
-size_t memory_manager_alloc_size(mem_mgr* mgr)
+size_t memory_manager_alloc_size(HMEMORYMANAGER mgr)
 {
     size_t alloc_size = 0;
 
-    HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
+    HAVLNODE pool_node = avl_first(mgr);
     while (pool_node)
     {
         alloc_size += memory_pool_alloc_size((HMEMORYPOOL)avl_node_value_user(pool_node));
@@ -1240,12 +1235,11 @@ size_t memory_manager_alloc_size(mem_mgr* mgr)
     return alloc_size;
 }
 
-size_t(memory_manager_total_size)(mem_mgr* mgr)
+size_t(memory_manager_total_size)(HMEMORYMANAGER mgr)
 {
-    //size_t total_size = sizeof(mem_mgr) + memory_unit_total_size(mgr->mem_pool_map.node_unit);
-    size_t total_size = sizeof(mem_mgr) + avl_tree_size(&mgr->mem_pool_map) * sizeof_avl_node();
+    size_t total_size = sizeof_avl_tree() + avl_tree_size(mgr) * sizeof_avl_node();
 
-    HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
+    HAVLNODE pool_node = avl_first(mgr);
     while (pool_node)
     {
         total_size += memory_pool_total_size((HMEMORYPOOL)avl_node_value_user(pool_node));
@@ -1255,9 +1249,9 @@ size_t(memory_manager_total_size)(mem_mgr* mgr)
     return total_size;
 }
 
-void memory_manager_tidy(mem_mgr* mgr)
+void memory_manager_tidy(HMEMORYMANAGER mgr)
 {
-    HAVLNODE pool_node = avl_first(&mgr->mem_pool_map);
+    HAVLNODE pool_node = avl_first(mgr);
     while (pool_node)
     {
         memory_pool_tidy((HMEMORYPOOL)avl_node_value_user(pool_node));

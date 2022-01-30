@@ -8,7 +8,6 @@ extern "C" {
 
 typedef struct st_mem_unit*    HMEMORYUNIT;
 typedef struct st_mem_pool*    HMEMORYPOOL;
-typedef struct st_mem_mgr*     HMEMORYMANAGER;
 
 typedef void* (*lib_svr_alloc)(void* user_data, void* mem, size_t old_size, size_t new_size);
 
@@ -20,6 +19,8 @@ typedef struct st_rb_node* HRBNODE;
 typedef struct st_rb_tree* HRBTREE;
 
 typedef ptrdiff_t(*compare_func)(const void* key1, const void* key2);
+
+typedef HAVLTREE HMEMORYMANAGER;
 
 //////////////////////////////////////////////////////////////////////////
 typedef struct st_timer_manager* HTIMERMANAGER;
@@ -158,6 +159,8 @@ typedef void(*json_string_append) (void *ud, const char* data, size_t data_size)
 
 
 //////////////////////////////////////////////////////////////////////////
+typedef struct st_mem_stack_info* HSTACKINFO;
+
 typedef struct st_mem_trace_info
 {
     const char* name;
@@ -166,6 +169,7 @@ typedef struct st_mem_trace_info
     size_t      size;
     size_t      alloc;
     size_t      free;
+    HSTACKINFO  stack;
 }mem_trace_info;
 
 typedef struct st_ptr_info

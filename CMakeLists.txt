@@ -1,32 +1,22 @@
 cmake_minimum_required (VERSION 2.80)
 
-project (libsvr)
-
-aux_source_directory (src SRC_LIST)
-
-#if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  # using Clang
-#elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  # using GCC
-#elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
-  # using Intel C++
-#elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
-  # using Visual Studio C++
-#endif()
-
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   if(MSVC)
     set(CMAKE_COMPILER_IS_CLANGCLXX 1)
   else()
     set(CMAKE_COMPILER_IS_CLANGXX 1)
   endif()
-elseif ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
   if(MSVC)
     set(CMAKE_COMPILER_IS_CLANGCL 1)
   else()
     set(CMAKE_COMPILER_IS_CLANG 1)
   endif()
 endif()
+
+project (libsvr)
+
+aux_source_directory (src SRC_LIST)
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
 list(REMOVE_ITEM SRC_LIST "src/iocp_tcp.c")
@@ -89,4 +79,4 @@ endif()
 
 add_library(libsvr STATIC ${SRC_LIST})
 
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../../bin)
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../../bin2)

@@ -14,6 +14,8 @@ extern HFILELOGGER (create_file_logger)(const char* path_utf8, const char* name_
 
 extern void (destroy_file_logger)(HFILELOGGER file_logger);
 
+extern void (reset_file_logger)(HFILELOGGER file_logger);
+
 extern void (file_logger_flush)(HFILELOGGER file_logger);
 
 HLOOPCACHE (logger_manager_print_cache)(void);

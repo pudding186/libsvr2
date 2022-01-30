@@ -679,6 +679,11 @@ public:
         return m_top;
     }
 
+    inline CFuncPerformanceInfo** Stack(void)
+    {
+        return m_stack;
+    }
+
     inline void Push(CFuncPerformanceInfo* func_perf_info)
     {
         if (m_top < MAX_STACK_CAPACITY - 20)
@@ -688,7 +693,7 @@ public:
         else
         {
             m_top -= 20;
-            CRUSH_CODE();
+            throw "stack overflow";
         }
         ++m_top;
     }
@@ -701,7 +706,7 @@ public:
         }
         else
         {
-            CRUSH_CODE();
+            throw "stack illegal";
         }
     }
 protected:
@@ -751,6 +756,11 @@ CFuncPerformanceInfo* FuncPerfFirst(CFuncPerformance& fpf)
 int GetFuncStackTop(CFuncPerformance& fpf)
 {
     return fpf.StackTop();
+}
+
+CFuncPerformanceInfo** GetFuncStack(CFuncPerformance& fpf)
+{
+    return fpf.Stack();
 }
 
 CFuncPerformanceInfo* GetStackFuncPerfInfo(CFuncPerformance& fpf, int idx)
