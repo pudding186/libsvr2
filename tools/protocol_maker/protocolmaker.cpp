@@ -1201,7 +1201,7 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rX
                 return false;
             }
             //fprintf(pHppFile, u8"struct %s:protocol_base{\r\n", strName.c_str());
-            fprintf(pHppFile, u8"struct %s:Protocol<%s>\r\n{\r\n", strName.c_str(), strName.c_str());
+            fprintf(pHppFile, u8"struct %s:TProtocol<%s>\r\n{\r\n", strName.c_str(), strName.c_str());
             //fprintf(pHppFile,"\tconst %-*s moudleid;\r\n", 19, "unsigned short");
             //fprintf(pHppFile,"\tconst %-*s protocolid;\r\n", 19, "unsigned short");
             eDataType = eProtocol;
@@ -1209,14 +1209,14 @@ bool CProtocolMaker::__WriteData( FILE* pHppFile, FILE* pCppFile, CMarkupSTL& rX
 
 #ifdef MT
             fprintf(pCppFile, u8"template<>\r\n");
-            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
+            fprintf(pCppFile, u8"const unsigned short TProtocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
             fprintf(pCppFile, u8"template<>\r\n");
-            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size());
+            fprintf(pCppFile, u8"const unsigned short TProtocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size());
 #else
             fprintf(pCppFile, u8"template<>\r\n");
-            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
+            fprintf(pCppFile, u8"const unsigned short TProtocol<%s>::module_id = %s;\r\n", strName.c_str(), m_strMoudleID.c_str());
             fprintf(pCppFile, u8"template<>\r\n");
-            fprintf(pCppFile, u8"const unsigned short Protocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size() - 1);
+            fprintf(pCppFile, u8"const unsigned short TProtocol<%s>::protocol_id = %zu;\r\n\r\n", strName.c_str(), m_vecProtocol.size() - 1);
 #endif // 
 
         }
@@ -2725,7 +2725,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     //构建协议函数
     //fprintf(pHppFile, "int C%s::BuildProtocol(void* pHost, char *pNet, int iNetSize)\r\n{\r\n", strProtocolName.c_str());
     fprintf(pHppFile, u8"\ttemplate<typename T>\r\n");
-    fprintf(pHppFile, u8"\tbool BuildProtocol(Protocol<T>& proto, NetEnCode& net_data)\r\n\t{\r\n");
+    fprintf(pHppFile, u8"\tbool BuildProtocol(TProtocol<T>& proto, NetEnCode& net_data)\r\n\t{\r\n");
     fprintf(pHppFile, u8"\t\tif (proto.module_id != %s)\r\n", m_strMoudleID.c_str());
     fprintf(pHppFile, u8"\t\t\treturn false;\r\n\r\n");
     fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto.module_id);\r\n");
@@ -2735,11 +2735,11 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
     fprintf(pHppFile, u8"\t}\r\n\r\n");
 
 
-    fprintf(pHppFile, u8"\tbool BuildProtocol(protocol_base* proto, NetEnCode& net_data)\r\n\t{\r\n");
-    fprintf(pHppFile, u8"\t\tif (proto->ModuleId() != %s)\r\n", m_strMoudleID.c_str());
+    fprintf(pHppFile, u8"\tbool BuildProtocol(Protocol* proto, NetEnCode& net_data)\r\n\t{\r\n");
+    fprintf(pHppFile, u8"\t\tif (proto->ModuleIdEx() != %s)\r\n", m_strMoudleID.c_str());
     fprintf(pHppFile, u8"\t\t\treturn false;\r\n\r\n");
-    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ModuleId());\r\n");
-    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ProtocolId());\r\n\r\n");
+    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ModuleIdEx());\r\n");
+    fprintf(pHppFile, u8"\t\tnet_data.AddIntegral(proto->ProtocolIdEx());\r\n\r\n");
 
     fprintf(pHppFile, u8"\t\treturn proto->EnCodeEx(net_data);\r\n");
     fprintf(pHppFile, u8"\t}\r\n\r\n");
@@ -2757,7 +2757,7 @@ bool CProtocolMaker::__WriteProtocolClass( const std::string& strProtocolName, F
         fprintf(pHppFile, u8"\t\tcase %zu:\r\n", i);
 #endif
         fprintf(pHppFile, u8"\t\t{\r\n");
-        fprintf(pHppFile, u8"\t\t\treturn %s::SName();\r\n", m_vecProtocol[i].c_str());
+        fprintf(pHppFile, u8"\t\t\treturn %s::Name();\r\n", m_vecProtocol[i].c_str());
         fprintf(pHppFile, u8"\t\t}\r\n\t\tbreak;\r\n");
     }
 
