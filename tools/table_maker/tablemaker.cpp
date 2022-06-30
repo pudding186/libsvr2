@@ -410,15 +410,40 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            const char* tmp = attr.as_string();\r\n");
-            fprintf(hpp_file, u8"            size_t str_len = strlen(tmp);\r\n");
+            fprintf(hpp_file, u8"            const char* attr_str = attr.as_string();\r\n");
+            fprintf(hpp_file, u8"            size_t attr_str_len = strlen(attr_str);\r\n\r\n");
             fprintf(hpp_file, u8"            if (row->%s)\r\n", info.m_col_name.c_str());
             fprintf(hpp_file, u8"            {\r\n");
-            fprintf(hpp_file, u8"                S_DELETE(row->%s);\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                if (strcmp(attr_str, row->%s))\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                {\r\n");
+            fprintf(hpp_file, u8"                    if (S_CAPACITY_MEM(row->%s) > attr_str_len)\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                    {\r\n");
+            fprintf(hpp_file, u8"                        memcpy(row->%s, attr_str, attr_str_len);\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                        row->%s[attr_str_len] = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                    else\r\n");
+            fprintf(hpp_file, u8"                    {\r\n");
+            fprintf(hpp_file, u8"                        row->%s = (char*)S_MALLOC_EX(attr_str_len + 1, \"%s.%s\");\r\n", info.m_col_name.c_str(), m_struct_name.c_str(), info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                        memcpy(row->%s, attr_str, attr_str_len);\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                        row->%s[attr_str_len] = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                    }\r\n");
+            fprintf(hpp_file, u8"                }\r\n");
             fprintf(hpp_file, u8"            }\r\n");
-            fprintf(hpp_file, u8"            row->%s = S_NEW(char, str_len + 1);\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"            memcpy(row->%s, tmp, str_len);\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"            row->%s[str_len] = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            else\r\n");
+            fprintf(hpp_file, u8"            {\r\n");
+            fprintf(hpp_file, u8"                row->%s = (char*)S_MALLOC_EX(attr_str_len + 1, \"%s.%s\");\r\n", info.m_col_name.c_str(), m_struct_name.c_str(), info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                memcpy(row->%s, attr_str, attr_str_len);\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"                row->%s[attr_str_len] = 0;\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            }\r\n");
+            //fprintf(hpp_file, u8"            const char* tmp = attr.as_string();\r\n");
+            //fprintf(hpp_file, u8"            size_t str_len = strlen(tmp);\r\n");
+            //fprintf(hpp_file, u8"            if (row->%s)\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            {\r\n");
+            //fprintf(hpp_file, u8"                S_DELETE(row->%s);\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            }\r\n");
+            //fprintf(hpp_file, u8"            row->%s = S_NEW(char, str_len + 1);\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            memcpy(row->%s, tmp, str_len);\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            row->%s[str_len] = 0;\r\n", info.m_col_name.c_str());
             fprintf(hpp_file, u8"        }\r\n");
         }
         break;
@@ -1327,7 +1352,7 @@ void CTableMaker::_print_func_FreeRow( FILE* hpp_file )
         {
             fprintf(hpp_file, u8"        if (row->%s)\r\n", info.m_col_name.c_str());
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            S_DELETE(row->%s);\r\n", info.m_col_name.c_str());
+            fprintf(hpp_file, u8"            S_FREE(row->%s);\r\n", info.m_col_name.c_str());
             fprintf(hpp_file, u8"        }\r\n");
         }
     }
