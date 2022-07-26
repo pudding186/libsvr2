@@ -405,8 +405,9 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"            return false;\r\n");
+            fprintf(hpp_file, u8"            row->%s = nullptr;\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            return false;\r\n");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
@@ -456,8 +457,9 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"            return false;\r\n");
+            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            return false;\r\n");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
@@ -501,8 +503,9 @@ void CTableMaker::_print_func_FillData(FILE* hpp_file)
         {
             fprintf(hpp_file, u8"        if (!attr)\r\n");
             fprintf(hpp_file, u8"        {\r\n");
-            fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");", info.m_col_name.c_str());
-            fprintf(hpp_file, u8"            return false;");
+            fprintf(hpp_file, u8"            row->%s = 0;\r\n", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            snprintf(err, err_len, u8\"attribute %s not found\");", info.m_col_name.c_str());
+            //fprintf(hpp_file, u8"            return false;");
             fprintf(hpp_file, u8"        }\r\n");
             fprintf(hpp_file, u8"        else\r\n");
             fprintf(hpp_file, u8"        {\r\n");
