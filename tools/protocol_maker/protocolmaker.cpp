@@ -2287,6 +2287,21 @@ bool CProtocolMaker::__WriteMarshalUnmarshalJsonFunc(CMarkupSTL& rXml, FILE* pHp
     fprintf(pHppFile, u8"            return true;\r\n");
     fprintf(pHppFile, u8"        }\r\n");
     fprintf(pHppFile, u8"        \r\n");
+
+    fprintf(pHppFile, u8"        auto it = std::find_if(json.begin(), json.end(), [](unsigned char ch) {\r\n");
+    fprintf(pHppFile, u8"            return !std::isspace(ch);\r\n");
+    fprintf(pHppFile, u8"            });\r\n");
+    fprintf(pHppFile, u8"        \r\n");
+    fprintf(pHppFile, u8"        if (it == json.end()) {\r\n");
+    fprintf(pHppFile, u8"            return false;\r\n");
+    fprintf(pHppFile, u8"        } else {\r\n");
+    fprintf(pHppFile, u8"            if (*it != '{' &&\r\n");
+    fprintf(pHppFile, u8"                *it != '[') {\r\n");
+    fprintf(pHppFile, u8"                return false;\r\n");
+    fprintf(pHppFile, u8"            }\r\n");
+    fprintf(pHppFile, u8"        }\r\n");
+    fprintf(pHppFile, u8"        \r\n");
+
     fprintf(pHppFile, u8"        %s::Handler h(*this, nullptr);\r\n", strName.c_str());
     fprintf(pHppFile, u8"        JsonDeCode jd(&h);\r\n\r\n");
     fprintf(pHppFile, u8"        JsonAllocator json_allocator;\r\n");
